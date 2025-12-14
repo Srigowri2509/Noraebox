@@ -1,0 +1,489 @@
+import { useState, useMemo, useEffect } from "react";
+import Header from "../components/Header.jsx";
+import SearchBar from "../components/SearchBar.jsx";
+import SearchResults from "../components/SearchResults.jsx";
+import TopArtists from "../components/TopArtists.jsx";
+import MostPlayed from "../components/MostPlayed.jsx";
+import QueueList from "../components/QueueList.jsx";
+import ReadyToSing from "../components/ReadyToSing.jsx";
+import useSongSearch from "../hooks/useSongSearch.jsx";
+import { useRoomContext } from "../context/RoomContext.jsx";
+import { api, API_BASE } from "../api";
+
+export default function Home() {
+  const [filters, setFilters] = useState({
+    language: "all",
+    artist: "",
+    album: "",
+    songName: "",
+  });
+
+  // Separate state for artist selected from TopArtists (doesn't show in search bar)
+  const [selectedArtist, setSelectedArtist] = useState(null);
+
+  const { room, queue, setQueue } = useRoomContext();
+  const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
+
+  // Fail-fast check for songs
+  useEffect(() => {
+    if (!songsLoading) {
+      if (!allSongs || allSongs.length === 0) {
+        console.error("❌ NO SONGS RECEIVED FROM BACKEND");
+        console.error("allSongs value:", allSongs);
+      } else {
+        console.log("✅ SONGS LOADED:", allSongs.length);
+        console.log("Sample song structure:", allSongs[0]);
+      }
+    }
+  }, [allSongs, songsLoading]);
+
+  // Fetch unique languages from backend
+  const [languages, setLanguages] = useState([]);
+  useEffect(() => {
+    async function fetchLanguages() {
+      try {
+        const res = await api('/songs/languages');
+        // Handle both array response and wrapped response
+        const langList = Array.isArray(res) ? res : (res.data || []);
+        if (Array.isArray(langList)) {
+          setLanguages(langList);
+          console.log('Fetched languages from backend:', langList.length, langList);
+        }
+      } catch (error) {
+        console.warn("Error fetching languages:", error);
+        // Fallback: extract from songs if endpoint fails
+        if (allSongs && allSongs.length > 0) {
+          const uniqueLanguages = [
+            ...new Set(
+              allSongs
+                .map(s => s.language)
+                .filter(l => typeof l === "string" && l.length > 0)
+            )
+          ].sort();
+          setLanguages(uniqueLanguages);
+          console.log('Using fallback languages from songs:', uniqueLanguages);
+        }
+      }
+    }
+    fetchLanguages();
+  }, [allSongs]); // Re-fetch when songs are loaded for fallback
+
+  // Check if there are active filters (including selectedArtist)
+  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.album || filters.songName || selectedArtist;
+
+  const filteredSongs = useMemo(() => {
+    console.log('=== FILTERING SONGS ===');
+    console.log('Total songs available:', allSongs?.length || 0);
+    console.log('Active filters:', { 
+      language: filters.language, 
+      artist: filters.artist, 
+      selectedArtist, 
+      album: filters.album, 
+      songName: filters.songName 
+    });
+    
+    if (!allSongs || allSongs.length === 0) {
+      console.log('No songs available for filtering');
+      return [];
+    }
+    
+    let filtered = [...allSongs];
+    const initialCount = filtered.length;
+    
+    // Filter by language
+    if (filters.language !== "all") {
+      const before = filtered.length;
+      filtered = filtered.filter(song => {
+        const songLang = song.language?.trim();
+        const matches = songLang && songLang.toLowerCase() === filters.language.toLowerCase();
+        return matches;
+      });
+      console.log(`Language filter (${filters.language}): ${before} -> ${filtered.length}`);
+    }
+    
+    // Filter by artist (use selectedArtist if set, otherwise use filters.artist)
+    const artistFilter = selectedArtist || filters.artist;
+    if (artistFilter) {
+      const before = filtered.length;
+      const filterLower = artistFilter.toLowerCase().trim();
+      filtered = filtered.filter(song => {
+        // Check both artist_name (from join) and artist (fallback field)
+        const songArtist = (song.artist_name || song.artist)?.trim();
+        if (!songArtist) {
+          console.log(`Song ${song.id || song.title} has no artist_name or artist field`);
+          return false;
+        }
+        const matches = songArtist.toLowerCase().includes(filterLower);
+        if (!matches && before < 10) {
+          console.log(`Artist mismatch: "${songArtist}" does not include "${filterLower}"`);
+        }
+        return matches;
+      });
+      console.log(`Artist filter (${artistFilter}): ${before} -> ${filtered.length}`);
+    }
+    
+    // Filter by album
+    if (filters.album) {
+      const before = filtered.length;
+      const filterLower = filters.album.toLowerCase().trim();
+      filtered = filtered.filter(song => {
+        const songAlbum = song.album?.trim();
+        return songAlbum && songAlbum.toLowerCase().includes(filterLower);
+      });
+      console.log(`Album filter (${filters.album}): ${before} -> ${filtered.length}`);
+    }
+    
+    // Filter by song name
+    if (filters.songName) {
+      const before = filtered.length;
+      const filterLower = filters.songName.toLowerCase().trim();
+      filtered = filtered.filter(song => {
+        const songTitle = song.title?.trim();
+        return songTitle && songTitle.toLowerCase().includes(filterLower);
+      });
+      console.log(`Song name filter (${filters.songName}): ${before} -> ${filtered.length}`);
+    }
+    
+    console.log(`Final filtered count: ${filtered.length} from ${initialCount} total songs`);
+    if (filtered.length > 0) {
+      console.log('Sample filtered song:', filtered[0]);
+    }
+    console.log('=== END FILTERING ===');
+    
+    return filtered;
+  }, [allSongs, filters, selectedArtist]);
+
+  const topArtists = useMemo(() => {
+    const map = {};
+    allSongs.forEach(s => {
+      // Use artist_name from join, fallback to artist field
+      const artistName = s.artist_name || s.artist;
+      if (!artistName) return;
+      // Normalize artist name to avoid duplicates (case-insensitive)
+      const normalizedName = artistName.trim();
+      if (!normalizedName) return;
+      
+      if (!map[normalizedName]) {
+        map[normalizedName] = {
+          name: normalizedName,
+          songCount: 0,
+          image: s.artist_image || "/default-artist.jpg",
+        };
+      }
+      map[normalizedName].songCount += 1;
+    });
+
+    // Get unique artists, sort by song count, limit to 6
+    return Object.values(map)
+      .sort((a, b) => b.songCount - a.songCount)
+      .slice(0, 6)
+      .map((artist, index) => ({
+        id: artist.name.toLowerCase().replace(/\s+/g, '-'),
+        name: artist.name,
+        songCount: artist.songCount,
+        image: artist.image,
+      }));
+  }, [allSongs]);
+
+  // Fetch most played songs based on play_count
+  const [mostPlayed, setMostPlayed] = useState([]);
+  useEffect(() => {
+    async function fetchMostPlayed() {
+      try {
+        const res = await api('/songs');
+        const songs = res.data || res;
+        if (Array.isArray(songs)) {
+          const mostPlayedSongs = songs
+            .filter(s => s.play_count > 0)
+            .sort((a, b) => (b.play_count || 0) - (a.play_count || 0))
+            .slice(0, 5)
+            .map((s, index) => ({
+              ...s,
+              rank: index + 1,
+              image: s.image || s.album_art || "/default-cover.jpg",
+            }));
+          setMostPlayed(mostPlayedSongs);
+        } else {
+          setMostPlayed([]);
+        }
+      } catch (error) {
+        console.warn("Error fetching most played:", error);
+        setMostPlayed([]);
+      }
+    }
+    fetchMostPlayed();
+  }, [room?.id]);
+
+  const handleAddToQueue = async (song) => {
+    if (!song || !song.id) {
+      console.error("Invalid song object:", song);
+      alert("Invalid song. Please try again.");
+      return;
+    }
+    
+    // Allow duplicate songs in queue (user requirement)
+    
+    // Get room ID - use room.id or fallback to default
+    const roomId = room?.id || "default-room";
+    
+    try {
+      // Update local state immediately for instant feedback
+      setQueue((q) => [...(q || []), song]);
+      
+      // Add to queue via REST API
+      await api(`/rooms/${roomId}/queue/add`, {
+        method: "POST",
+        body: JSON.stringify({
+          song_id: song.id,
+          added_by: "tablet"
+        })
+      });
+      console.log("✅ Successfully added to queue:", song.title);
+    } catch (error) {
+      console.error("Error adding to queue:", error);
+      // Revert local state on error
+      setQueue((q) => q.filter((_, i) => i < q.length - 1));
+      alert(`Failed to add song: ${error.message}`);
+    }
+  };
+
+  const handleRemoveFromQueue = async (index) => {
+    if (!room?.id) {
+      console.warn("Cannot remove from queue: No room ID");
+      return;
+    }
+    
+    if (index < 0 || index >= (queue?.length || 0)) {
+      console.warn("Invalid index for queue removal:", index);
+      return;
+    }
+    
+    const songToRemove = queue[index];
+    console.log("🗑️ Removing song from queue:", songToRemove?.title || songToRemove?.id, "at index:", index);
+    
+    // Update local state immediately for instant feedback
+    const newQueue = queue.filter((_, i) => i !== index);
+    setQueue(newQueue);
+    
+    // Remove from backend
+    try {
+      await api(`/rooms/${room.id}/queue/remove`, {
+        method: "POST",
+        body: JSON.stringify({ position: index })
+      });
+      console.log("✅ Queue item removed from backend");
+    } catch (error) {
+      console.error("Error removing from queue:", error);
+      // Revert local state if backend call fails
+      setQueue(queue);
+      alert("Failed to remove song from queue. Please try again.");
+    }
+  };
+
+  const handlePlaySong = async (song) => {
+    const roomId = room?.id || "default-room";
+    try {
+      // Set current song via REST API
+      await api(`/rooms/${roomId}/current`, {
+        method: "PUT",
+        body: JSON.stringify({
+          current_song_id: song.id
+        })
+      });
+      console.log("✅ Started playing:", song.title);
+    } catch (error) {
+      console.error("Error starting song:", error);
+      throw error;
+    }
+  };
+
+  const handleReadyToSing = async () => {
+    const roomId = room?.id || "default-room";
+    
+    console.log("🎬 ========================================");
+    console.log("🎬 READY TO SING BUTTON CLICKED!");
+    console.log("🎬 ========================================");
+    console.log("📋 Room ID:", roomId);
+    console.log("📋 Queue length:", queue?.length || 0);
+    console.log("🔍 Filtered songs:", filteredSongs.length);
+    
+    try {
+      if (queue?.length > 0) {
+        console.log("▶️ Playing queue with", queue.length, "songs");
+        console.log("🎵 First song in queue:", queue[0]?.title);
+        console.log("🎵 First song URL:", queue[0]?.video_url || queue[0]?.file_url || queue[0]?.url);
+        
+        // Start next song from queue
+        await api(`/rooms/${roomId}/playback/start_next`, {
+          method: "POST"
+        });
+        
+        console.log("✅ Play command sent to backend");
+      } else if (filteredSongs.length > 0) {
+        console.log("▶️ Playing first filtered song:", filteredSongs[0].title);
+        console.log("🎵 Song URL:", filteredSongs[0]?.video_url || filteredSongs[0]?.file_url || filteredSongs[0]?.url);
+        
+        await handlePlaySong(filteredSongs[0]);
+        
+        console.log("✅ Play command sent to backend");
+      } else {
+        alert("No songs available to play. Please add songs to queue or filter songs.");
+      }
+    } catch (error) {
+      console.error("❌ Error playing song:", error);
+      console.error("❌ Error details:", error.message, error.stack);
+      alert(`Failed to play song: ${error.message}. Check console for details.`);
+    }
+  };
+
+  const handleSkip = async () => {
+    if (!room?.id) return;
+    try {
+      await api(`/rooms/${room.id}/playback/start_next`, {
+        method: "POST"
+      });
+    } catch (error) {
+      console.error("Error skipping song:", error);
+    }
+  };
+
+  // Poll queue to check for changes and auto-play next song
+  useEffect(() => {
+    const roomId = room?.id || "default-room";
+    if (!roomId) return;
+
+    let mounted = true;
+    const pollQueue = async () => {
+      try {
+        const res = await api(`/rooms/${roomId}/queue`);
+        const queueData = res.data || res;
+        if (mounted && Array.isArray(queueData)) {
+          // Update queue from backend
+          setQueue(queueData.map(item => item.songs || item));
+        }
+      } catch (error) {
+        console.error("Error polling queue:", error);
+      }
+    };
+
+    pollQueue();
+    const interval = setInterval(pollQueue, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [room?.id]);
+
+  // Debug: Log room and queue status
+  useEffect(() => {
+    console.log("Room status:", { roomId: room?.id, queueLength: queue?.length, room });
+  }, [room, queue]);
+
+  return (
+    <div 
+      className="h-screen text-white py-6 relative flex flex-col"
+      style={{
+        backgroundImage: "url('/background.jpg')",
+        backgroundSize: "cover",
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "center",
+        paddingLeft: "5%",
+        paddingRight: "5%"
+      }}
+    >
+      {/* Semi-transparent overlay for readability */}
+      <div className="fixed inset-0 bg-[#0B0F17]/70 -z-10"></div>
+      
+      <Header />
+
+      <div style={{ marginTop: "2rem", marginBottom: "2rem" }}>
+        <SearchBar 
+          filters={filters} 
+          onFilterChange={(key, val) => {
+            // When user types in search bar, clear selectedArtist
+            if (key === "artist") {
+              setSelectedArtist(null);
+            }
+            setFilters(p => ({ ...p, [key]: val }));
+          }}
+          languages={languages}
+        />
+      </div>
+
+      {songsLoading ? (
+        <div className="text-center py-20">
+          <div className="text-cyan-400 text-xl">Loading songs...</div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-12 gap-6 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
+          {/* LEFT */}
+          <div className="col-span-8 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+            {/* Top Artists - Always visible */}
+            <TopArtists 
+              artists={topArtists} 
+              selectedArtistName={selectedArtist}
+              onArtistSelect={(a) => {
+                if (a === null) {
+                  // Clear selection
+                  setSelectedArtist(null);
+                } else {
+                  // Set selectedArtist (doesn't show in search bar) and clear search bar artist filter
+                  setSelectedArtist(a.name);
+                  setFilters(p => ({ ...p, artist: "" }));
+                }
+              }} 
+            />
+            
+            {/* Show selected artist indicator */}
+            {selectedArtist && (
+              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ marginTop: "1rem", padding: "1rem 1rem", minHeight: "2rem" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-cyan-400">🎤</span>
+                  <span className="text-white font-semibold">Showing songs by: <span className="text-cyan-300">{selectedArtist}</span></span>
+                </div>
+                <button
+                  onClick={() => setSelectedArtist(null)}
+                  className="text-gray-400 hover:text-white text-sm underline"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+            
+            {/* Show search results when filters are active, otherwise show Most Played */}
+            <div style={{ marginTop: "2rem", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+              {hasActiveFilters ? (
+                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  <SearchResults 
+                    songs={filteredSongs} 
+                    onAddToQueue={handleAddToQueue}
+                    loading={songsLoading}
+                  />
+                </div>
+              ) : (
+                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                  <MostPlayed songs={mostPlayed} onSongSelect={handleAddToQueue} />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT */}
+          <div className="col-span-4 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <ReadyToSing 
+              onPlay={handleReadyToSing}
+              onSkip={handleSkip}
+              queueLength={queue?.length || 0}
+            />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "2rem", minHeight: 0 }}>
+              <QueueList 
+                queue={queue || []} 
+                onRemove={handleRemoveFromQueue}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

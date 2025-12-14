@@ -1,0 +1,247 @@
+import React, { useEffect, useState, useRef } from "react";
+import Navbar from "../components/Navbar";
+import VideoPlayer from "../components/VideoPlayer";
+import NextBanner from "../components/NextBanner";
+import { api } from "../api";
+
+/*
+  Display app behavior:
+  - Polls backend /rooms/{roomId}/status every 2 seconds
+  - Gets current_song_id and fetches song details
+  - Calculates timer from started_at + total_minutes
+  - Shows video when current_song_id is set
+  - Shows default background when session ends or no active session
+*/
+
+export default function Display({ roomId }) {
+  const [currentSong, setCurrentSong] = useState(null); // song object with videoUrl
+  const [nextSong, setNextSong] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(null); // milliseconds remaining
+  const [isActive, setIsActive] = useState(false);
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const videoRef = useRef();
+  const lastSongIdRef = useRef(null);
+
+  // Poll room session from backend
+  useEffect(() => {
+    if (!roomId) return;
+
+    let mounted = true;
+    let pollInterval;
+
+    const pollRoomStatus = async () => {
+      try {
+        // Use GET /rooms/{id}/session endpoint (reads from room_sessions)
+        const sessionData = await api(`/rooms/${roomId}/session`);
+        if (!mounted) return;
+
+        const session = sessionData.session;
+        console.log("Display polling session for room:", roomId);
+        console.log("Session data:", session);
+
+        // If no session, show idle
+        if (!session) {
+          setIsActive(false);
+          setTimeLeft(null);
+          setSessionEnded(true);
+          setCurrentSong(null);
+          return;
+        }
+
+        // Check if session is active
+        const active = session.status === "playing" || session.status === "idle";
+        setIsActive(active);
+
+        // Get current song ID from session
+        const currentSongId = session.current_song_id;
+
+        // Calculate timer from session_start_time + total_minutes
+        // Timer only shows when session_start_time exists (first song played)
+        if (session.session_start_time && session.total_minutes) {
+          try {
+            const startedAt = new Date(session.session_start_time);
+            const now = new Date();
+            const totalSeconds = session.total_minutes * 60;
+            const elapsedSeconds = Math.floor((now - startedAt) / 1000);
+            const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+            const remainingMs = remainingSeconds * 1000;
+
+            // Show timer (session has started)
+            setTimeLeft(remainingMs);
+
+            // Check if session ended
+            if (remainingSeconds === 0 || session.status === "finished") {
+              setSessionEnded(true);
+              setCurrentSong(null); // Clear song when session ends
+              setTimeLeft(null);
+            } else {
+              setSessionEnded(false);
+            }
+          } catch (e) {
+            console.error("Error calculating timer:", e);
+            setTimeLeft(null);
+          }
+        } else {
+          // Session ready but idle - no timer yet (session_start_time is NULL)
+          setTimeLeft(null);
+          setSessionEnded(false);
+          // Don't clear currentSong here - might be waiting for first song
+        }
+
+        // Handle current song
+        if (currentSongId && currentSongId !== lastSongIdRef.current) {
+          // New song started - fetch song details
+          lastSongIdRef.current = currentSongId;
+          try {
+            console.log("🎵 Display: Fetching song details for ID:", currentSongId);
+            const songData = await api(`/songs/${currentSongId}`);
+            console.log("🎵 Display: Song data fetched:", songData);
+            
+            // Map file_url to videoUrl for VideoPlayer component
+            const videoUrl = songData.file_url || songData.video_url || songData.url;
+            if (!videoUrl) {
+              console.error("❌ Display: Song has no file_url!", songData);
+              setCurrentSong(null);
+            } else {
+              setCurrentSong({
+                ...songData,
+                videoUrl: videoUrl
+              });
+              console.log("✅ Display: New song loaded:", songData.title, "Video URL:", videoUrl);
+            }
+          } catch (err) {
+            console.error("❌ Display: Error fetching song:", err);
+            setCurrentSong(null);
+          }
+        } else if (!currentSongId) {
+          // No current song
+          if (lastSongIdRef.current) {
+            console.log("Display: Song ended, clearing current song");
+          }
+          lastSongIdRef.current = null;
+          if (session.status === "finished" || !session) {
+            setCurrentSong(null);
+          }
+        }
+
+        // Get next song from queue (from sessionData.queue)
+        try {
+          const queue = sessionData.queue || [];
+          console.log("Display: Queue data:", queue);
+          if (queue.length > 0) {
+            const nextSongData = queue[0];
+            console.log("Display: Next song data:", nextSongData);
+            setNextSong({
+              title: nextSongData.title || nextSongData.song?.title || "Unknown",
+              artist: nextSongData.artist || nextSongData.artist_name || nextSongData.song?.artist || nextSongData.song?.artist_name || ""
+            });
+          } else {
+            console.log("Display: Queue is empty, no next song");
+            setNextSong(null);
+          }
+        } catch (err) {
+          console.error("Error getting queue:", err);
+          setNextSong(null);
+        }
+
+      } catch (error) {
+        console.error("Error polling room status:", error);
+        if (!mounted) return;
+      }
+    };
+
+    // Poll immediately and then every 2 seconds
+    pollRoomStatus();
+    pollInterval = setInterval(pollRoomStatus, 2000);
+
+    return () => {
+      mounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [roomId]);
+
+  // Update timer every second
+  useEffect(() => {
+    if (timeLeft === null || timeLeft <= 0) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev === null || prev <= 1000) return 0;
+        return prev - 1000;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  // Handle video ended - call backend to mark playback ended
+  const handleVideoEnded = async () => {
+    console.log("Video ended, notifying backend");
+    try {
+      await api(`/rooms/${roomId}/playback/ended`, {
+        method: "POST"
+      });
+      // Backend will auto-start next song if queue has items
+      setCurrentSong(null); // Clear current song, will be updated on next poll
+    } catch (error) {
+      console.error("Error notifying playback ended:", error);
+      setCurrentSong(null);
+    }
+  };
+
+  // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"
+  const fmt = (ms) => {
+    if (ms == null || ms <= 0) return "--:--:--";
+    const totalSec = Math.floor(ms / 1000);
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="display-root" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
+      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSong} />
+
+      <div className="display-content" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+        {/* Center: Video or Default Background - Fullscreen excluding navbar */}
+        <div className="display-center" style={{ 
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          width: "100%",
+          height: "100%"
+        }}>
+          {currentSong && !sessionEnded ? (
+            <VideoPlayer
+              ref={videoRef}
+              song={currentSong}
+              onEnded={handleVideoEnded}
+            />
+          ) : (
+            <div className="logo-fallback-wrapper" style={{
+              width: "100%",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}>
+              <img
+                src="/logo_norebox.jpg"
+                alt="Norebox logo"
+                className="logo-fallback"
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

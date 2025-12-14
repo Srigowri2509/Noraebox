@@ -1,0 +1,23 @@
+{
+  "name": "norebox",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "npm run dev --workspace=tablet-app",
+    "dev:tablet": "npm run dev --workspace=tablet-app",
+    "dev:admin": "npm run dev --workspace=admin-app",
+    "dev:display": "npm run dev --workspace=display-app",
+    "dev:all": "npm run dev --workspace=tablet-app & npm run dev --workspace=admin-app & npm run dev --workspace=display-app",
+    "build": "npm run build --workspaces",
+    "build:tablet": "npm run build --workspace=tablet-app",
+    "build:admin": "npm run build --workspace=admin-app",
+    "build:display": "npm run build --workspace=display-app",
+    "lint": "npm run lint --workspaces"
+  },
+  "workspaces": [
+    "tablet-app",
+    "admin-app",
+    "display-app"
+  ]
+}
+

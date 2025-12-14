@@ -1,0 +1,158 @@
+import React, { useState, useEffect, useRef } from "react";
+import Home from "./screens/Home";
+import RoomSelectModal from "./components/RoomSelectModal";
+import { ensureDeviceRegistered } from "./init/registerDevice";
+import { api } from "./api";
+
+export default function App() {
+  const [showRoomSelect, setShowRoomSelect] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const [deviceInfo, setDeviceInfo] = useState(null);
+  const [roomId, setRoomId] = useState(null);
+  const [isChecking, setIsChecking] = useState(true);
+  const [error, setError] = useState(null);
+  const mountedRef = useRef(true);
+  const timeoutRef = useRef(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    
+    // Set a maximum timeout to prevent infinite waiting (12 seconds)
+    timeoutRef.current = setTimeout(() => {
+      if (mountedRef.current) {
+        console.warn("Device registration timeout - proceeding with fallback");
+        const existingRoomId = localStorage.getItem("room_id") || localStorage.getItem("roomId");
+        if (existingRoomId) {
+          setRoomId(existingRoomId);
+          setIsChecking(false);
+        } else {
+          setShowRoomSelect(true);
+          setRooms([]);
+          setIsChecking(false);
+          setError("Backend connection timeout. Please start the backend server or enter a room ID manually.");
+        }
+      }
+    }, 12000);
+    
+    (async () => {
+      try {
+        const result = await ensureDeviceRegistered();
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        if (!mountedRef.current) return;
+        
+        setDeviceInfo(result.device);
+        
+        if (!result.assigned || !result.room_id) {
+          // Device not assigned - show room selection
+          setRooms(result.rooms || []);
+          setShowRoomSelect(true);
+          setRoomId(null);
+        } else {
+          // Device is assigned - use the assigned room
+          setRoomId(result.room_id);
+          localStorage.setItem("room_id", result.room_id);
+          localStorage.setItem("roomId", result.room_id);
+        }
+      } catch (error) {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+        console.error("Error registering device:", error);
+        if (!mountedRef.current) return;
+        
+        // If backend is down, check if we have a room_id in localStorage
+        const existingRoomId = localStorage.getItem("room_id") || localStorage.getItem("roomId");
+        if (existingRoomId) {
+          // Use existing room_id and proceed
+          console.log("Using existing room_id from localStorage:", existingRoomId);
+          setRoomId(existingRoomId);
+        } else {
+          // Backend is down and no room_id - show room select with empty rooms
+          console.warn("Backend unavailable and no room_id found. Showing room select with empty list.");
+          setShowRoomSelect(true);
+          setRooms([]);
+          setError(error.message || "Cannot connect to backend");
+        }
+      } finally {
+        if (mountedRef.current) {
+          setIsChecking(false);
+        }
+      }
+    })();
+    
+    return () => {
+      mountedRef.current = false;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleRoomSelected = async (selectedRoomId) => {
+    if (!selectedRoomId) return;
+    
+    const deviceUuid = localStorage.getItem("device_uuid");
+    if (!deviceUuid) {
+      alert("Device UUID not found. Please refresh the page.");
+      return;
+    }
+    
+    try {
+      // Use POST /devices/assign-room endpoint
+      await api("/devices/assign-room", {
+        method: "POST",
+        body: JSON.stringify({ 
+          device_uuid: deviceUuid,
+          room_id: selectedRoomId
+        })
+      });
+      console.log("Device assigned to room:", selectedRoomId);
+      
+      localStorage.setItem("room_id", selectedRoomId);
+      localStorage.setItem("roomId", selectedRoomId);
+      setRoomId(selectedRoomId);
+      setShowRoomSelect(false);
+      // Reload to ensure all components use the new room_id
+      window.location.reload();
+    } catch (error) {
+      console.error("Error assigning device to room:", error);
+      alert(`Failed to assign room: ${error.message || "Unknown error"}`);
+    }
+  };
+
+  if (isChecking) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-[#0B0F17] text-white">
+        <div className="text-center">
+          <div className="text-xl mb-2">Registering device...</div>
+          <div className="text-sm text-gray-400">Connecting to backend...</div>
+          {error && (
+            <div className="text-sm text-yellow-400 mt-4">{error}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Block everything until room is assigned
+  if (showRoomSelect || !roomId) {
+    return (
+      <RoomSelectModal
+        rooms={rooms}
+        device={deviceInfo}
+        onSelect={handleRoomSelected}
+        onClose={() => {
+          // Don't allow closing - device must be assigned
+          alert("Please select a room to continue.");
+        }}
+      />
+    );
+  }
+
+  // Only show Home after room is assigned
+  return <Home />;
+}

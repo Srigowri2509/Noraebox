@@ -1,0 +1,198 @@
+/* Basic resets */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html,body,#root { height: 100%; }
+
+/* Full app container */
+.display-root { 
+  height: 100vh; 
+  width: 100vw; 
+  background: black; 
+  color: white; 
+  font-family: Inter, Arial, sans-serif; 
+  overflow: hidden; 
+}
+
+/* NAVBAR */
+.nav-wrap { 
+  height: 40px; 
+  width: 100%; 
+  background: linear-gradient(90deg, rgba(6,10,20,0.8), rgba(12,8,20,0.6)); 
+  display: flex; 
+  align-items: center; 
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6); 
+  position: relative; 
+  z-index: 30; 
+}
+.nav-inner { 
+  width: 100%; 
+  max-width: 1600px; 
+  margin: 0 auto; 
+  padding: 0 18px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  gap: 1rem;
+}
+
+/* Time text */
+.time-label { 
+  color: white; 
+  font-weight: 600; 
+  display: flex; 
+  gap: 14px; 
+  align-items: center; 
+}
+.time-value { 
+  color: white; 
+  font-weight: 800; 
+  margin-left: 8px; 
+}
+
+/* Layout */
+.display-content { 
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  height: calc(100vh - 40px); /* Full height minus navbar */
+}
+
+/* Center main - Fullscreen video */
+.display-center { 
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Video wrapper - Fullscreen */
+.video-wrapper, 
+.video-placeholder { 
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+  overflow: hidden;
+}
+
+.video-element { 
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: black;
+  display: block;
+}
+
+/* ✔ FULLSCREEN SESSION-END IMAGE */
+.full-image {
+  position: fixed;
+  top: 40px; /* below navbar */
+  left: 0;
+  width: 100vw;
+  height: calc(100vh - 40px);
+  object-fit: cover;
+  object-position: center;
+  z-index: 25; /* under navbar, above all else */
+}
+
+/* Logo fallback when no video */
+.logo-fallback-wrapper {
+  position: fixed;
+  top: 40px; /* below navbar */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: calc(100vh - 40px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+  z-index: 1;
+}
+.logo-fallback { 
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain; 
+  display: block;
+}
+
+/* Video placeholder */
+.video-placeholder { 
+  background: linear-gradient(180deg,#0f1724,#0b0b11); 
+  border-radius: 10px; 
+  border: 1px solid rgba(255,255,255,0.02); 
+}
+.poster-text { 
+  color: #8c98a6; 
+  font-size: 20px; 
+}
+
+/* NEXT SONG SLIDE-IN BANNER */
+.next-banner {
+  position: relative;
+  width: 100%;
+  pointer-events: none;
+}
+.next-banner .next-inner {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(12,14,20,0.6);
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 10px 40px rgba(2,6,12,0.6), 0 0 24px rgba(0,220,255,0.03);
+  color: white;
+  transform: translateX(-320px);
+  opacity: 0;
+  transition: transform 380ms cubic-bezier(.2,.9,.3,1), opacity 200ms ease;
+  max-width: 320px;
+}
+.next-banner.in .next-inner { 
+  transform: translateX(0); 
+  opacity: 1; 
+}
+
+/* Play pill */
+.play-pill { 
+  width: 52px; 
+  height: 52px; 
+  border-radius: 8px; 
+  background: linear-gradient(180deg,#052130,#02141a); 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  box-shadow: 0 8px 30px rgba(0,220,255,0.08), 0 0 28px rgba(0,200,255,0.08); 
+  color: #00e5ff; 
+  font-weight: 800; 
+  font-size: 18px; 
+}
+
+/* next text */
+.next-title { 
+  font-size: 12px; 
+  color: #9aa6b2; 
+}
+.next-song { 
+  font-weight: 700; 
+  color: white; 
+}
+
+/* Responsive tweaks */
+@media (max-width: 1100px) {
+  .display-right { display: none; }
+  .video-wrapper { width: 720px; height: 720px; }
+}
+@media (max-width: 760px) {
+  .video-wrapper { width: 100%; height: 100%; }
+  .nav-inner { padding: 0 12px; }
+  .time-label { font-size: 13px; }
+}
