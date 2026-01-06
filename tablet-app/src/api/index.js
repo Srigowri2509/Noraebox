@@ -1,4 +1,20 @@
-export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { getConfig } from '../config';
+
+// Get API URL from runtime config (can be updated remotely)
+// This function is called each time to get the latest config
+export function getApiBase() {
+  // Check for environment variable first (for development)
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  
+  // Get from runtime config (can be updated remotely)
+  const config = getConfig();
+  return config.api_url || "http://192.168.1.16:8000";
+}
+
+// Export as function so it's always fresh
+export const API_BASE = getApiBase();
 
 export async function api(path, options = {}) {
   // Add timeout to prevent hanging
@@ -6,7 +22,9 @@ export async function api(path, options = {}) {
   const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
   
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
+    // Get fresh API base each time (in case config was updated)
+    const apiBase = getApiBase();
+    const res = await fetch(`${apiBase}${path}`, {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",

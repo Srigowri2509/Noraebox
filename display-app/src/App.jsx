@@ -3,6 +3,7 @@ import Display from "./screens/Display";
 import RoomSelectModal from "./components/RoomSelectModal";
 import { ensureDeviceRegistered } from "./init/registerDevice";
 import { api } from "./api";
+import updateService from "./services/updateService";
 
 export default function App() {
   const [roomId, setRoomId] = useState(null); // Start with null - backend is source of truth
@@ -10,6 +11,19 @@ export default function App() {
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [showRoomSelect, setShowRoomSelect] = useState(false);
+
+  // Initialize update service
+  useEffect(() => {
+    // Check for updates on startup (after 10 seconds for TV/display)
+    updateService.checkOnStartup();
+    
+    // Schedule daily update checks at 3 AM (off-peak for TV)
+    updateService.scheduleDailyCheck(3, 0);
+    
+    return () => {
+      updateService.stopScheduledChecks();
+    };
+  }, []);
 
   // Register device on mount
   useEffect(() => {

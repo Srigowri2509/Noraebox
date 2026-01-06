@@ -3,6 +3,8 @@ import Home from "./screens/Home";
 import RoomSelectModal from "./components/RoomSelectModal";
 import { ensureDeviceRegistered } from "./init/registerDevice";
 import { api } from "./api";
+import updateService from "./services/updateService";
+import { loadRemoteConfig } from "./config";
 
 export default function App() {
   const [showRoomSelect, setShowRoomSelect] = useState(false);
@@ -13,6 +15,26 @@ export default function App() {
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
   const timeoutRef = useRef(null);
+
+  // Load remote config and initialize update service
+  useEffect(() => {
+    // Load remote config first (this updates API URL without rebuilding)
+    loadRemoteConfig().then((config) => {
+      console.log('✅ Config loaded:', config);
+    }).catch(() => {
+      console.log('Using default config');
+    });
+    
+    // Check for updates on startup (after 5 seconds to let app load)
+    updateService.checkOnStartup();
+    
+    // Schedule daily update checks at 2 AM
+    updateService.scheduleDailyCheck(2, 0);
+    
+    return () => {
+      updateService.stopScheduledChecks();
+    };
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;

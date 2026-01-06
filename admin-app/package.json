@@ -7,7 +7,39 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:dev": "electron .",
+    "electron:build": "electron-builder",
+    "electron:build:win": "electron-builder --win",
+    "electron:build:mac": "electron-builder --mac",
+    "electron:build:linux": "electron-builder --linux"
+  },
+  "main": "electron-main.cjs",
+  "homepage": "./",
+  "build": {
+    "appId": "com.norebox.admin",
+    "productName": "Norebox Admin",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs",
+      "electron-preload.cjs",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "public/logo_norebox.jpg"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "public/logo_norebox.jpg"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "public/logo_norebox.jpg"
+    }
   },
   "dependencies": {
     "react": "^19.2.0",

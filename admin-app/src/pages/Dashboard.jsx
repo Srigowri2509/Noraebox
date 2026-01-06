@@ -144,6 +144,29 @@ export default function Dashboard() {
     }
   };
 
+  // Handle Cancel Session
+  const cancelSession = async () => {
+    if (!selectedRoom) {
+      console.error("No room selected");
+      return;
+    }
+    try {
+      const confirmed = window.confirm(`Are you sure you want to cancel the session for ${selectedRoom.name}?`);
+      if (!confirmed) return;
+
+      console.log(`Canceling session for room ${selectedRoom.id}`);
+      await api(`/rooms/${selectedRoom.id}/end`, {
+        method: "POST"
+      });
+      console.log("Session canceled successfully");
+      setSelectedRoom(null);
+      loadRooms();
+    } catch (err) {
+      console.error("Error canceling session:", err);
+      alert(`Failed to cancel session: ${err.message || "Unknown error"}`);
+    }
+  };
+
   // Handle device assignment
   const assignDeviceToRoom = async (deviceId, roomId) => {
     try {
@@ -287,6 +310,7 @@ export default function Dashboard() {
         onClose={() => setSelectedRoom(null)}
         onStart={startRoom}
         onExtend={extendRoom}
+        onCancel={cancelSession}
       />
     </>
   );

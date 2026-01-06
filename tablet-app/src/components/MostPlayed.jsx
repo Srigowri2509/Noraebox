@@ -1,6 +1,8 @@
 import React from "react";
 
-export default function MostPlayed({ songs = [], onAddToQueue }) {
+export default function MostPlayed({ songs = [], onAddToQueue, onSongSelect }) {
+  // Support both onAddToQueue and onSongSelect for compatibility
+  const handleAddToQueue = onAddToQueue || onSongSelect;
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <h4 className="text-white font-semibold text-lg mb-6 flex items-center gap-2">
@@ -14,16 +16,18 @@ export default function MostPlayed({ songs = [], onAddToQueue }) {
           {songs.map((song, i) => (
             <div
               key={song.id || i}
-              onClick={() => onAddToQueue?.(song)}
-              className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-colors cursor-pointer group mb-2"
+              onClick={() => handleAddToQueue?.(song)}
+              className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all cursor-pointer group"
             >
-              <span className="text-sky-300 text-xl">🎵</span>
-              <div className="flex-1">
-                <div className="text-white font-medium">
+              <div className="w-14 h-14 rounded-lg bg-slate-700/70 flex items-center justify-center shrink-0">
+                <span className="text-2xl">🎵</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-white font-medium text-base truncate mb-1">
                   {song.title || "Unknown"}
                 </div>
-                <div className="text-sm text-slate-400">
-                  {song.artist_name || "Unknown artist"}
+                <div className="text-slate-400 text-sm truncate">
+                  {song.artist_name || song.artist || "Unknown artist"}
                   {song.album ? ` • ${song.album}` : ""}
                 </div>
               </div>

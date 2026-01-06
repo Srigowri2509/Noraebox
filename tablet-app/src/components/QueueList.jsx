@@ -18,7 +18,7 @@ export default function QueueList({ queue = [], onRemove }) {
           {queue.map((s, i) => (
             <div
               key={i}
-              className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group mb-2"
+              className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group"
             >
               <div className="w-14 h-14 rounded-lg bg-slate-700/70 flex items-center justify-center shrink-0">
                 <span className="text-2xl">🎵</span>
@@ -34,6 +34,7 @@ export default function QueueList({ queue = [], onRemove }) {
               <button
                 onClick={() => onRemove?.(i)}
                 className="text-slate-400 hover:text-red-400 transition-colors px-2 py-2 text-xl font-bold flex-shrink-0"
+                style={{ marginRight: '16px' }}
                 aria-label="Remove from queue"
               >
                 ✕

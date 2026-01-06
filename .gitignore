@@ -249,6 +249,15 @@ docs/_build/
 site/
 
 # ============================================
+# APK Storage (Update System)
+# ============================================
+# Ignore APK files but keep directory structure
+backend/apk_storage/*.apk
+backend/apk_storage/*_manifest.json
+!backend/apk_storage/.gitkeep
+!backend/apk_storage/README.md
+
+# ============================================
 # Supabase (if using local files)
 # ============================================
 .supabase/
