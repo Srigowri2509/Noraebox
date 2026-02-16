@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import songs, rooms, queue, playback, devices, updates
+from app.routers import songs, rooms, sessions, devices, stats
 from pathlib import Path
 import traceback
 import json
@@ -20,10 +20,9 @@ app.add_middleware(
 
 app.include_router(songs.router, prefix="/songs")
 app.include_router(rooms.router, prefix="/rooms")
-app.include_router(queue.router, prefix="/rooms/{room_id}/queue")
-app.include_router(playback.router, prefix="/rooms/{room_id}/playback")
+app.include_router(sessions.router, prefix="/sessions")
 app.include_router(devices.router, prefix="/devices")
-app.include_router(updates.router, prefix="/updates")
+app.include_router(stats.router, prefix="/stats")
 
 # Serve web assets for remote updates
 web_assets_path = Path(__file__).parent.parent.parent / "web-assets"

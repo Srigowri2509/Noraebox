@@ -1,8 +1,8 @@
 fastapi
 uvicorn[standard]
+sqlalchemy
+psycopg2-binary
 python-dotenv
-supabase
-python-multipart
 pydantic
 typing_extensions
 

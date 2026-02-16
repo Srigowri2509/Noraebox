@@ -1,0 +1,108 @@
+name: Build and Release Display App APK
+
+on:
+  push:
+    tags:
+      - 'display-app-v*'
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: display-app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        working-directory: ./display-app
+        run: npm ci
+
+      - name: Build web assets
+        working-directory: ./display-app
+        run: npm run build
+
+      - name: Setup Capacitor
+        working-directory: ./display-app
+        run: |
+          npx cap sync android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK
+        working-directory: ./display-app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=$(echo "${{ github.ref }}" | sed 's/refs\/tags\/display-app-v//')
+          else
+            VERSION=$(node -p "require('./display-app/package.json').version || '1.0.0'")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Rename APK
+        run: |
+          mkdir -p release
+          cp display-app/android/app/build/outputs/apk/release/app-release.apk release/display-app-v${{ steps.get_version.outputs.version }}.apk
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*.apk
+          tag_name: display-app-v${{ steps.get_version.outputs.version }}
+          name: Display App v${{ steps.get_version.outputs.version }}
+          body: |
+            ## Display App Release v${{ steps.get_version.outputs.version }}
+            
+            ### Download
+            - [display-app-v${{ steps.get_version.outputs.version }}.apk](https://github.com/${{ github.repository }}/releases/download/display-app-v${{ steps.get_version.outputs.version }}/display-app-v${{ steps.get_version.outputs.version }}.apk)
+            
+            ### Installation
+            1. Download the APK file
+            2. Enable "Install from Unknown Sources" on your Android device
+            3. Install the APK
+            
+            ### Auto-Update
+            The app will automatically check for updates from GitHub Releases.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: display-app-apk
+          path: release/*.apk
+          retention-days: 30
+

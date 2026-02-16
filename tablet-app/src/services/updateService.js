@@ -13,6 +13,10 @@ function getApiBase() {
 const getAPIBase = () => getApiBase();
 const APP_NAME = "tablet-app";
 
+// GitHub configuration - can be set via environment variable or config
+const GITHUB_REPO = import.meta.env.VITE_GITHUB_REPO || "Srigowri2509/Noraebox";
+const GITHUB_API_BASE = "https://api.github.com/repos";
+
 // Detect platform
 const getPlatform = () => {
   if (typeof window === 'undefined') return 'web';
@@ -78,26 +82,76 @@ class UpdateService {
       const currentVersion = await this.getCurrentVersion();
       console.log(`Checking for updates... Current version: ${currentVersion}`);
       
-      const apiBase = getAPIBase();
-      const response = await fetch(
-        `${apiBase}/updates/check/${APP_NAME}?current_version=${currentVersion}&platform=${PLATFORM}`
-      );
+      // Check GitHub Releases
+      const releaseTag = `${APP_NAME}-v${currentVersion}`;
+      const releasesUrl = `${GITHUB_API_BASE}/${GITHUB_REPO}/releases/latest`;
+      
+      const response = await fetch(releasesUrl, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json'
+        }
+      });
       
       if (!response.ok) {
+        // If latest release not found, try checking all releases
+        if (response.status === 404) {
+          console.log("No releases found on GitHub");
+          return null;
+        }
         throw new Error(`Update check failed: ${response.status}`);
       }
       
-      const data = await response.json();
+      const release = await response.json();
       
-      if (data.update_available) {
-        console.log(`✅ Update available: ${data.latest_version}`);
-        return data;
+      // Extract version from tag (e.g., "tablet-app-v1.0.1" -> "1.0.1")
+      const latestTag = release.tag_name;
+      const latestVersion = latestTag.replace(`${APP_NAME}-v`, '');
+      
+      // Compare versions (simple string comparison - can be improved with semver)
+      const updateAvailable = latestVersion !== currentVersion;
+      
+      if (updateAvailable) {
+        // Find APK asset
+        const apkAsset = release.assets.find(asset => 
+          asset.name.endsWith('.apk') && asset.name.includes(APP_NAME)
+        );
+        
+        if (!apkAsset) {
+          console.warn("APK asset not found in release");
+          return null;
+        }
+        
+        console.log(`✅ Update available: ${latestVersion}`);
+        return {
+          update_available: true,
+          current_version: currentVersion,
+          latest_version: latestVersion,
+          download_url: apkAsset.browser_download_url,
+          release_notes: release.body || "",
+          file_size: apkAsset.size,
+          force_update: false
+        };
       } else {
         console.log("✅ App is up to date");
         return null;
       }
     } catch (error) {
       console.error("Error checking for update:", error);
+      // Fallback to local backend if GitHub check fails
+      try {
+        const apiBase = getAPIBase();
+        const fallbackResponse = await fetch(
+          `${apiBase}/updates/check/${APP_NAME}?current_version=${await this.getCurrentVersion()}&platform=${PLATFORM}`
+        );
+        if (fallbackResponse.ok) {
+          const data = await fallbackResponse.json();
+          if (data.update_available) {
+            return data;
+          }
+        }
+      } catch (fallbackError) {
+        console.error("Fallback update check also failed:", fallbackError);
+      }
       return null;
     } finally {
       this.isChecking = false;
@@ -107,12 +161,12 @@ class UpdateService {
   async downloadAPK(downloadUrl) {
     try {
       const fileType = PLATFORM === 'ios' ? 'IPA' : 'APK';
-      console.log(`Downloading ${fileType}...`);
+      console.log(`Downloading ${fileType} from GitHub...`);
       
-      const apiBase = getAPIBase();
+      // downloadUrl should already be the GitHub download URL
       const fullUrl = downloadUrl.startsWith('http') 
         ? downloadUrl 
-        : `${apiBase}${downloadUrl}?platform=${PLATFORM}`;
+        : `${getAPIBase()}${downloadUrl}?platform=${PLATFORM}`;
       
       const response = await fetch(fullUrl);
       

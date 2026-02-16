@@ -43,20 +43,17 @@ if (-not (Test-Path ".env")) {
     Write-Host "WARNING: .env file not found!" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Please create .env file with:" -ForegroundColor Yellow
-    Write-Host "  SUPABASE_URL=your-supabase-url" -ForegroundColor White
-    Write-Host "  SUPABASE_SERVICE_KEY=your-service-key" -ForegroundColor White
+    Write-Host "  DATABASE_URL=postgresql://user:password@host:port/noraebox" -ForegroundColor White
     Write-Host "  PORT=8000" -ForegroundColor White
     Write-Host ""
     $createEnv = Read-Host "Create .env file now? (y/n)"
     if ($createEnv -eq "y") {
-        $supabaseUrl = Read-Host "Enter Supabase URL"
-        $supabaseKey = Read-Host "Enter Supabase Service Key"
+        $databaseUrl = Read-Host "Enter DATABASE_URL (postgresql://user:password@host:port/noraebox)"
         $port = Read-Host "Enter Port (default: 8000)"
         if ([string]::IsNullOrEmpty($port)) { $port = "8000" }
         
         @"
-SUPABASE_URL=$supabaseUrl
-SUPABASE_SERVICE_KEY=$supabaseKey
+DATABASE_URL=$databaseUrl
 PORT=$port
 "@ | Out-File -FilePath ".env" -Encoding UTF8
         

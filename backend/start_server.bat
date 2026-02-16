@@ -19,7 +19,8 @@ call venv\Scripts\activate.bat
 REM Check if .env exists
 if not exist ".env" (
     echo WARNING: .env file not found!
-    echo Please create .env file with SUPABASE_URL and SUPABASE_SERVICE_KEY
+    echo Please create .env file with DATABASE_URL
+    echo Example: DATABASE_URL=postgresql://user:password@host:port/noraebox
     pause
 )
 

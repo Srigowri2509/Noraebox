@@ -1,0 +1,13 @@
+[Unit]
+Description=Noraebox FastAPI Backend
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/backend
+ExecStart=/home/ec2-user/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+EnvironmentFile=/home/ec2-user/backend/.env.production
+
+[Install]
+WantedBy=multi-user.target

@@ -9,9 +9,9 @@ Write-Host "Updating Web Assets for $AppName" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
-$appPath = Join-Path $PSScriptRoot ".." $AppName
+$appPath = Join-Path (Join-Path $PSScriptRoot "..") $AppName
 $backendPath = Join-Path $PSScriptRoot ".." "backend"
-$webAssetsPath = Join-Path $backendPath "web-assets" $AppName
+$webAssetsPath = Join-Path (Join-Path $backendPath "web-assets") $AppName
 
 # Check if app directory exists
 if (-not (Test-Path $appPath)) {
