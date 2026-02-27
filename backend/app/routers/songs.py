@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import distinct
+from sqlalchemy import distinct, or_
 from typing import List
 from app.db import get_db
 from app.models import Song, SongArtist, Artist
@@ -33,7 +33,16 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
         query = db.query(Song)
         
         if search:
-            query = query.filter(Song.title.ilike(f"%{search}%"))
+            like_pattern = f"%{search}%"
+            query = query.filter(
+                or_(
+                    Song.title.ilike(like_pattern),
+                    Song.album.ilike(like_pattern),
+                    Song.language.ilike(like_pattern),
+                    Song.artist.ilike(like_pattern),
+                    Song.singer.ilike(like_pattern),
+                )
+            )
         
         songs = query.all()
         
