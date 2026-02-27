@@ -7,6 +7,10 @@ from pathlib import Path
 import traceback
 import json
 
+# Temporary: auto-create database tables on startup (Option 2)
+from app.models import Device, Room, RoomSession, Song, Artist, SongArtist, QueueItem, PlaybackEvent
+from app.db import Base, engine
+
 app = FastAPI()
 
 # CORS must be added BEFORE routers
@@ -23,6 +27,12 @@ app.include_router(rooms.router, prefix="/rooms")
 app.include_router(sessions.router, prefix="/sessions")
 app.include_router(devices.router, prefix="/devices")
 app.include_router(stats.router, prefix="/stats")
+
+# Create all tables once at startup (can be removed after first successful run)
+@app.on_event("startup")
+async def create_tables():
+    # Import models above ensures all metadata is registered
+    Base.metadata.create_all(bind=engine)
 
 # Serve web assets for remote updates
 web_assets_path = Path(__file__).parent.parent.parent / "web-assets"

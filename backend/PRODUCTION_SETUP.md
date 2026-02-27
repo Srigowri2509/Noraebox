@@ -38,14 +38,6 @@
   - pydantic
   - typing_extensions
 
-### 6. Supabase Cleanup
-- ✅ Removed from `setup_server.ps1`
-- ✅ Removed from `start_server.bat`
-- ✅ `supabase_client.py` deleted
-- ⚠️ **Legacy files** (not imported in main.py):
-  - `app/routers/playback.py` - Contains Supabase references (unused)
-  - `app/routers/queue.py` - Contains Supabase references (unused)
-  - `app/services/queue_service.py` - Contains Supabase references (unused)
 
 ## 🚀 Deployment Steps on EC2
 
@@ -152,7 +144,7 @@ curl http://<EC2_IP>:8000/stats/top-artists
 backend/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py              # FastAPI app, no Supabase
+│   ├── main.py              # FastAPI app
 │   ├── db.py                # SQLAlchemy setup, loads .env.production
 │   ├── models.py            # SQLAlchemy models
 │   ├── schemas.py           # Pydantic schemas
@@ -163,8 +155,6 @@ backend/
 │       ├── sessions.py      # ✅ SQLAlchemy
 │       ├── songs.py         # ✅ SQLAlchemy
 │       ├── stats.py         # ✅ SQLAlchemy
-│       ├── playback.py      # ⚠️ Legacy (not imported)
-│       ├── queue.py         # ⚠️ Legacy (not imported)
 │       └── updates.py       # (not checked)
 ├── .env.production.template # Template for production env
 ├── start.sh                 # Production startup script
@@ -176,9 +166,7 @@ backend/
 
 ## ⚠️ Notes
 
-1. **Legacy Files:** `playback.py`, `queue.py`, and `queue_service.py` still contain Supabase references but are NOT imported in `main.py`. They can be safely deleted or refactored later if needed.
-
-2. **RDS Endpoint:** Replace `<RDS_ENDPOINT>` in `.env.production` with your actual RDS endpoint (e.g., `noraebox-db.xxxxx.us-east-1.rds.amazonaws.com`)
+1. **RDS Endpoint:** Replace `<RDS_ENDPOINT>` in `.env.production` with your actual RDS endpoint (e.g., `noraebox-db.xxxxx.us-east-1.rds.amazonaws.com`)
 
 3. **Security:** For production, restrict port 8000 access in security group to specific IPs or use a load balancer with HTTPS.
 
@@ -187,7 +175,7 @@ backend/
 ## ✅ Confirmation
 
 Backend is ready for production deployment on AWS EC2 with:
-- ✅ SQLAlchemy + PostgreSQL (no Supabase)
+- ✅ SQLAlchemy + PostgreSQL
 - ✅ Environment-based configuration
 - ✅ Systemd service for auto-start
 - ✅ Production startup script

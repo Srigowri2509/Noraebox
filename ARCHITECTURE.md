@@ -19,8 +19,8 @@
                     └──────┬──────┘
                            │
                     ┌──────▼──────┐
-                    │   Supabase  │
-                    │ (PostgreSQL)│
+                    │  PostgreSQL │
+                    │  (Database) │
                     └─────────────┘
 ```
 
@@ -213,9 +213,9 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-## 🗄️ Database (Supabase PostgreSQL)
+## 🗄️ Database (PostgreSQL)
 
-**Status: ✅ CONNECTED** (via Supabase client)
+**Status: ✅ CONNECTED** (via SQLAlchemy)
 
 ### Tables
 
@@ -352,7 +352,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ## ✅ Working Features
 
 - ✅ All three apps connect to backend
-- ✅ Backend connects to Supabase database
+- ✅ Backend connects to PostgreSQL database
 - ✅ Room management (view, start, end sessions)
 - ✅ Device registration and assignment
 - ✅ Duplicate room assignment prevention
