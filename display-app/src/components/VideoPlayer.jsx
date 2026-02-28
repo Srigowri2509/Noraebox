@@ -41,6 +41,28 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     };
   }, [hasUserInteracted]);
 
+  // Periodic check to ensure video keeps playing
+  useEffect(() => {
+    if (!song || !song.videoUrl || !vref.current) return;
+    
+    const video = vref.current;
+    const playCheckInterval = setInterval(() => {
+      // If video should be playing but is paused (and not ended), resume it
+      if (video && !video.ended && video.paused && video.readyState >= 2) {
+        const timeRemaining = video.duration - video.currentTime;
+        // Only auto-resume if there's significant time left (more than 2 seconds)
+        if (timeRemaining > 2) {
+          console.log("VideoPlayer: Auto-resuming paused video (periodic check)");
+          video.play().catch(err => {
+            console.error("VideoPlayer: Failed to auto-resume:", err);
+          });
+        }
+      }
+    }, 2000); // Check every 2 seconds
+    
+    return () => clearInterval(playCheckInterval);
+  }, [song]);
+  
   useEffect(() => {
     if (song && song.videoUrl && vref.current) {
       console.log("VideoPlayer: Loading video:", song.videoUrl);
@@ -69,6 +91,49 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       
       const handleLoadedData = () => {
         console.log("VideoPlayer: Video data loaded");
+      };
+      
+      // Handle unexpected pauses - auto-resume if video stops unexpectedly
+      const handlePause = () => {
+        // Only auto-resume if pause wasn't intentional (e.g., not at end)
+        if (video && !video.ended && video.currentTime > 0 && video.duration > 0) {
+          const timeRemaining = video.duration - video.currentTime;
+          // If there's more than 1 second left, it's an unexpected pause
+          if (timeRemaining > 1) {
+            console.warn("⚠️ VideoPlayer: Unexpected pause detected, resuming...");
+            setTimeout(() => {
+              if (video && video.paused && !video.ended) {
+                video.play().catch(err => {
+                  console.error("VideoPlayer: Failed to resume after pause:", err);
+                });
+              }
+            }, 100);
+          }
+        }
+      };
+      
+      // Handle buffering/stalled - resume when ready
+      const handleWaiting = () => {
+        console.log("VideoPlayer: Video waiting/buffering...");
+      };
+      
+      const handlePlaying = () => {
+        console.log("VideoPlayer: Video is playing");
+        setLoading(false);
+      };
+      
+      // Handle when video can continue playing after buffering/stalling
+      const handleCanPlayAfterStall = () => {
+        if (video && video.paused && !video.ended) {
+          console.log("VideoPlayer: Resuming after stalling/buffering...");
+          setTimeout(() => {
+            if (video && video.paused && !video.ended) {
+              video.play().catch(err => {
+                console.error("VideoPlayer: Failed to resume after stalling:", err);
+              });
+            }
+          }, 200);
+        }
       };
       
       // Wait for video to be ready before playing to avoid interruption
@@ -128,14 +193,30 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       video.addEventListener('canplay', handleCanPlay);
       video.addEventListener('loadeddata', handleLoadedData);
       video.addEventListener('canplaythrough', handleCanPlayThrough);
+      video.addEventListener('pause', handlePause);
+      video.addEventListener('waiting', handleWaiting);
+      video.addEventListener('playing', handlePlaying);
+      video.addEventListener('stalled', handleCanPlayAfterStall);
       
       // Load and play video
       // Always start muted to bypass autoplay restrictions
       try {
         console.log("VideoPlayer: Setting up video element");
-        video.muted = true; // Start muted - browsers allow muted autoplay
-        video.load();
-        console.log("VideoPlayer: Video load() called");
+        // Only reload if the source actually changed
+        const currentSrc = video.currentSrc || video.src;
+        if (currentSrc !== song.videoUrl) {
+          video.muted = true; // Start muted - browsers allow muted autoplay
+          video.load();
+          console.log("VideoPlayer: Video load() called (source changed)");
+        } else {
+          // Same source - just ensure it's playing
+          console.log("VideoPlayer: Same source, ensuring playback continues");
+          if (video.paused && !video.ended) {
+            video.play().catch(err => {
+              console.warn("VideoPlayer: Could not resume same video:", err);
+            });
+          }
+        }
       } catch (e) {
         console.error("VideoPlayer: Exception during setup:", e);
         setLoading(false);
@@ -147,6 +228,10 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('loadeddata', handleLoadedData);
         video.removeEventListener('canplaythrough', handleCanPlayThrough);
+        video.removeEventListener('pause', handlePause);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('playing', handlePlaying);
+        video.removeEventListener('stalled', handleCanPlayAfterStall);
       };
     } else if (!song || !song.videoUrl) {
       setError(null);

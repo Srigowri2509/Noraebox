@@ -317,6 +317,14 @@ export default function Home() {
       return;
     }
     
+    // Frontend check: prevent adding if song is already in queue
+    const alreadyInQueue = queue?.some(q => q.id === song.id || q.song_id === song.id);
+    if (alreadyInQueue) {
+      console.log("ℹ️ Song already in queue (frontend check):", song.title);
+      alert("This song is already in the queue.");
+      return;
+    }
+    
     setIsAddingToQueue(true);
     try {
       // Add to queue via REST API first (don't update local state optimistically)
@@ -333,7 +341,7 @@ export default function Home() {
         setQueue((q) => [...(q || []), song]);
         console.log("✅ Successfully added to queue:", song.title);
       } else if (response.status === "already_exists") {
-        console.log("ℹ️ Song already in queue:", song.title);
+        console.log("ℹ️ Song already in queue (backend check):", song.title);
         // Refresh queue from backend to get latest state
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
@@ -486,16 +494,40 @@ export default function Home() {
 
   const handleSkip = async () => {
     const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) {
+    if (!currentRoomId || currentRoomId === "") {
       alert("No room selected. Please select a room first.");
       return;
     }
+    
+    // Check if there are songs in queue
+    if (!queue || queue.length === 0) {
+      alert("No songs in queue to skip to.");
+      return;
+    }
+    
+    console.log("⏭️ Skipping to next song...");
     try {
-      await api(`/rooms/${currentRoomId}/playback/start_next`, {
+      const response = await api(`/rooms/${currentRoomId}/playback/start_next`, {
         method: "POST"
       });
+      
+      console.log("✅ Skip response:", response);
+      
+      if (response.status === "no_songs") {
+        alert("No more songs in queue.");
+      } else if (response.status === "playing") {
+        console.log("✅ Successfully skipped to next song:", response.song_title);
+        // Refresh queue to update the list
+        try {
+          const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+          setQueue(queueRes || []);
+        } catch (err) {
+          console.error("Error refreshing queue after skip:", err);
+        }
+      }
     } catch (error) {
-      console.error("Error skipping song:", error);
+      console.error("❌ Error skipping song:", error);
+      alert(`Failed to skip song: ${error.message || "Unknown error"}`);
     }
   };
 
