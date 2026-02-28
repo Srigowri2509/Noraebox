@@ -66,28 +66,62 @@ def assign_room_to_device(
         device_uuid = payload.get("device_uuid")
         room_id = payload.get("room_id")
         
+        print(f"Assign room request: device_uuid={device_uuid}, room_id={room_id}")
+        
         if not device_uuid:
             raise HTTPException(status_code=400, detail="device_uuid is required")
         if not room_id:
             raise HTTPException(status_code=400, detail="room_id is required")
         
-        # Find device
+        # Convert room_id string to UUID if needed
+        from uuid import UUID as UUIDType
+        try:
+            room_uuid = UUIDType(room_id) if isinstance(room_id, str) else room_id
+        except (ValueError, TypeError) as e:
+            print(f"Invalid room_id format: {room_id}, error: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid room_id format: {room_id}. Must be a valid UUID.")
+        
+        # Find device - if not found, create it (device should have been registered, but handle edge case)
         device = db.query(Device).filter(Device.device_uuid == device_uuid).first()
         if not device:
-            raise HTTPException(status_code=404, detail=f"Device with uuid {device_uuid} not found")
+            # Device doesn't exist - this shouldn't happen if registration worked, but create it anyway
+            print(f"Warning: Device {device_uuid} not found in database, creating it...")
+            # Try to get device_type from payload or default to tablet
+            device_type = payload.get("device_type", "tablet")
+            device = Device(
+                device_uuid=device_uuid,
+                device_type=device_type,
+                name=payload.get("name"),
+                meta=payload.get("meta")
+            )
+            db.add(device)
+            db.commit()
+            db.refresh(device)
+            print(f"Created new device: {device.id}")
+        else:
+            print(f"Found existing device: {device.id}")
         
         # Verify room exists
-        room = db.query(Room).filter(Room.id == room_id).first()
+        room = db.query(Room).filter(Room.id == room_uuid).first()
         if not room:
-            raise HTTPException(status_code=404, detail=f"Room with id {room_id} not found")
+            # List available rooms for better error message
+            available_rooms = db.query(Room).all()
+            room_ids = [str(r.id) for r in available_rooms]
+            room_names = [r.name or f"Room {i+1}" for i, r in enumerate(available_rooms)]
+            print(f"Room {room_id} not found. Available rooms: {list(zip(room_names, room_ids))}")
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Room with id {room_id} not found. Available rooms: {', '.join([f'{name} ({id})' for name, id in zip(room_names, room_ids[:5])])}"
+            )
         
-        # Check if another device already has this room assigned (optional - allow multiple devices per room)
-        # For now, we'll allow multiple devices per room (tablet + display can share)
+        print(f"Found room: {room.id} ({room.name})")
         
         # Assign room to device
-        device.room_id = room_id
+        device.room_id = room_uuid
         db.commit()
         db.refresh(device)
+        
+        print(f"Successfully assigned device {device_uuid} to room {room_id}")
         
         return {
             "success": True,
@@ -98,6 +132,9 @@ def assign_room_to_device(
         raise
     except Exception as e:
         db.rollback()
+        import traceback
+        error_detail = f"Error assigning room: {str(e)}\n{traceback.format_exc()}"
+        print(error_detail)
         raise HTTPException(status_code=500, detail=f"Error assigning room: {str(e)}")
 
 
