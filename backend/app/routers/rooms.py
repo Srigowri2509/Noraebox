@@ -23,6 +23,54 @@ def list_rooms(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{room_id}/session")
+def get_room_session(room_id: str, db: Session = Depends(get_db)):
+    """Get room session data - backward compatibility endpoint"""
+    try:
+        # Get the most recent session (active or latest)
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id
+        ).order_by(RoomSession.session_created_at.desc()).first()
+
+        if not session:
+            return {"session": None, "queue": []}
+
+        # Get queue
+        queue_items = db.query(QueueItem, Song).join(
+            Song, Song.id == QueueItem.song_id
+        ).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position).all()
+
+        queue = [
+            {
+                "id": str(qi.id),
+                "song_id": qi.song_id,
+                "title": song.title,
+                "position": qi.position
+            }
+            for qi, song in queue_items
+        ]
+
+        return {
+            "session": {
+                "id": str(session.id),
+                "room_id": str(session.room_id),
+                "status": session.status,
+                "total_minutes": session.total_minutes,
+                "session_created_at": session.session_created_at.isoformat() if session.session_created_at else None,
+                "session_start_time": session.session_start_time.isoformat() if session.session_start_time else None,
+                "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None,
+                "current_song_id": session.current_song_id,
+                "current_song_start_time": session.current_song_start_time.isoformat() if session.current_song_start_time else None
+            },
+            "queue": queue
+        }
+    except Exception as e:
+        print(f"Error getting room session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{room_id}/status")
 def get_room_status(room_id: str, db: Session = Depends(get_db)):
     """Get room status for polling - returns room_status, session info, current song, and queue"""
