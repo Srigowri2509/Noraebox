@@ -22,6 +22,31 @@ export default function Display({ roomId }) {
   const videoRef = useRef();
   const lastSongIdRef = useRef(null);
 
+  // Enable autoplay on any user interaction (click, touch, keypress)
+  useEffect(() => {
+    const enableAutoplay = () => {
+      sessionStorage.setItem('video_autoplay_enabled', 'true');
+      console.log("✅ Autoplay enabled via user interaction");
+    };
+    
+    // Check if already enabled
+    if (sessionStorage.getItem('video_autoplay_enabled') === 'true') {
+      console.log("✅ Autoplay already enabled from previous session");
+    }
+    
+    // Listen for any user interaction on the page
+    const events = ['click', 'touchstart', 'keydown', 'mousedown'];
+    events.forEach(event => {
+      document.addEventListener(event, enableAutoplay, { once: true, passive: true });
+    });
+    
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, enableAutoplay);
+      });
+    };
+  }, []);
+
   // Poll room session from backend
   useEffect(() => {
     if (!roomId) return;
