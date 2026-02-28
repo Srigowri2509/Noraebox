@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.69.4:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000";
 const APP_NAME = "display-app";
 
 // GitHub configuration - can be set via environment variable or config

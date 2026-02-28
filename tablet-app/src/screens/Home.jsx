@@ -194,9 +194,27 @@ export default function Home() {
     }
     
     console.log(`Final filtered count: ${filtered.length} from ${initialCount} total songs`);
-    if (filtered.length > 0) {
-      console.log('Sample filtered song:', filtered[0]);
-      console.log('First few filtered songs:', filtered.slice(0, 3).map(s => ({
+    
+    // Deduplicate by song ID to prevent same song appearing multiple times
+    // (e.g., when a song has composer + multiple singers, it might match multiple times)
+    const seenIds = new Set();
+    const deduplicated = filtered.filter(song => {
+      const songId = song.id;
+      if (seenIds.has(songId)) {
+        console.log(`⚠️ Duplicate song filtered out: ${song.title} (ID: ${songId})`);
+        return false;
+      }
+      seenIds.add(songId);
+      return true;
+    });
+    
+    if (deduplicated.length < filtered.length) {
+      console.log(`✅ Deduplicated: ${filtered.length} -> ${deduplicated.length} songs`);
+    }
+    
+    if (deduplicated.length > 0) {
+      console.log('Sample filtered song:', deduplicated[0]);
+      console.log('First few filtered songs:', deduplicated.slice(0, 3).map(s => ({
         title: s.title,
         language: s.language,
         artist: s.artist || s.artist_name
@@ -208,7 +226,7 @@ export default function Home() {
     }
     console.log('=== END FILTERING ===');
     
-    return filtered;
+    return deduplicated;
   }, [allSongs, filters, selectedArtist]);
 
   const topArtists = useMemo(() => {
@@ -296,6 +314,7 @@ export default function Home() {
   }, [room?.id]);
 
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+  const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
   const handleAddToQueue = async (song) => {
     if (!song || !song.id) {
@@ -304,9 +323,11 @@ export default function Home() {
       return;
     }
     
-    // Prevent multiple rapid clicks
-    if (isAddingToQueue) {
-      console.log("⏳ Already adding song to queue, please wait...");
+    const songId = song.id;
+    
+    // Prevent multiple rapid clicks on the same song
+    if (isAddingToQueue && addingSongId === songId) {
+      console.log("⏳ Already adding this song to queue, please wait...");
       return;
     }
     
@@ -318,30 +339,50 @@ export default function Home() {
     }
     
     // Frontend check: prevent adding if song is already in queue
-    const alreadyInQueue = queue?.some(q => q.id === song.id || q.song_id === song.id);
+    // Queue items have 'song_id' field (not 'id' which is the queue item UUID)
+    const alreadyInQueue = queue?.some(q => {
+      const queueSongId = q.song_id || q.id; // Check both song_id and id (for backward compatibility)
+      return queueSongId === songId;
+    });
+    
     if (alreadyInQueue) {
-      console.log("ℹ️ Song already in queue (frontend check):", song.title);
+      console.log("ℹ️ Song already in queue (frontend check):", song.title, "song_id:", songId);
+      console.log("Current queue:", queue);
       alert("This song is already in the queue.");
       return;
     }
     
+    // Set flags synchronously before async operations to prevent race conditions
     setIsAddingToQueue(true);
+    setAddingSongId(songId);
+    
     try {
       // Add to queue via REST API first (don't update local state optimistically)
       const response = await api(`/rooms/${currentRoomId}/queue/add`, {
         method: "POST",
         body: JSON.stringify({
-          song_id: song.id,
+          song_id: songId,
           added_by: "tablet"
         })
       });
       
+      console.log("Queue add response:", response);
+      
       // Only update local state if song was actually added (not already exists)
       if (response.status === "added") {
-        setQueue((q) => [...(q || []), song]);
-        console.log("✅ Successfully added to queue:", song.title);
+        // Refresh queue from backend to get the correct structure with position, etc.
+        try {
+          const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+          setQueue(queueRes || []);
+          console.log("✅ Successfully added to queue:", song.title);
+        } catch (err) {
+          console.error("Error refreshing queue after add:", err);
+          // Fallback: add to local state if refresh fails
+          setQueue((q) => [...(q || []), { ...song, song_id: songId }]);
+        }
       } else if (response.status === "already_exists") {
         console.log("ℹ️ Song already in queue (backend check):", song.title);
+        alert("This song is already in the queue.");
         // Refresh queue from backend to get latest state
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
@@ -352,9 +393,10 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Error adding to queue:", error);
-      alert(`Failed to add song: ${error.message}`);
+      alert(`Failed to add song: ${error.message || "Unknown error"}`);
     } finally {
       setIsAddingToQueue(false);
+      setAddingSongId(null);
     }
   };
 

@@ -13,8 +13,8 @@ export const getConfig = () => {
         localStorage.removeItem('app_config');
         // Return default config with new URL
         return {
-          api_url: 'http://16.112.69.4:8000',
-          update_check_url: 'http://16.112.69.4:8000',
+          api_url: 'http://16.112.20.5:8000',
+          update_check_url: 'http://16.112.20.5:8000',
           version: '1.0.0'
         };
       }
@@ -29,8 +29,8 @@ export const getConfig = () => {
   
   // Default config (fallback)
   return {
-    api_url: 'http://16.112.69.4:8000',
-    update_check_url: 'http://16.112.69.4:8000',
+    api_url: 'http://16.112.20.5:8000',
+    update_check_url: 'http://16.112.20.5:8000',
     version: '1.0.0'
   };
 };
@@ -40,7 +40,7 @@ export const loadRemoteConfig = async () => {
   try {
     // Try to fetch config from backend
     // First, try the default IP
-    const defaultApiUrl = 'http://16.112.69.4:8000';
+    const defaultApiUrl = 'http://16.112.20.5:8000';
     
     const response = await fetch(`${defaultApiUrl}/config/app-config.json`, {
       cache: 'no-cache',

@@ -46,13 +46,15 @@ def list_songs(
         
         if search:
             like_pattern = f"%{search}%"
-            query = query.filter(
+            # Search in song fields AND artist names (join with Artist table)
+            query = query.outerjoin(SongArtist).outerjoin(Artist).filter(
                 or_(
                     Song.title.ilike(like_pattern),
                     Song.album.ilike(like_pattern),
                     Song.language.ilike(like_pattern),
+                    Artist.name.ilike(like_pattern),  # Search by artist name
                 )
-            )
+            ).distinct()  # Ensure unique songs even if multiple artists match
         
         songs = query.all()
         

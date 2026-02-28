@@ -1,4 +1,4 @@
-export const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.69.4:8000";
+export const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000";
 
 export async function api(path, options = {}) {
   // Add timeout to prevent hanging

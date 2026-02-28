@@ -60,8 +60,8 @@ def get_app_config():
     
     # Default config
     return {
-        "api_url": "http://98.130.120.10:8000",
-        "update_check_url": "http://98.130.120.10:8000",
+        "api_url": "http://16.112.20.5:8000",
+        "update_check_url": "http://16.112.20.5:8000",
         "version": "1.0.0"
     }
 
