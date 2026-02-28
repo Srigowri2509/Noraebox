@@ -181,13 +181,13 @@ def get_song_signed_url(song_id: str, db: Session = Depends(get_db)):
         if not song.file_url:
             raise HTTPException(status_code=404, detail=f"Song {song_id_int} has no file_url")
         
-        # Generate signed URL
+        # Generate URL (public or presigned)
         try:
-            signed_url = generate_signed_url(song.file_url)
-            return {"signed_url": signed_url, "s3_key": song.file_url}
+            file_url = generate_signed_url(song.file_url)
+            return {"signed_url": file_url, "s3_key": song.file_url, "url": file_url}
         except Exception as e:
-            print(f"Error generating signed URL for song {song_id_int}: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate signed URL: {str(e)}")
+            print(f"Error generating URL for song {song_id_int}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate URL: {str(e)}")
     
     except HTTPException:
         raise

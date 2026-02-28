@@ -52,8 +52,13 @@ def get_file_url(s3_key: str):
     
     # For public buckets, return simple URL
     if S3_PUBLIC_BUCKET:
-        url = f"{S3_BASE_URL}/{full_key}"
-        print(f"✅ Generated public URL for key: {full_key} (original: {s3_key})")
+        # Ensure no double slashes in URL
+        base_url = S3_BASE_URL.rstrip('/')
+        key_path = full_key.lstrip('/')
+        url = f"{base_url}/{key_path}"
+        print(f"✅ Generated public URL: {url}")
+        print(f"   - Bucket: {S3_BUCKET_NAME}, Region: {AWS_REGION}")
+        print(f"   - Full key: {full_key} (original: {s3_key}, prefix: '{S3_KEY_PREFIX}')")
         return url
     
     # For private buckets, generate presigned URL
