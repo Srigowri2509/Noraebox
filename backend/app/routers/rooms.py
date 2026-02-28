@@ -468,10 +468,20 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
             
             song = db.query(Song).filter(Song.id == next_item.song_id).first()
             print(f"POST /rooms/{room_id}/playback/ended: Auto-started next song {next_item.song_id} ({song.title if song else 'unknown'})")
+            
+            # Return song details for immediate playback
             return {
                 "status": "next_started",
                 "song_id": next_item.song_id,
-                "song_title": song.title if song else None
+                "song_title": song.title if song else None,
+                "song": {
+                    "id": song.id,
+                    "title": song.title,
+                    "album": song.album,
+                    "language": song.language,
+                    "file_url": song.file_url,  # Frontend will need to get signed URL
+                    "s3_key": song.file_url
+                } if song else None
             }
         else:
             print(f"POST /rooms/{room_id}/playback/ended: No more songs in queue")

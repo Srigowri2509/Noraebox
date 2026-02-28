@@ -49,20 +49,16 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
         
         print(f"Fetched {len(songs)} songs from database")
         
+        # Build result list first (fast)
         result = []
         for song in songs:
-
-            # 🔐 Generate signed URL from S3 key
-            signed_url = None
-            if song.file_url:
-                signed_url = generate_signed_url(song.file_url)
-
             song_data = {
                 "id": song.id,
                 "title": song.title,
                 "album": song.album,
                 "language": song.language,
-                "file_url": signed_url,   # <-- SIGNED URL HERE
+                "file_url": song.file_url,  # Return S3 key directly, not signed URL
+                "s3_key": song.file_url,  # Also include as s3_key for clarity
                 "play_count": song.play_count,
                 "artist": None,  # Will be set from song_artists relationship
                 "artist_id": None,
@@ -78,6 +74,7 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
             
             result.append(song_data)
         
+        print(f"Returning {len(result)} songs (signed URLs will be generated on-demand)")
         return result
 
     except Exception as e:
@@ -102,17 +99,23 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         if not song:
             raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")
         
-        # 🔐 Generate signed URL
+        # 🔐 Generate signed URL only for individual song requests (when actually playing)
         signed_url = None
         if song.file_url:
-            signed_url = generate_signed_url(song.file_url)
+            try:
+                signed_url = generate_signed_url(song.file_url)
+            except Exception as e:
+                print(f"Warning: Failed to generate signed URL for song {song_id_int}: {e}")
+                # Fallback to returning the S3 key
+                signed_url = song.file_url
 
         song_data = {
             "id": song.id,
             "title": song.title,
             "album": song.album,
             "language": song.language,
-            "file_url": signed_url,  # <-- SIGNED URL
+            "file_url": signed_url,  # <-- SIGNED URL (only for individual song requests)
+            "s3_key": song.file_url,  # Also include original S3 key
             "play_count": song.play_count,
             "artist": None,  # Will be set from song_artists relationship
             "artist_id": None,
@@ -132,4 +135,36 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         print(f"Error in get_song: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{song_id}/signed-url")
+def get_song_signed_url(song_id: str, db: Session = Depends(get_db)):
+    """Get signed URL for a song - use this when you need to play the song"""
+    try:
+        try:
+            song_id_int = int(song_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid song ID format: {song_id}")
+        
+        song = db.query(Song).filter(Song.id == song_id_int).first()
+        
+        if not song:
+            raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")
+        
+        if not song.file_url:
+            raise HTTPException(status_code=404, detail=f"Song {song_id_int} has no file_url")
+        
+        # Generate signed URL
+        try:
+            signed_url = generate_signed_url(song.file_url)
+            return {"signed_url": signed_url, "s3_key": song.file_url}
+        except Exception as e:
+            print(f"Error generating signed URL for song {song_id_int}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate signed URL: {str(e)}")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in get_song_signed_url: {e}")
         raise HTTPException(status_code=500, detail=str(e))

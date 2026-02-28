@@ -150,9 +150,9 @@ export default function Display({ roomId }) {
       }
     };
 
-    // Poll immediately and then every 2 seconds
+    // Poll immediately and then every 1 second for faster autoplay
     pollRoomStatus();
-    pollInterval = setInterval(pollRoomStatus, 2000);
+    pollInterval = setInterval(pollRoomStatus, 1000);
 
     return () => {
       mounted = false;
@@ -176,15 +176,39 @@ export default function Display({ roomId }) {
 
   // Handle video ended - call backend to mark playback ended
   const handleVideoEnded = async () => {
-    console.log("Video ended, notifying backend");
+    console.log("🎵 Video ended, notifying backend for autoplay");
     try {
-      await api(`/rooms/${roomId}/playback/ended`, {
+      const response = await api(`/rooms/${roomId}/playback/ended`, {
         method: "POST"
       });
-      // Backend will auto-start next song if queue has items
-      setCurrentSong(null); // Clear current song, will be updated on next poll
+      
+      console.log("✅ Playback ended response:", response);
+      
+      // If backend auto-started next song, fetch it immediately
+      if (response && response.status === "next_started" && response.song_id) {
+        console.log("🎵 Backend auto-started next song:", response.song_id);
+        // Immediately fetch the new song instead of waiting for next poll
+        try {
+          const songData = await api(`/songs/${response.song_id}`);
+          const videoUrl = songData.file_url || songData.video_url || songData.url;
+          if (videoUrl) {
+            setCurrentSong({
+              ...songData,
+              videoUrl: videoUrl
+            });
+            console.log("✅ Next song loaded immediately:", songData.title);
+            return; // Don't clear current song, we already set the new one
+          }
+        } catch (err) {
+          console.error("❌ Error fetching next song:", err);
+        }
+      }
+      
+      // Clear current song if no next song or fetch failed
+      setCurrentSong(null);
+      // Will be updated on next poll (2 seconds)
     } catch (error) {
-      console.error("Error notifying playback ended:", error);
+      console.error("❌ Error notifying playback ended:", error);
       setCurrentSong(null);
     }
   };
