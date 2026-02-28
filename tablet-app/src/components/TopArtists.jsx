@@ -23,16 +23,8 @@ export default function TopArtists({ artists = [], onArtistSelect, selectedArtis
   // Use parent's selectedArtistName if provided, otherwise use local state
   const displaySelectedArtist = selectedArtistName !== null ? selectedArtistName : localSelectedArtist;
 
-  const list = artists.length
-    ? artists
-    : [
-        { name: "Taylor Swift", songCount: 4 },
-        { name: "Arijit Singh", songCount: 3 },
-        { name: "Cardi B", songCount: 3 },
-        { name: "Shreya Ghoshal", songCount: 2 },
-        { name: "Vihshal Mitra", songCount: 1 },
-        { name: "Atif Aslam", songCount: 1 }
-      ];
+  // Only use actual artists from database - no fallback demo data
+  const list = artists || [];
 
 
   return (
@@ -42,8 +34,13 @@ export default function TopArtists({ artists = [], onArtistSelect, selectedArtis
         <h3 className="text-white font-semibold text-lg">Top Artists</h3>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-        {list.map((a, i) => {
+      {list.length === 0 ? (
+        <div className="text-slate-400 py-6 text-center">
+          No artists found. Add songs to your database to see artists here.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {list.map((a, i) => {
           const artistName = a.name || a.artist;
           const songCount = a.songCount || a.count || 0;
           return (
@@ -84,7 +81,8 @@ export default function TopArtists({ artists = [], onArtistSelect, selectedArtis
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
 
     </section>
   );

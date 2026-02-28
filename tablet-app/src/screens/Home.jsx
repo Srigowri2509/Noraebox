@@ -105,21 +105,38 @@ export default function Home() {
     const artistFilter = selectedArtist || filters.artist;
     if (artistFilter) {
       const before = filtered.length;
-      const filterLower = artistFilter.toLowerCase().trim();
-      filtered = filtered.filter(song => {
-        // Check both artist_name (from join) and artist (fallback field)
-        const songArtist = (song.artist_name || song.artist)?.trim();
-        if (!songArtist) {
-          console.log(`Song ${song.id || song.title} has no artist_name or artist field`);
-          return false;
+      // Handle both string and object for selectedArtist
+      const filterValue = typeof artistFilter === 'string' ? artistFilter : (artistFilter.name || artistFilter.artist || '');
+      const filterLower = filterValue.toLowerCase().trim();
+      
+      if (!filterLower) {
+        console.log('Empty artist filter, skipping');
+      } else {
+        filtered = filtered.filter(song => {
+          // Check both artist_name (from join) and artist (fallback field)
+          const songArtist = (song.artist_name || song.artist);
+          if (!songArtist) {
+            return false;
+          }
+          const songArtistLower = String(songArtist).toLowerCase().trim();
+          
+          // More flexible matching: check if filter is contained in song artist or vice versa
+          const matches = songArtistLower.includes(filterLower) || filterLower.includes(songArtistLower);
+          
+          if (!matches && before < 20) {
+            console.log(`Artist mismatch: song artist="${songArtist}" (${songArtistLower}) vs filter="${filterValue}" (${filterLower})`);
+          }
+          return matches;
+        });
+        console.log(`Artist filter (${filterValue}): ${before} -> ${filtered.length}`);
+        if (filtered.length === 0 && before > 0) {
+          // Show available artists from the unfiltered list
+          const availableArtists = [...new Set(
+            allSongs.map(s => (s.artist_name || s.artist)).filter(Boolean)
+          )].slice(0, 10);
+          console.warn(`⚠️ No songs found for artist "${filterValue}". Available artists in database:`, availableArtists);
         }
-        const matches = songArtist.toLowerCase().includes(filterLower);
-        if (!matches && before < 10) {
-          console.log(`Artist mismatch: "${songArtist}" does not include "${filterLower}"`);
-        }
-        return matches;
-      });
-      console.log(`Artist filter (${artistFilter}): ${before} -> ${filtered.length}`);
+      }
     }
     
     // Filter by album
@@ -154,14 +171,28 @@ export default function Home() {
   }, [allSongs, filters, selectedArtist]);
 
   const topArtists = useMemo(() => {
+    console.log('=== COMPUTING TOP ARTISTS ===');
+    console.log('Total songs:', allSongs?.length || 0);
+    
     const map = {};
+    let songsWithArtists = 0;
+    let songsWithoutArtists = 0;
+    
     allSongs.forEach(s => {
       // Use artist_name from join, fallback to artist field
       const artistName = s.artist_name || s.artist;
-      if (!artistName) return;
+      if (!artistName) {
+        songsWithoutArtists++;
+        return;
+      }
       // Normalize artist name to avoid duplicates (case-insensitive)
       const normalizedName = artistName.trim();
-      if (!normalizedName) return;
+      if (!normalizedName) {
+        songsWithoutArtists++;
+        return;
+      }
+      
+      songsWithArtists++;
       
       if (!map[normalizedName]) {
         map[normalizedName] = {
@@ -173,8 +204,12 @@ export default function Home() {
       map[normalizedName].songCount += 1;
     });
 
+    console.log(`Songs with artists: ${songsWithArtists}, without: ${songsWithoutArtists}`);
+    console.log(`Unique artists found: ${Object.keys(map).length}`);
+    console.log('Artist names:', Object.keys(map).slice(0, 10));
+
     // Get unique artists, sort by song count, limit to 6
-    return Object.values(map)
+    const result = Object.values(map)
       .sort((a, b) => b.songCount - a.songCount)
       .slice(0, 6)
       .map((artist, index) => ({
@@ -183,6 +218,11 @@ export default function Home() {
         songCount: artist.songCount,
         image: artist.image,
       }));
+    
+    console.log('Top artists result:', result);
+    console.log('=== END TOP ARTISTS ===');
+    
+    return result;
   }, [allSongs]);
 
   // Fetch most played songs based on play_count
