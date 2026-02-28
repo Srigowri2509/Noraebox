@@ -25,10 +25,19 @@ def get_languages(db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=List[SongResponse])
-def list_songs(search: str = None, db: Session = Depends(get_db)):
-    """List all songs with artist data"""
+def list_songs(
+    search: str = None, 
+    signed_urls: bool = Query(True, description="Generate signed URLs for all songs (default: True)"),
+    db: Session = Depends(get_db)
+):
+    """List all songs with artist data
+    
+    Args:
+        search: Optional search term to filter songs
+        signed_urls: If True (default), generate signed URLs for all songs. Set to False for faster response with S3 keys only.
+    """
     try:
-        print(f"GET /songs called (search={search})")
+        print(f"GET /songs called (search={search}, signed_urls={signed_urls})")
         
         # Eagerly load song_artists and artist relationships
         query = db.query(Song).options(
@@ -49,16 +58,26 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
         
         print(f"Fetched {len(songs)} songs from database")
         
-        # Build result list first (fast)
+        # Build result list
         result = []
         for song in songs:
+            # Generate signed URL if requested
+            file_url_value = song.file_url
+            if signed_urls and song.file_url:
+                try:
+                    file_url_value = generate_signed_url(song.file_url)
+                except Exception as e:
+                    print(f"Warning: Failed to generate signed URL for song {song.id}: {e}")
+                    # Fallback to S3 key
+                    file_url_value = song.file_url
+            
             song_data = {
                 "id": song.id,
                 "title": song.title,
                 "album": song.album,
                 "language": song.language,
-                "file_url": song.file_url,  # Return S3 key directly, not signed URL
-                "s3_key": song.file_url,  # Also include as s3_key for clarity
+                "file_url": file_url_value,  # Signed URL if requested, otherwise S3 key
+                "s3_key": song.file_url,  # Always include original S3 key
                 "play_count": song.play_count,
                 "artist": None,  # Will be set from song_artists relationship
                 "artist_id": None,
@@ -74,7 +93,8 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
             
             result.append(song_data)
         
-        print(f"Returning {len(result)} songs (signed URLs will be generated on-demand)")
+        url_type = "signed URLs" if signed_urls else "S3 keys"
+        print(f"Returning {len(result)} songs with {url_type}")
         return result
 
     except Exception as e:
