@@ -280,3 +280,205 @@ def remove_from_queue(room_id: str, payload: dict = Body(...), db: Session = Dep
         db.rollback()
         print(f"Error removing from queue: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{room_id}/current")
+def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Set the current song for a room"""
+    try:
+        current_song_id = payload.get("current_song_id")
+        
+        if current_song_id is None:
+            raise HTTPException(status_code=400, detail="current_song_id is required")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Verify song exists
+        song = db.query(Song).filter(Song.id == current_song_id).first()
+        if not song:
+            raise HTTPException(status_code=404, detail="Song not found")
+        
+        # Get or create active session
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
+        if not session:
+            # Create a new active session
+            session = RoomSession(
+                room_id=room_id,
+                status='active',
+                session_created_at=datetime.now(timezone.utc),
+                session_start_time=datetime.now(timezone.utc),
+                current_song_id=current_song_id,
+                current_song_start_time=datetime.now(timezone.utc)
+            )
+            db.add(session)
+        else:
+            # Update existing session
+            session.current_song_id = current_song_id
+            session.current_song_start_time = datetime.now(timezone.utc)
+        
+        db.commit()
+        db.refresh(session)
+        
+        print(f"PUT /rooms/{room_id}/current: Set current song to {current_song_id}")
+        return {"status": "updated", "current_song_id": current_song_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error setting current song: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/playback/start_next")
+def start_next_song(room_id: str, db: Session = Depends(get_db)):
+    """Start playing the next song from the queue"""
+    try:
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Get next item in queue (lowest position)
+        next_item = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position).first()
+        
+        if not next_item:
+            print(f"POST /rooms/{room_id}/playback/start_next: No songs in queue")
+            return {"status": "no_songs", "message": "Queue is empty"}
+        
+        # Get or create active session
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
+        if not session:
+            # Create a new active session
+            session = RoomSession(
+                room_id=room_id,
+                status='active',
+                session_created_at=datetime.now(timezone.utc),
+                session_start_time=datetime.now(timezone.utc),
+                current_song_id=next_item.song_id,
+                current_song_start_time=datetime.now(timezone.utc)
+            )
+            db.add(session)
+        else:
+            # Update existing session with next song
+            session.current_song_id = next_item.song_id
+            session.current_song_start_time = datetime.now(timezone.utc)
+        
+        # Remove the song from queue
+        db.delete(next_item)
+        
+        # Reorder remaining items
+        remaining_items = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id,
+            QueueItem.position > next_item.position
+        ).all()
+        
+        for item in remaining_items:
+            item.position -= 1
+        
+        db.commit()
+        db.refresh(session)
+        
+        # Get song details
+        song = db.query(Song).filter(Song.id == next_item.song_id).first()
+        
+        print(f"POST /rooms/{room_id}/playback/start_next: Started playing song {next_item.song_id} ({song.title if song else 'unknown'})")
+        return {
+            "status": "playing",
+            "song_id": next_item.song_id,
+            "song_title": song.title if song else None,
+            "file_url": song.file_url if song else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error starting next song: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/playback/ended")
+def playback_ended(room_id: str, db: Session = Depends(get_db)):
+    """Handle playback ended - auto-start next song from queue if available"""
+    try:
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Get active session
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
+        if session:
+            # Clear current song
+            session.current_song_id = None
+            session.current_song_start_time = None
+            db.commit()
+        
+        # Check if there's a next song in queue
+        next_item = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position).first()
+        
+        if next_item:
+            # Auto-start next song
+            if not session:
+                session = RoomSession(
+                    room_id=room_id,
+                    status='active',
+                    session_created_at=datetime.now(timezone.utc),
+                    session_start_time=datetime.now(timezone.utc),
+                    current_song_id=next_item.song_id,
+                    current_song_start_time=datetime.now(timezone.utc)
+                )
+                db.add(session)
+            else:
+                session.current_song_id = next_item.song_id
+                session.current_song_start_time = datetime.now(timezone.utc)
+            
+            # Remove from queue
+            db.delete(next_item)
+            
+            # Reorder remaining items
+            remaining_items = db.query(QueueItem).filter(
+                QueueItem.room_id == room_id,
+                QueueItem.position > next_item.position
+            ).all()
+            
+            for item in remaining_items:
+                item.position -= 1
+            
+            db.commit()
+            db.refresh(session)
+            
+            song = db.query(Song).filter(Song.id == next_item.song_id).first()
+            print(f"POST /rooms/{room_id}/playback/ended: Auto-started next song {next_item.song_id} ({song.title if song else 'unknown'})")
+            return {
+                "status": "next_started",
+                "song_id": next_item.song_id,
+                "song_title": song.title if song else None
+            }
+        else:
+            print(f"POST /rooms/{room_id}/playback/ended: No more songs in queue")
+            return {"status": "ended", "message": "No more songs in queue"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error handling playback ended: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
