@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.db import get_db
 from app.models import Room, RoomSession, QueueItem, Song
 from app.schemas import RoomResponse
@@ -482,3 +482,52 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
         db.rollback()
         print(f"Error handling playback ended: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/sessions/start")
+def start_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Start a session for a room - alternative endpoint under /rooms"""
+    try:
+        minutes = payload.get("minutes", 60)  # Default to 60 minutes if not specified
+        
+        if not minutes or minutes <= 0:
+            raise HTTPException(status_code=400, detail="minutes must be a positive integer")
+        
+        print(f"POST /rooms/{room_id}/sessions/start: Starting session with {minutes} minutes")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Create new session with status='active' and session_end_time set
+        now = datetime.now(timezone.utc)
+        session_end_time = now + timedelta(minutes=minutes)
+        
+        new_session = RoomSession(
+            room_id=room_id,
+            status="active",
+            total_minutes=minutes,
+            session_created_at=now,
+            session_start_time=now,
+            session_end_time=session_end_time,
+            current_song_id=None,
+            current_song_start_time=None
+        )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        
+        # Update room status
+        room.status = 'active'
+        db.commit()
+        
+        print(f"POST /rooms/{room_id}/sessions/start: Session created with id {new_session.id}")
+        return {"status": "started", "session_id": str(new_session.id)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        error_str = str(e)
+        print(f"Error starting session: {error_str}")
+        raise HTTPException(status_code=500, detail=f"Error starting session: {error_str}")

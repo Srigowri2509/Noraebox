@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 from app.db import get_db
 from app.models import Room, RoomSession, QueueItem
 
@@ -9,9 +10,21 @@ router = APIRouter()
 
 
 @router.post("/start")
-def start_session(room_id: str = Query(...), minutes: int = Query(...), db: Session = Depends(get_db)):
+def start_session(
+    room_id: Optional[str] = Query(None),
+    minutes: Optional[int] = Query(None),
+    payload: Optional[dict] = Body(None),
+    db: Session = Depends(get_db)
+):
     """Start a room session - creates room_sessions row with status='active'"""
     try:
+        # Support both query parameters and POST body
+        if payload:
+            room_id = payload.get("room_id") or room_id
+            minutes = payload.get("minutes") or minutes
+        
+        if not room_id:
+            raise HTTPException(status_code=400, detail="room_id is required")
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
         
@@ -56,9 +69,20 @@ def start_session(room_id: str = Query(...), minutes: int = Query(...), db: Sess
 
 
 @router.post("/end")
-def end_session(room_id: str = Query(...), db: Session = Depends(get_db)):
+def end_session(
+    room_id: Optional[str] = Query(None),
+    payload: Optional[dict] = Body(None),
+    db: Session = Depends(get_db)
+):
     """End a room session - updates room_sessions status to 'ended'"""
     try:
+        # Support both query parameters and POST body
+        if payload:
+            room_id = payload.get("room_id") or room_id
+        
+        if not room_id:
+            raise HTTPException(status_code=400, detail="room_id is required")
+        
         print(f"POST /sessions/end: Ending session for room {room_id}")
         
         # Verify room exists
