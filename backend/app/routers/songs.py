@@ -61,15 +61,21 @@ def list_songs(
         # Build result list
         result = []
         for song in songs:
-            # Generate signed URL if requested
+            # Generate signed URL if requested (default is True)
             file_url_value = song.file_url
             if signed_urls and song.file_url:
                 try:
+                    print(f"Generating signed URL for song {song.id}: {song.file_url}")
                     file_url_value = generate_signed_url(song.file_url)
+                    print(f"✅ Generated signed URL for song {song.id}: {file_url_value[:80]}...")
                 except Exception as e:
-                    print(f"Warning: Failed to generate signed URL for song {song.id}: {e}")
+                    print(f"❌ ERROR: Failed to generate signed URL for song {song.id} ({song.file_url}): {e}")
+                    import traceback
+                    traceback.print_exc()
                     # Fallback to S3 key
                     file_url_value = song.file_url
+            else:
+                print(f"⚠️ Skipping signed URL for song {song.id} (signed_urls={signed_urls}, file_url={song.file_url})")
             
             song_data = {
                 "id": song.id,
