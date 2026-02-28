@@ -376,13 +376,20 @@ export default function Home() {
     }
     
     // Frontend check: prevent adding if song is already in queue
-    // Queue items have 'song_id' field (not 'id' which is the queue item UUID)
-    const alreadyInQueue = queue?.some(q => {
+    // Check by song_id first (most reliable)
+    const alreadyInQueueById = queue?.some(q => {
       const queueSongId = q.song_id || q.id; // Check both song_id and id (for backward compatibility)
       return queueSongId === songId;
     });
     
-    if (alreadyInQueue) {
+    // Also check by title (case-insensitive) to prevent duplicates with same title but different IDs
+    const songTitleNormalized = song.title?.trim().toLowerCase();
+    const alreadyInQueueByTitle = songTitleNormalized && queue?.some(q => {
+      const queueTitle = q.title?.trim().toLowerCase();
+      return queueTitle === songTitleNormalized;
+    });
+    
+    if (alreadyInQueueById || alreadyInQueueByTitle) {
       console.log("ℹ️ Song already in queue (frontend check):", song.title, "song_id:", songId);
       console.log("Current queue:", queue);
       alert("This song is already in the queue.");

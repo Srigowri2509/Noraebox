@@ -220,6 +220,7 @@ def add_to_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(
             raise HTTPException(status_code=404, detail="Song not found")
         
         # Check if this song is already in the queue (prevent duplicates)
+        # First check by song_id (most reliable)
         existing_item = db.query(QueueItem).filter(
             QueueItem.room_id == room_id,
             QueueItem.song_id == song_id
@@ -229,6 +230,18 @@ def add_to_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(
             # Song already in queue - return existing position instead of adding duplicate
             print(f"POST /rooms/{room_id}/queue/add: Song {song_id} already in queue at position {existing_item.position}, skipping duplicate")
             return {"status": "already_exists", "queue_id": str(existing_item.id), "position": existing_item.position, "message": "Song already in queue"}
+        
+        # Also check by song title (case-insensitive) to prevent duplicates with same title but different IDs
+        if song and song.title:
+            existing_by_title = db.query(QueueItem).join(Song, QueueItem.song_id == Song.id).filter(
+                QueueItem.room_id == room_id,
+                func.lower(Song.title) == func.lower(song.title.strip())
+            ).first()
+            
+            if existing_by_title:
+                # Song with same title already in queue - prevent duplicate
+                print(f"POST /rooms/{room_id}/queue/add: Song with title '{song.title}' already in queue at position {existing_by_title.position}, skipping duplicate")
+                return {"status": "already_exists", "queue_id": str(existing_by_title.id), "position": existing_by_title.position, "message": "Song with this title already in queue"}
         
         # Get max position for this room
         max_position = db.query(func.max(QueueItem.position)).filter(
