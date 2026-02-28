@@ -484,11 +484,62 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{room_id}/start")
+def start_room_session_short(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Start a session for a room - short endpoint /rooms/{room_id}/start"""
+    try:
+        # Support both "minutes" and "total_minutes" in payload
+        minutes = payload.get("minutes") or payload.get("total_minutes", 60)
+        
+        if not minutes or minutes <= 0:
+            raise HTTPException(status_code=400, detail="minutes must be a positive integer")
+        
+        print(f"POST /rooms/{room_id}/sessions/start: Starting session with {minutes} minutes")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Create new session with status='active' and session_end_time set
+        now = datetime.now(timezone.utc)
+        session_end_time = now + timedelta(minutes=minutes)
+        
+        new_session = RoomSession(
+            room_id=room_id,
+            status="active",
+            total_minutes=minutes,
+            session_created_at=now,
+            session_start_time=now,
+            session_end_time=session_end_time,
+            current_song_id=None,
+            current_song_start_time=None
+        )
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        
+        # Update room status
+        room.status = 'active'
+        db.commit()
+        
+        print(f"POST /rooms/{room_id}/start: Session created with id {new_session.id}")
+        return {"status": "started", "session_id": str(new_session.id)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        error_str = str(e)
+        print(f"Error starting session: {error_str}")
+        raise HTTPException(status_code=500, detail=f"Error starting session: {error_str}")
+
+
 @router.post("/{room_id}/sessions/start")
 def start_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
     """Start a session for a room - alternative endpoint under /rooms"""
     try:
-        minutes = payload.get("minutes", 60)  # Default to 60 minutes if not specified
+        # Support both "minutes" and "total_minutes" in payload
+        minutes = payload.get("minutes") or payload.get("total_minutes", 60)
         
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
@@ -531,3 +582,90 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
         error_str = str(e)
         print(f"Error starting session: {error_str}")
         raise HTTPException(status_code=500, detail=f"Error starting session: {error_str}")
+
+
+@router.put("/{room_id}/status")
+def update_room_status(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Update room status - used for extending sessions"""
+    try:
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Get active session
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
+        # Update total_minutes if provided
+        if "total_minutes" in payload:
+            total_minutes = payload["total_minutes"]
+            if total_minutes and total_minutes > 0:
+                if session:
+                    # Update existing session
+                    session.total_minutes = total_minutes
+                    if session.session_start_time:
+                        # Recalculate session_end_time
+                        session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
+                    else:
+                        # Session not started yet, just update total_minutes
+                        now = datetime.now(timezone.utc)
+                        session.session_end_time = now + timedelta(minutes=total_minutes)
+                    db.commit()
+                    print(f"PUT /rooms/{room_id}/status: Updated session total_minutes to {total_minutes}")
+                else:
+                    # No active session, create one
+                    now = datetime.now(timezone.utc)
+                    new_session = RoomSession(
+                        room_id=room_id,
+                        status="active",
+                        total_minutes=total_minutes,
+                        session_created_at=now,
+                        session_start_time=None,
+                        session_end_time=None,
+                        current_song_id=None,
+                        current_song_start_time=None
+                    )
+                    db.add(new_session)
+                    db.commit()
+                    print(f"PUT /rooms/{room_id}/status: Created new session with {total_minutes} minutes")
+        
+        return {"status": "updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating room status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/end")
+def end_room_session(room_id: str, db: Session = Depends(get_db)):
+    """End a room session"""
+    try:
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Update active session to 'ended'
+        updated = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).update({"status": "ended"})
+        
+        # Update room status
+        room.status = 'available'
+        room.is_active = False
+        db.commit()
+        
+        print(f"POST /rooms/{room_id}/end: Session ended successfully")
+        return {"status": "ended"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error ending session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

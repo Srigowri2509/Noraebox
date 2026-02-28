@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
+import uuid
 from app.db import get_db
 from app.models import Device, Room
 from app.schemas import DeviceCreate, DeviceResponse, RoomResponse
@@ -136,6 +137,47 @@ def assign_room_to_device(
         error_detail = f"Error assigning room: {str(e)}\n{traceback.format_exc()}"
         print(error_detail)
         raise HTTPException(status_code=500, detail=f"Error assigning room: {str(e)}")
+
+
+@router.put("/{device_id}/assign")
+def assign_device_to_room(device_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Assign a room to a device - alternative endpoint for admin app"""
+    try:
+        room_id = payload.get("room_id")
+        
+        # Find device
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        
+        # If room_id is provided, verify it exists
+        if room_id:
+            try:
+                uuid.UUID(room_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid room_id format: {room_id}")
+            
+            room = db.query(Room).filter(Room.id == room_id).first()
+            if not room:
+                raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Assign room to device (or unassign if room_id is null)
+        device.room_id = room_id if room_id else None
+        db.commit()
+        db.refresh(device)
+        
+        print(f"PUT /devices/{device_id}/assign: Device assigned to room {room_id if room_id else 'None'}")
+        return {
+            "success": True,
+            "message": f"Device assigned to room {room_id if room_id else 'unassigned'}",
+            "device": device
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error assigning device: {e}")
+        raise HTTPException(status_code=500, detail=f"Error assigning device: {str(e)}")
 
 
 @router.get("/", response_model=List[DeviceResponse])
