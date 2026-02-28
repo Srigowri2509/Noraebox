@@ -10,7 +10,7 @@ export function getApiBase() {
   
   // Get from runtime config (can be updated remotely)
   const config = getConfig();
-  return config.api_url || "http://192.168.1.16:8000";
+  return config.api_url || "http://98.130.120.10:8000";
 }
 
 // Export as function so it's always fresh
