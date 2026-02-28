@@ -405,6 +405,21 @@ export default function Home() {
     console.log("🔍 Filtered songs:", filteredSongs.length);
     
     try {
+      // First, ensure a session is started (60 minutes default)
+      try {
+        console.log("🎬 Starting session for room:", currentRoomId);
+        const sessionResponse = await api(`/rooms/${currentRoomId}/start`, {
+          method: "POST",
+          body: JSON.stringify({
+            minutes: 60
+          })
+        });
+        console.log("✅ Session started:", sessionResponse);
+      } catch (sessionError) {
+        console.warn("⚠️ Session might already exist or error starting session:", sessionError);
+        // Continue anyway - session might already exist
+      }
+      
       if (queue?.length > 0) {
         console.log("▶️ Playing queue with", queue.length, "songs");
         console.log("🎵 First song in queue:", queue[0]?.title);

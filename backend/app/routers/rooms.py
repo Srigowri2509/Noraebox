@@ -371,16 +371,23 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
         ).first()
         
         if not session:
-            # Create a new active session
+            # Create a new active session with default 60 minutes
+            now = datetime.now(timezone.utc)
+            session_end_time = now + timedelta(minutes=60)
             session = RoomSession(
                 room_id=room_id,
                 status='active',
-                session_created_at=datetime.now(timezone.utc),
-                session_start_time=datetime.now(timezone.utc),
+                total_minutes=60,
+                session_created_at=now,
+                session_start_time=now,
+                session_end_time=session_end_time,
                 current_song_id=next_item.song_id,
-                current_song_start_time=datetime.now(timezone.utc)
+                current_song_start_time=now
             )
             db.add(session)
+            # Update room status
+            room.status = 'active'
+            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with 60 minutes")
         else:
             # Update existing session with next song
             session.current_song_id = next_item.song_id
@@ -398,6 +405,7 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
         for item in remaining_items:
             item.position -= 1
         
+        # Commit all changes together (session creation/update, queue removal, room status)
         db.commit()
         db.refresh(session)
         
