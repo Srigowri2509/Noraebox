@@ -219,6 +219,19 @@ def add_to_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(
         if not song:
             raise HTTPException(status_code=404, detail="Song not found")
         
+        # Check if this song is already at the end of the queue (prevent duplicate rapid additions)
+        existing_queue = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position.desc()).limit(3).all()
+        
+        # Check if the same song was just added (within last 3 items)
+        if existing_queue:
+            for item in existing_queue:
+                if item.song_id == song_id:
+                    # Song already in queue - return existing position instead of adding duplicate
+                    print(f"POST /rooms/{room_id}/queue/add: Song {song_id} already in queue at position {item.position}, skipping duplicate")
+                    return {"status": "already_exists", "queue_id": str(item.id), "position": item.position, "message": "Song already in queue"}
+        
         # Get max position for this room
         max_position = db.query(func.max(QueueItem.position)).filter(
             QueueItem.room_id == room_id

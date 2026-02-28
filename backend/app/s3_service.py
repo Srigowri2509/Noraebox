@@ -57,7 +57,11 @@ def get_file_url(s3_key: str):
         key_path = full_key.lstrip('/')
         # URL-encode the key path to handle spaces and special characters
         from urllib.parse import quote
-        encoded_key = quote(key_path, safe='/')  # Safe='/' preserves forward slashes in paths
+        # Encode each segment separately to preserve forward slashes
+        # Split by '/' and encode each part, then join back
+        path_parts = key_path.split('/')
+        encoded_parts = [quote(part, safe='') for part in path_parts]
+        encoded_key = '/'.join(encoded_parts)
         url = f"{base_url}/{encoded_key}"
         print(f"✅ Generated public URL: {url}")
         print(f"   - Bucket: {S3_BUCKET_NAME}, Region: {AWS_REGION}")

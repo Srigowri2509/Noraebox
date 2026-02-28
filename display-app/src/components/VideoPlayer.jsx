@@ -52,6 +52,12 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       // Set up error handlers
       const handleError = (e) => {
         console.error("VideoPlayer: Video error:", e);
+        console.error("VideoPlayer: Error details:", {
+          code: video.error?.code,
+          message: video.error?.message,
+          networkState: video.networkState,
+          readyState: video.readyState
+        });
         setError("Failed to load video");
         setLoading(false);
       };
@@ -65,19 +71,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         console.log("VideoPlayer: Video data loaded");
       };
       
-      video.addEventListener('error', handleError);
-      video.addEventListener('canplay', handleCanPlay);
-      video.addEventListener('loadeddata', handleLoadedData);
-      
-      // Load and play video
-      // Always start muted to bypass autoplay restrictions
-      try {
-        video.muted = true; // Start muted - browsers allow muted autoplay
-        video.load();
-        
-        // Try to play immediately (muted autoplay should work)
+      // Wait for video to be ready before playing to avoid interruption
+      const handleCanPlayThrough = () => {
+        console.log("VideoPlayer: Video can play through");
+        video.removeEventListener('canplaythrough', handleCanPlayThrough);
         const playPromise = video.play();
-        
         if (playPromise && playPromise.then) {
           playPromise
             .then(() => {
@@ -93,7 +91,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
                     console.warn("VideoPlayer: Could not unmute:", e);
                   }
                 }
-              }, 800); // Wait 800ms before unmuting (faster)
+              }, 800);
             })
             .catch((err) => {
               console.warn("⚠️ VideoPlayer: Muted autoplay blocked:", err);
@@ -123,22 +121,32 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
                 }
               }, 100);
             });
-        } else {
-          // Play promise not supported, try direct play
-          video.play().catch((err) => {
-            console.warn("⚠️ VideoPlayer: Direct play failed:", err);
-            setLoading(false);
-          });
         }
+      };
+      
+      video.addEventListener('error', handleError);
+      video.addEventListener('canplay', handleCanPlay);
+      video.addEventListener('loadeddata', handleLoadedData);
+      video.addEventListener('canplaythrough', handleCanPlayThrough);
+      
+      // Load and play video
+      // Always start muted to bypass autoplay restrictions
+      try {
+        console.log("VideoPlayer: Setting up video element");
+        video.muted = true; // Start muted - browsers allow muted autoplay
+        video.load();
+        console.log("VideoPlayer: Video load() called");
       } catch (e) {
-        console.error("VideoPlayer: Exception during play:", e);
+        console.error("VideoPlayer: Exception during setup:", e);
         setLoading(false);
       }
       
       return () => {
+        console.log("VideoPlayer: Cleaning up event listeners");
         video.removeEventListener('error', handleError);
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('loadeddata', handleLoadedData);
+        video.removeEventListener('canplaythrough', handleCanPlayThrough);
       };
     } else if (!song || !song.videoUrl) {
       setError(null);
@@ -183,8 +191,12 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
   }
 
 
+  console.log("VideoPlayer: Rendering with song:", song ? { title: song.title, videoUrl: song.videoUrl?.substring(0, 50) + '...' } : null);
+  console.log("VideoPlayer: Loading state:", loading);
+  console.log("VideoPlayer: Error state:", error);
+  
   return (
-    <div className="video-wrapper">
+    <div className="video-wrapper" style={{ position: 'relative', width: '100%', height: '100%', zIndex: 1 }}>
       {loading && (
         <div style={{
           position: 'absolute',
@@ -192,7 +204,10 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           left: '50%',
           transform: 'translate(-50%, -50%)',
           color: 'white',
-          zIndex: 10
+          zIndex: 10,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          padding: '20px',
+          borderRadius: '8px'
         }}>
           Loading video...
         </div>
@@ -222,7 +237,15 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         muted={true}
         preload="auto"
         crossOrigin="anonymous"
-        style={{ pointerEvents: 'auto', cursor: 'default' }} // Allow clicks but no cursor change
+        style={{ 
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          display: 'block',
+          pointerEvents: 'auto', 
+          cursor: 'default',
+          backgroundColor: 'black'
+        }}
       >
         <source src={song.videoUrl} type="video/mp4" />
         <source src={song.videoUrl} type="video/webm" />

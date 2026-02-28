@@ -6,26 +6,29 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
   const [session, setSession] = useState(null);
 
   // Fetch session data from room_sessions
+  // Always fetch to check for active sessions (even if room.is_active is false)
   useEffect(() => {
     const fetchSession = async () => {
       try {
         const sessionData = await api(`/rooms/${room.id}/session`);
-        setSession(sessionData.session);
+        const session = sessionData.session;
+        setSession(session);
+        // If session exists and is active, update room status
+        if (session && (session.status === 'active' || session.status === 'playing')) {
+          // Session exists, so room should be considered active
+        }
       } catch (error) {
         console.error("Error fetching session:", error);
         setSession(null);
       }
     };
 
-    if (room.is_active) {
-      fetchSession();
-      const interval = setInterval(fetchSession, 2000);
-      return () => clearInterval(interval);
-    } else {
-      setSession(null);
-      setRemaining(null);
-    }
-  }, [room.id, room.is_active]);
+    // Always fetch session data (not just when room.is_active is true)
+    // This ensures we show "USING" status even if room.is_active hasn't updated yet
+    fetchSession();
+    const interval = setInterval(fetchSession, 2000);
+    return () => clearInterval(interval);
+  }, [room.id]);
 
   const updateRemaining = () => {
     // Timer only shows when session_start_time exists (first song played)
@@ -55,19 +58,29 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
   const mins = remaining !== null ? Math.floor(remaining) : 0;
   const secs = remaining !== null ? Math.floor((remaining - mins) * 60).toString().padStart(2, "0") : "00";
 
-  const isFree = !room.is_active;
+  // Check if there's an active session (even if room.is_active is false initially)
+  const hasActiveSession = session && (session.status === 'active' || session.status === 'playing');
+  const isFree = !hasActiveSession && !room.is_active;
   
-  // Show timer only if session_start_time exists, otherwise show "READY"
+  // Show timer only if session_start_time exists, otherwise show "USING" or "READY"
   const timerDisplay = isFree 
     ? "FREE" 
-    : (remaining !== null ? `${mins}:${secs}` : "READY");
+    : hasActiveSession && remaining !== null 
+      ? `${mins}:${secs}` 
+      : hasActiveSession 
+        ? "USING" 
+        : "READY";
 
   // Pastel color theme
   let bg = "bg-[#e9d5ff] text-purple-900"; // Lavender (FREE)
   let glow = "shadow-purple-300";
 
   if (!isFree) {
-    if (remaining === null) {
+    if (hasActiveSession && remaining === null) {
+      // Session active but no timer yet (just started)
+      bg = "bg-[#c7d2fe] text-indigo-900"; // Indigo (USING)
+      glow = "shadow-indigo-200";
+    } else if (remaining === null) {
       // Session ready but idle
       bg = "bg-[#dbeafe] text-blue-900"; // Light Blue (READY)
       glow = "shadow-blue-200";

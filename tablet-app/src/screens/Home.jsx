@@ -295,6 +295,8 @@ export default function Home() {
     fetchMostPlayed();
   }, [room?.id]);
 
+  const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+  
   const handleAddToQueue = async (song) => {
     if (!song || !song.id) {
       console.error("Invalid song object:", song);
@@ -302,7 +304,11 @@ export default function Home() {
       return;
     }
     
-    // Allow duplicate songs in queue (user requirement)
+    // Prevent multiple rapid clicks
+    if (isAddingToQueue) {
+      console.log("⏳ Already adding song to queue, please wait...");
+      return;
+    }
     
     // Get room ID - use roomId from context or room.id
     const currentRoomId = roomId || room?.id;
@@ -311,24 +317,36 @@ export default function Home() {
       return;
     }
     
+    setIsAddingToQueue(true);
     try {
-      // Update local state immediately for instant feedback
-      setQueue((q) => [...(q || []), song]);
-      
-      // Add to queue via REST API
-      await api(`/rooms/${currentRoomId}/queue/add`, {
+      // Add to queue via REST API first (don't update local state optimistically)
+      const response = await api(`/rooms/${currentRoomId}/queue/add`, {
         method: "POST",
         body: JSON.stringify({
           song_id: song.id,
           added_by: "tablet"
         })
       });
-      console.log("✅ Successfully added to queue:", song.title);
+      
+      // Only update local state if song was actually added (not already exists)
+      if (response.status === "added") {
+        setQueue((q) => [...(q || []), song]);
+        console.log("✅ Successfully added to queue:", song.title);
+      } else if (response.status === "already_exists") {
+        console.log("ℹ️ Song already in queue:", song.title);
+        // Refresh queue from backend to get latest state
+        try {
+          const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+          setQueue(queueRes || []);
+        } catch (err) {
+          console.error("Error refreshing queue:", err);
+        }
+      }
     } catch (error) {
       console.error("Error adding to queue:", error);
-      // Revert local state on error
-      setQueue((q) => q.filter((_, i) => i < q.length - 1));
       alert(`Failed to add song: ${error.message}`);
+    } finally {
+      setIsAddingToQueue(false);
     }
   };
 
