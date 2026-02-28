@@ -6,37 +6,42 @@ import os
 # Environment variables
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-2")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_SIGNED_URL_EXPIRATION = int(os.getenv("S3_SIGNED_URL_EXPIRATION", 3600))
 S3_KEY_PREFIX = os.getenv("S3_KEY_PREFIX", "")  # Optional prefix like "songs/" or "videos/"
+S3_PUBLIC_BUCKET = os.getenv("S3_PUBLIC_BUCKET", "true").lower() == "true"  # Default to public bucket
 
 if not S3_BUCKET_NAME:
     raise RuntimeError("S3_BUCKET_NAME environment variable is not set")
 
-# Force regional + virtual hosted style endpoint
-s3_client = boto3.client(
-    "s3",
-    region_name=AWS_REGION,
-    config=Config(
-        signature_version="s3v4",
-        s3={"addressing_style": "virtual"}
-    )
-)
+# Construct base URL for public bucket
+S3_BASE_URL = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com"
 
-def generate_signed_url(s3_key: str, expiration: int = None):
+# Only create S3 client if bucket is private (for presigned URLs)
+s3_client = None
+if not S3_PUBLIC_BUCKET:
+    s3_client = boto3.client(
+        "s3",
+        region_name=AWS_REGION,
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "virtual"}
+        )
+    )
+
+def get_file_url(s3_key: str):
     """
-    Generate a presigned URL for a private S3 object.
-    s3_key should be only the object key (e.g. 'Undipova.mp4'),
-    NOT a full S3 URL.
+    Get the URL for an S3 object.
+    
+    For public buckets: Returns a simple public URL (no signature, no expiry)
+    For private buckets: Returns a presigned URL (with signature and expiry)
+    
+    s3_key should be only the object key (e.g. 'Undipova.mp4'), NOT a full S3 URL.
     
     If S3_KEY_PREFIX is set, it will be prepended to the key.
     """
     if not s3_key:
         return None
-
-    expiration = expiration or S3_SIGNED_URL_EXPIRATION
     
     # Apply prefix if set (e.g., "songs/" or "videos/")
-    # Remove leading slash from prefix if present, and ensure it ends with /
     prefix = S3_KEY_PREFIX.strip().strip('/')
     if prefix:
         prefix = prefix + '/'
@@ -45,6 +50,18 @@ def generate_signed_url(s3_key: str, expiration: int = None):
     # Remove any leading slash from s3_key to avoid double slashes
     full_key = prefix + s3_key.lstrip('/')
     
+    # For public buckets, return simple URL
+    if S3_PUBLIC_BUCKET:
+        url = f"{S3_BASE_URL}/{full_key}"
+        print(f"✅ Generated public URL for key: {full_key} (original: {s3_key})")
+        return url
+    
+    # For private buckets, generate presigned URL
+    if not s3_client:
+        raise RuntimeError("S3 client not initialized. Set S3_PUBLIC_BUCKET=false for private buckets.")
+    
+    S3_SIGNED_URL_EXPIRATION = int(os.getenv("S3_SIGNED_URL_EXPIRATION", 3600))
+    
     try:
         url = s3_client.generate_presigned_url(
             "get_object",
@@ -52,12 +69,12 @@ def generate_signed_url(s3_key: str, expiration: int = None):
                 "Bucket": S3_BUCKET_NAME,
                 "Key": full_key,
             },
-            ExpiresIn=expiration,
+            ExpiresIn=S3_SIGNED_URL_EXPIRATION,
         )
-        print(f"✅ Generated signed URL for key: {full_key} (original: {s3_key})")
+        print(f"✅ Generated presigned URL for key: {full_key} (original: {s3_key})")
         return url
     except Exception as e:
-        print(f"❌ ERROR generating signed URL for key '{full_key}' (original: '{s3_key}'): {e}")
+        print(f"❌ ERROR generating presigned URL for key '{full_key}' (original: '{s3_key}'): {e}")
         # Try without prefix as fallback
         if prefix:
             try:
@@ -68,22 +85,33 @@ def generate_signed_url(s3_key: str, expiration: int = None):
                         "Bucket": S3_BUCKET_NAME,
                         "Key": s3_key.lstrip('/'),
                     },
-                    ExpiresIn=expiration,
+                    ExpiresIn=S3_SIGNED_URL_EXPIRATION,
                 )
-                print(f"✅ Generated signed URL without prefix for key: {s3_key}")
+                print(f"✅ Generated presigned URL without prefix for key: {s3_key}")
                 return url
             except Exception as e2:
-                print(f"❌ ERROR generating signed URL without prefix for key '{s3_key}': {e2}")
+                print(f"❌ ERROR generating presigned URL without prefix for key '{s3_key}': {e2}")
         raise
+
+
+# Keep generate_signed_url for backward compatibility, but it now uses get_file_url
+def generate_signed_url(s3_key: str, expiration: int = None):
+    """
+    Backward compatibility wrapper for get_file_url.
+    """
+    return get_file_url(s3_key)
 
 
 def check_key_exists(s3_key: str) -> bool:
     """
     Check if a key exists in S3 bucket.
     Returns True if exists, False otherwise.
+    Only works for private buckets (requires S3 client).
     """
-    if not s3_key:
-        return False
+    if not s3_key or S3_PUBLIC_BUCKET or not s3_client:
+        # For public buckets, we can't easily check without making a request
+        # Just return True and let the URL be tried
+        return True
     
     # Apply prefix if set
     prefix = S3_KEY_PREFIX.strip().strip('/')
