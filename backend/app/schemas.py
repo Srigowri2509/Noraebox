@@ -30,11 +30,9 @@ class RoomResponse(BaseModel):
     name: Optional[str]
     is_active: bool
     status: str
-    started_at: Optional[datetime]
     total_minutes: Optional[int]
     current_song_id: Optional[int]
     current_song_start_time: Optional[datetime]
-    session_id: Optional[UUID]
     
     class Config:
         from_attributes = True

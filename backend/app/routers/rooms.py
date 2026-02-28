@@ -144,7 +144,7 @@ def get_room(room_id: str, db: Session = Depends(get_db)):
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
         
-        print(f"GET /rooms/{room_id}: is_active={room.is_active}, session_id={room.session_id}")
+        print(f"GET /rooms/{room_id}: is_active={room.is_active}, status={room.status}")
         return room
     except HTTPException:
         raise
