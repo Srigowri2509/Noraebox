@@ -98,8 +98,20 @@ export default function Dashboard() {
       return;
     }
     try {
-      if (!selectedRoom.is_active) {
-        // If session not active, just start a new one
+      // Check if there's an active session first
+      try {
+        const sessionData = await api(`/rooms/${selectedRoom.id}/session`);
+        const session = sessionData.session;
+        const hasActiveSession = session && (session.status === 'active' || session.status === 'playing');
+        
+        if (!hasActiveSession) {
+          // If no active session, start a new one instead
+          await startRoom(minutes);
+          return;
+        }
+      } catch (sessionErr) {
+        console.warn("Could not check session status, assuming no active session:", sessionErr);
+        // If we can't check, try to start a new session
         await startRoom(minutes);
         return;
       }

@@ -1,15 +1,47 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "../api";
 
 console.log("🔥 THIS ROOM MODAL IS BEING USED");
 
 export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }) {
-  if (!room) return null;
-
-  const isFree = !room.is_active;
+  // All state hooks must be declared at the top level (before any early returns)
+  const [hasActiveSession, setHasActiveSession] = useState(false);
+  const [loadingSession, setLoadingSession] = useState(true);
   const [hours, setHours] = useState(1);
   const [minutes, setMinutes] = useState(0);
   const [useCustom, setUseCustom] = useState(false);
   const [customMinutes, setCustomMinutes] = useState(30);
+
+  useEffect(() => {
+    if (!room) {
+      setLoadingSession(false);
+      setHasActiveSession(false);
+      return;
+    }
+    
+    // Fetch session data to check if there's an active session
+    const fetchSession = async () => {
+      try {
+        const sessionData = await api(`/rooms/${room.id}/session`);
+        const session = sessionData.session;
+        // Check if there's an active session
+        const isActive = session && (session.status === 'active' || session.status === 'playing');
+        setHasActiveSession(isActive);
+      } catch (error) {
+        console.error("Error fetching session:", error);
+        setHasActiveSession(false);
+      } finally {
+        setLoadingSession(false);
+      }
+    };
+
+    fetchSession();
+  }, [room]);
+
+  if (!room) return null;
+
+  // Room is "free" if there's no active session
+  const isFree = !hasActiveSession;
 
   const handleConfirm = () => {
     let total;
@@ -50,7 +82,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
 
         {/* Subtitle */}
         <p className="text-xl text-purple-600 text-center mt-2 mb-10 font-medium">
-          {isFree ? "Start room session" : "Extend room time"}
+          {loadingSession ? "Loading..." : (isFree ? "Start room session" : "Extend room time")}
         </p>
 
         {/* Time Select Mode Toggle */}
@@ -156,8 +188,8 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
           Confirm
         </button>
 
-        {/* BUTTON: Cancel Session (only show if room is active) */}
-        {!isFree && onCancel && (
+        {/* BUTTON: Cancel Session (only show if there's an active session) */}
+        {!loadingSession && !isFree && onCancel && (
           <button
             onClick={handleCancel}
             className="w-full py-4 rounded-xl text-white text-xl font-semibold 

@@ -741,26 +741,49 @@ def update_room_status(room_id: str, payload: dict = Body(...), db: Session = De
 
 @router.post("/{room_id}/end")
 def end_room_session(room_id: str, db: Session = Depends(get_db)):
-    """End a room session - delete/end the current session"""
+    """End a room session - stops playback, clears queue, and resets everything"""
     try:
         # Verify room exists
         room = db.query(Room).filter(Room.id == room_id).first()
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
         
-        # Update active session to 'ended'
-        result = db.query(RoomSession).filter(
+        # Get active session
+        session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
             RoomSession.status == 'active'
-        ).update({"status": "ended"})
+        ).first()
+        
+        # Clear current song and stop playback
+        if session:
+            session.current_song_id = None
+            session.current_song_start_time = None
+            session.status = 'ended'
+            print(f"POST /rooms/{room_id}/end: Cleared current song and ended session")
+        
+        # Clear ALL queue items for this room
+        queue_items = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id
+        ).all()
+        
+        queue_count = len(queue_items)
+        for item in queue_items:
+            db.delete(item)
+        
+        print(f"POST /rooms/{room_id}/end: Cleared {queue_count} queue items")
         
         # Update room status
         room.status = 'available'
         room.is_active = False
+        
         db.commit()
         
-        print(f"POST /rooms/{room_id}/end: Session ended successfully (updated {result} session(s))")
-        return {"status": "ended", "message": "Session ended successfully"}
+        print(f"POST /rooms/{room_id}/end: Session ended successfully - queue cleared, playback stopped")
+        return {
+            "status": "ended", 
+            "message": "Session ended successfully",
+            "queue_cleared": queue_count
+        }
     except HTTPException:
         raise
     except Exception as e:

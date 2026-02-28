@@ -73,9 +73,21 @@ export default function Display({ roomId }) {
           return;
         }
 
-        // Check if session is active
-        const active = session.status === "playing" || session.status === "idle";
+        // Check if session is active (not ended or finished)
+        const isSessionEnded = session.status === "ended" || session.status === "finished";
+        const active = !isSessionEnded && (session.status === "playing" || session.status === "idle" || session.status === "active");
         setIsActive(active);
+
+        // If session is ended, clear everything
+        if (isSessionEnded) {
+          setSessionEnded(true);
+          setCurrentSong(null);
+          setTimeLeft(null);
+          setNextSong(null);
+          lastSongIdRef.current = null;
+          console.log("Display: Session ended, clearing all state");
+          return;
+        }
 
         // Get current song ID from session
         const currentSongId = session.current_song_id;
@@ -95,10 +107,12 @@ export default function Display({ roomId }) {
             setTimeLeft(remainingMs);
 
             // Check if session ended
-            if (remainingSeconds === 0 || session.status === "finished") {
+            if (remainingSeconds === 0 || session.status === "finished" || session.status === "ended") {
               setSessionEnded(true);
               setCurrentSong(null); // Clear song when session ends
               setTimeLeft(null);
+              setNextSong(null);
+              lastSongIdRef.current = null;
             } else {
               setSessionEnded(false);
             }
@@ -139,13 +153,15 @@ export default function Display({ roomId }) {
             setCurrentSong(null);
           }
         } else if (!currentSongId) {
-          // No current song
+          // No current song - clear if session is ended or if we had a song before
           if (lastSongIdRef.current) {
             console.log("Display: Song ended, clearing current song");
+            setCurrentSong(null);
           }
           lastSongIdRef.current = null;
-          if (session.status === "finished" || !session) {
+          if (session.status === "finished" || session.status === "ended" || !session) {
             setCurrentSong(null);
+            setNextSong(null);
           }
         }
 
