@@ -5,17 +5,37 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
   - if song && song.videoUrl => plays it
   - else shows a poster/placeholder
   - forwards `play`, `pause` if needed
+  - Handles autoplay restrictions by starting muted
 */
 const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
   const vref = useRef();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [needsInteraction, setNeedsInteraction] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+
+  // Handle user interaction to enable autoplay
+  const handleUserInteraction = () => {
+    setHasUserInteracted(true);
+    setNeedsInteraction(false);
+    if (vref.current && song && song.videoUrl) {
+      const video = vref.current;
+      video.muted = false;
+      const playPromise = video.play();
+      if (playPromise) {
+        playPromise.catch(err => {
+          console.error("VideoPlayer: Play failed after interaction:", err);
+        });
+      }
+    }
+  };
 
   useEffect(() => {
     if (song && song.videoUrl && vref.current) {
       console.log("VideoPlayer: Loading video:", song.videoUrl);
       setError(null);
       setLoading(true);
+      setNeedsInteraction(false);
       
       const video = vref.current;
       
@@ -40,51 +60,48 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       video.addEventListener('loadeddata', handleLoadedData);
       
       // Load and play video
-      // Start muted to allow autoplay, then unmute after playback starts
+      // Always start muted to bypass autoplay restrictions
       try {
-        video.muted = true; // Start muted to bypass autoplay restrictions
+        video.muted = true; // Start muted - browsers allow muted autoplay
         video.load();
+        
+        // Try to play immediately (muted autoplay should work)
         const playPromise = video.play();
         
         if (playPromise && playPromise.then) {
           playPromise
             .then(() => {
-              console.log("VideoPlayer: Video playing successfully (muted)");
-              // Unmute after playback starts
-              setTimeout(() => {
-                if (video) {
-                  video.muted = false;
-                  console.log("VideoPlayer: Video unmuted");
-                }
-              }, 500);
+              console.log("✅ VideoPlayer: Video playing successfully (muted)");
               setLoading(false);
+              // Unmute after a short delay to ensure playback started
+              setTimeout(() => {
+                if (video && !video.paused) {
+                  try {
+                    video.muted = false;
+                    console.log("✅ VideoPlayer: Video unmuted");
+                  } catch (e) {
+                    console.warn("VideoPlayer: Could not unmute:", e);
+                  }
+                }
+              }, 1000); // Wait 1 second before unmuting
             })
             .catch((err) => {
-              console.error("VideoPlayer: Play promise rejected:", err);
-              // Try playing with muted (browsers allow muted autoplay)
-              video.muted = true;
-              video.play()
-                .then(() => {
-                  console.log("VideoPlayer: Video playing muted after retry");
-                  // Unmute after playback starts
-                  setTimeout(() => {
-                    if (video) {
-                      video.muted = false;
-                      console.log("VideoPlayer: Video unmuted after retry");
-                    }
-                  }, 500);
-                  setLoading(false);
-                })
-                .catch((e) => {
-                  console.error("VideoPlayer: Muted play also failed:", e);
-                  setError("Autoplay blocked. Please interact with the page first.");
-                  setLoading(false);
-                });
+              console.warn("⚠️ VideoPlayer: Autoplay blocked, will need user interaction");
+              setNeedsInteraction(true);
+              setLoading(false);
+              // Don't set error - show click to play button instead
             });
+        } else {
+          // Play promise not supported, try direct play
+          video.play().catch((err) => {
+            console.warn("⚠️ VideoPlayer: Direct play failed:", err);
+            setNeedsInteraction(true);
+            setLoading(false);
+          });
         }
       } catch (e) {
         console.error("VideoPlayer: Exception during play:", e);
-        setError("Failed to play video");
+        setNeedsInteraction(true);
         setLoading(false);
       }
       
@@ -96,6 +113,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     } else if (!song || !song.videoUrl) {
       setError(null);
       setLoading(false);
+      setNeedsInteraction(false);
     }
   }, [song]);
 
@@ -135,6 +153,61 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     );
   }
 
+  // Show "Click to Play" overlay if autoplay is blocked
+  if (needsInteraction && !hasUserInteracted) {
+    return (
+      <div className="video-wrapper" style={{ position: 'relative' }}>
+        <video
+          ref={vref}
+          className="video-element"
+          onEnded={() => {
+            console.log("VideoPlayer: Video ended");
+            onEnded && onEnded();
+          }}
+          onClick={handleUserInteraction}
+          controls={false}
+          disablePictureInPicture={true}
+          controlsList="nodownload nofullscreen noremoteplayback"
+          playsInline
+          muted={true}
+          preload="auto"
+          crossOrigin="anonymous"
+          style={{ opacity: 0.3, pointerEvents: 'auto' }} // Allow clicks for interaction
+        >
+          <source src={song.videoUrl} type="video/mp4" />
+          <source src={song.videoUrl} type="video/webm" />
+          Your browser does not support the video tag.
+        </video>
+        <div
+          onClick={handleUserInteraction}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: 'rgba(0, 0, 0, 0.8)',
+            color: 'white',
+            padding: '20px 40px',
+            borderRadius: '10px',
+            cursor: 'pointer',
+            fontSize: '24px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            zIndex: 10,
+            transition: 'all 0.3s',
+          }}
+          onMouseEnter={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.9)'}
+          onMouseLeave={(e) => e.target.style.background = 'rgba(0, 0, 0, 0.8)'}
+        >
+          <div>▶️ Click to Play</div>
+          <small style={{ fontSize: '14px', display: 'block', marginTop: '8px', opacity: 0.8 }}>
+            {song.title || 'Song'}
+          </small>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="video-wrapper">
       {loading && (
@@ -157,11 +230,14 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           onEnded && onEnded();
         }}
         controls={false}
+        disablePictureInPicture={true}
+        controlsList="nodownload nofullscreen noremoteplayback"
         playsInline
         autoPlay
         muted={true}
         preload="auto"
         crossOrigin="anonymous"
+        style={{ pointerEvents: 'none' }} // Prevent any click interactions
       >
         <source src={song.videoUrl} type="video/mp4" />
         <source src={song.videoUrl} type="video/webm" />

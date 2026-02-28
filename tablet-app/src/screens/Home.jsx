@@ -404,21 +404,39 @@ export default function Home() {
       if (queue?.length > 0) {
         console.log("▶️ Playing queue with", queue.length, "songs");
         console.log("🎵 First song in queue:", queue[0]?.title);
-        console.log("🎵 First song URL:", queue[0]?.video_url || queue[0]?.file_url || queue[0]?.url);
         
-        // Start next song from queue
-        await api(`/rooms/${currentRoomId}/playback/start_next`, {
+        // Start next song from queue - this will immediately start playback on display app
+        const response = await api(`/rooms/${currentRoomId}/playback/start_next`, {
           method: "POST"
         });
         
-        console.log("✅ Play command sent to backend");
+        console.log("✅ Play command sent to backend, response:", response);
+        // Display app will automatically detect the new current_song_id and start playing
       } else if (filteredSongs.length > 0) {
         console.log("▶️ Playing first filtered song:", filteredSongs[0].title);
-        console.log("🎵 Song URL:", filteredSongs[0]?.video_url || filteredSongs[0]?.file_url || filteredSongs[0]?.url);
         
-        await handlePlaySong(filteredSongs[0]);
-        
-        console.log("✅ Play command sent to backend");
+        // Add to queue first, then start playing
+        try {
+          // Add song to queue
+          await api(`/rooms/${currentRoomId}/queue/add`, {
+            method: "POST",
+            body: JSON.stringify({
+              song_id: filteredSongs[0].id,
+              added_by: "tablet"
+            })
+          });
+          
+          // Then start playing from queue
+          const response = await api(`/rooms/${currentRoomId}/playback/start_next`, {
+            method: "POST"
+          });
+          
+          console.log("✅ Song added to queue and started, response:", response);
+        } catch (err) {
+          console.error("Error adding/playing song:", err);
+          // Fallback: try direct play
+          await handlePlaySong(filteredSongs[0]);
+        }
       } else {
         alert("No songs available to play. Please add songs to queue or filter songs.");
       }
