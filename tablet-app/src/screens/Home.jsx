@@ -109,13 +109,16 @@ export default function Home() {
       filtered = filtered.filter(song => {
         const songLang = song.language;
         if (!songLang) {
+          if (before < 20) {
+            console.log(`Song ${song.id} (${song.title}) has no language field`);
+          }
           return false;
         }
         const songLangLower = String(songLang).toLowerCase().trim();
         const matches = songLangLower === filterLangLower;
         
         if (!matches && before < 20) {
-          console.log(`Language mismatch: song language="${songLang}" (${songLangLower}) vs filter="${filters.language}" (${filterLangLower})`);
+          console.log(`Language mismatch: song "${song.title}" language="${songLang}" (${songLangLower}) vs filter="${filters.language}" (${filterLangLower})`);
         }
         return matches;
       });
@@ -126,6 +129,7 @@ export default function Home() {
           allSongs.map(s => s.language).filter(Boolean)
         )].slice(0, 10);
         console.warn(`⚠️ No songs found for language "${filters.language}". Available languages in database:`, availableLangs);
+        console.warn(`Sample songs with languages:`, allSongs.slice(0, 5).map(s => ({ title: s.title, language: s.language })));
       }
     }
     
