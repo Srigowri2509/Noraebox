@@ -42,7 +42,6 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
                     Song.title.ilike(like_pattern),
                     Song.album.ilike(like_pattern),
                     Song.language.ilike(like_pattern),
-                    Song.artist.ilike(like_pattern),
                 )
             )
         
@@ -65,7 +64,7 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
                 "language": song.language,
                 "file_url": signed_url,   # <-- SIGNED URL HERE
                 "play_count": song.play_count,
-                "artist": song.artist,
+                "artist": None,  # Will be set from song_artists relationship
                 "artist_id": None,
                 "artist_image": None
             }
@@ -115,7 +114,7 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
             "language": song.language,
             "file_url": signed_url,  # <-- SIGNED URL
             "play_count": song.play_count,
-            "artist": song.artist,
+            "artist": None,  # Will be set from song_artists relationship
             "artist_id": None,
             "artist_image": None
         }
