@@ -120,11 +120,40 @@ function SongNameFilter({ value = "", onChange }) {
   );
 }
 
+// Singer Filter Component
+function SingerFilter({ value = "", onChange }) {
+  return (
+    <div>
+      <label className="block text-white text-sm font-medium mb-3">Singer</label>
+      <div className="bg-slate-800/70 border-2 border-slate-700 rounded-xl p-4">
+        <div className="relative">
+          <svg
+            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none z-10"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange?.(e.target.value)}
+            placeholder="Search singer..."
+            className="w-full h-10 bg-slate-800/70 border-2 border-slate-700 rounded-lg pl-10 pr-4 text-white text-lg placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            style={{ paddingLeft: '2.75rem' }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Main SearchBar Component
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
         <LanguageFilter
           value={filters.language || "all"}
           onChange={(val) => onFilterChange?.("language", val)}
@@ -133,6 +162,10 @@ export default function SearchBar({ filters = {}, onFilterChange, languages = []
         <ArtistFilter
           value={filters.artist || ""}
           onChange={(val) => onFilterChange?.("artist", val)}
+        />
+        <SingerFilter
+          value={filters.singer || ""}
+          onChange={(val) => onFilterChange?.("singer", val)}
         />
         <AlbumFilter
           value={filters.album || ""}

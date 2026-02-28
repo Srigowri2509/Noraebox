@@ -14,6 +14,7 @@ export default function Home() {
   const [filters, setFilters] = useState({
     language: "all",
     artist: "",
+    singer: "",
     album: "",
     songName: "",
   });
@@ -69,7 +70,7 @@ export default function Home() {
   }, [allSongs]); // Re-fetch when songs are loaded for fallback
 
   // Check if there are active filters (including selectedArtist)
-  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.album || filters.songName || selectedArtist;
+  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.singer || filters.album || filters.songName || selectedArtist;
 
   const filteredSongs = useMemo(() => {
     console.log('=== FILTERING SONGS ===');
@@ -77,6 +78,7 @@ export default function Home() {
     console.log('Active filters:', { 
       language: filters.language, 
       artist: filters.artist, 
+      singer: filters.singer,
       selectedArtist, 
       album: filters.album, 
       songName: filters.songName 
@@ -167,6 +169,41 @@ export default function Home() {
             allSongs.map(s => (s.artist_name || s.artist)).filter(Boolean)
           )].slice(0, 10);
           console.warn(`⚠️ No songs found for artist "${filterValue}". Available artists in database:`, availableArtists);
+        }
+      }
+    }
+    
+    // Filter by singer (works the same as artist - searches all artists associated with song)
+    if (filters.singer) {
+      const before = filtered.length;
+      const filterLower = filters.singer.toLowerCase().trim();
+      
+      if (!filterLower) {
+        console.log('Empty singer filter, skipping');
+      } else {
+        filtered = filtered.filter(song => {
+          // Check both artist_name (from join) and artist (fallback field)
+          const songArtist = (song.artist_name || song.artist);
+          if (!songArtist) {
+            return false;
+          }
+          const songArtistLower = String(songArtist).toLowerCase().trim();
+          
+          // More flexible matching: check if filter is contained in song artist or vice versa
+          const matches = songArtistLower.includes(filterLower) || filterLower.includes(songArtistLower);
+          
+          if (!matches && before < 20) {
+            console.log(`Singer mismatch: song artist="${songArtist}" (${songArtistLower}) vs filter="${filters.singer}" (${filterLower})`);
+          }
+          return matches;
+        });
+        console.log(`Singer filter (${filters.singer}): ${before} -> ${filtered.length}`);
+        if (filtered.length === 0 && before > 0) {
+          // Show available artists from the unfiltered list
+          const availableArtists = [...new Set(
+            allSongs.map(s => (s.artist_name || s.artist)).filter(Boolean)
+          )].slice(0, 10);
+          console.warn(`⚠️ No songs found for singer "${filters.singer}". Available artists in database:`, availableArtists);
         }
       }
     }

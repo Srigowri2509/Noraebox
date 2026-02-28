@@ -24,11 +24,8 @@ export default function QueueList({ queue = [], onRemove }) {
                 <span className="text-2xl">🎵</span>
               </div>
               <div className="flex-1 min-w-0 mr-4">
-                <div className="text-white font-medium text-base truncate mb-1">
+                <div className="text-white font-medium text-base truncate">
                   {s.title || "Unknown"}
-                </div>
-                <div className="text-slate-400 text-sm truncate">
-                  {s.artist || "Unknown artist"}
                 </div>
               </div>
               <button
