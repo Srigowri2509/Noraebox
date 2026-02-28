@@ -18,6 +18,21 @@ export default function App() {
 
   // Load remote config and initialize update service
   useEffect(() => {
+    // Clear any cached config with old URL
+    const cachedConfig = localStorage.getItem('app_config');
+    if (cachedConfig) {
+      try {
+        const config = JSON.parse(cachedConfig);
+        if (config.api_url && config.api_url.includes('98.130.120.10')) {
+          console.log('Clearing cached config with old URL');
+          localStorage.removeItem('app_config');
+        }
+      } catch (e) {
+        // Invalid config, clear it
+        localStorage.removeItem('app_config');
+      }
+    }
+    
     // Load remote config first (this updates API URL without rebuilding)
     loadRemoteConfig().then((config) => {
       console.log('✅ Config loaded:', config);

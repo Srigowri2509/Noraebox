@@ -7,11 +7,23 @@ export const getConfig = () => {
   if (remoteConfig) {
     try {
       const config = JSON.parse(remoteConfig);
+      // Check if cached config has old URL - if so, clear it
+      if (config.api_url && config.api_url.includes('98.130.120.10')) {
+        console.log('⚠️ Clearing cached config with old URL:', config.api_url);
+        localStorage.removeItem('app_config');
+        // Return default config with new URL
+        return {
+          api_url: 'http://16.112.69.4:8000',
+          update_check_url: 'http://16.112.69.4:8000',
+          version: '1.0.0'
+        };
+      }
       if (config.api_url) {
         return config;
       }
     } catch (e) {
       console.warn('Failed to parse remote config:', e);
+      localStorage.removeItem('app_config'); // Clear invalid config
     }
   }
   

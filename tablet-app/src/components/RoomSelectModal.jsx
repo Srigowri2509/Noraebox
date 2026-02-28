@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api, API_BASE } from "../api";
+import { api, getApiBase } from "../api";
 
 export default function RoomSelectModal({ rooms = [], device, onSelect, onClose }) {
   const [selectedRoomId, setSelectedRoomId] = useState("");
@@ -61,7 +61,7 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
         {rooms.length === 0 ? (
           <div className="mb-6 p-4 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-200">
             <p className="font-semibold mb-2">⚠️ Backend Connection Issue</p>
-            <p className="text-sm">Cannot load rooms. Please ensure the backend server is running at {API_BASE}</p>
+            <p className="text-sm">Cannot load rooms. Please ensure the backend server is running at {getApiBase()}</p>
             <p className="text-xs mt-1 text-yellow-300">Check browser console (F12) for detailed error messages.</p>
           </div>
         ) : (
