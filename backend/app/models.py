@@ -27,9 +27,6 @@ class Room(Base):
     name = Column(String, nullable=True)
     is_active = Column(Boolean, default=False)
     status = Column(String, default="idle")  # "idle", "playing", "finished"
-    total_minutes = Column(Integer, nullable=True)
-    current_song_id = Column(Integer, ForeignKey("songs.id"), nullable=True)
-    current_song_start_time = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     devices = relationship("Device", back_populates="room")
