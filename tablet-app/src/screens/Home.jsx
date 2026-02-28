@@ -353,31 +353,21 @@ export default function Home() {
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
-  // Helper function to check if a song is already in the queue (by song_id or title)
+  // Helper function to check if a song is already in the queue (by song_id only)
+  // Queue is independent of artists/composers - only uses song_id
   const isSongInQueue = (song, currentQueue) => {
     if (!song || !currentQueue || currentQueue.length === 0) return false;
     
     const songId = song.id || song.song_id;
-    const songTitleNormalized = song.title?.trim().toLowerCase();
+    if (!songId) return false;
     
-    // Check by song_id
+    // Check by song_id only (not by title or artist)
     const foundById = currentQueue.some(q => {
       const queueSongId = q.song_id || q.id;
       return queueSongId === songId;
     });
     
-    if (foundById) return true;
-    
-    // Check by title (case-insensitive)
-    if (songTitleNormalized) {
-      const foundByTitle = currentQueue.some(q => {
-        const queueTitle = q.title?.trim().toLowerCase();
-        return queueTitle === songTitleNormalized;
-      });
-      if (foundByTitle) return true;
-    }
-    
-    return false;
+    return foundById;
   };
   
   const handleAddToQueue = async (song) => {

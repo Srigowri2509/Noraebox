@@ -156,37 +156,32 @@ def get_room(room_id: str, db: Session = Depends(get_db)):
 
 @router.get("/{room_id}/queue")
 def get_queue(room_id: str, db: Session = Depends(get_db)):
-    """Get queue for a room"""
+    """Get queue for a room - queue is based on song_id only, independent of artists"""
     try:
         # Verify room exists
         room = db.query(Room).filter(Room.id == room_id).first()
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
         
-        # Get queue items with song and artist data using joins
-        queue_items = db.query(QueueItem, Song, SongArtist, Artist).outerjoin(
+        # Get queue items with song data (no artist joins - queue is song_id based only)
+        queue_items = db.query(QueueItem, Song).outerjoin(
             Song, Song.id == QueueItem.song_id
-        ).outerjoin(
-            SongArtist, SongArtist.song_id == Song.id
-        ).outerjoin(
-            Artist, Artist.id == SongArtist.artist_id
         ).filter(
             QueueItem.room_id == room_id
         ).order_by(QueueItem.position).all()
         
         queue = []
-        for qi, song, song_artist, artist in queue_items:
+        for qi, song in queue_items:
             if not song:
                 continue
             
+            # Queue only contains song_id and song basic info - no artist data
             queue.append({
                 "id": str(qi.id),
-                "song_id": qi.song_id,
+                "song_id": qi.song_id,  # Primary identifier for queue
                 "title": song.title,
                 "album": song.album,
                 "language": song.language,
-                "artist": artist.name if artist else None,
-                "artist_id": str(artist.id) if artist else None,
                 "position": qi.position,
                 "added_by": qi.added_by
             })
