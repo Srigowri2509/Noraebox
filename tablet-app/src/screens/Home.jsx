@@ -21,7 +21,7 @@ export default function Home() {
   // Separate state for artist selected from TopArtists (doesn't show in search bar)
   const [selectedArtist, setSelectedArtist] = useState(null);
 
-  const { room, queue, setQueue } = useRoomContext();
+  const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
 
   // Fail-fast check for songs
@@ -304,15 +304,19 @@ export default function Home() {
     
     // Allow duplicate songs in queue (user requirement)
     
-    // Get room ID - use room.id or fallback to default
-    const roomId = room?.id || "default-room";
+    // Get room ID - use roomId from context or room.id, but don't use default-room
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      alert("No room selected. Please select a room first.");
+      return;
+    }
     
     try {
       // Update local state immediately for instant feedback
       setQueue((q) => [...(q || []), song]);
       
       // Add to queue via REST API
-      await api(`/rooms/${roomId}/queue/add`, {
+      await api(`/rooms/${currentRoomId}/queue/add`, {
         method: "POST",
         body: JSON.stringify({
           song_id: song.id,
@@ -362,10 +366,14 @@ export default function Home() {
   };
 
   const handlePlaySong = async (song) => {
-    const roomId = room?.id || "default-room";
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      alert("No room selected. Please select a room first.");
+      return;
+    }
     try {
       // Set current song via REST API
-      await api(`/rooms/${roomId}/current`, {
+      await api(`/rooms/${currentRoomId}/current`, {
         method: "PUT",
         body: JSON.stringify({
           current_song_id: song.id
@@ -379,12 +387,16 @@ export default function Home() {
   };
 
   const handleReadyToSing = async () => {
-    const roomId = room?.id || "default-room";
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      alert("No room selected. Please select a room first.");
+      return;
+    }
     
     console.log("🎬 ========================================");
     console.log("🎬 READY TO SING BUTTON CLICKED!");
     console.log("🎬 ========================================");
-    console.log("📋 Room ID:", roomId);
+    console.log("📋 Room ID:", currentRoomId);
     console.log("📋 Queue length:", queue?.length || 0);
     console.log("🔍 Filtered songs:", filteredSongs.length);
     
@@ -395,7 +407,7 @@ export default function Home() {
         console.log("🎵 First song URL:", queue[0]?.video_url || queue[0]?.file_url || queue[0]?.url);
         
         // Start next song from queue
-        await api(`/rooms/${roomId}/playback/start_next`, {
+        await api(`/rooms/${currentRoomId}/playback/start_next`, {
           method: "POST"
         });
         
@@ -418,9 +430,13 @@ export default function Home() {
   };
 
   const handleSkip = async () => {
-    if (!room?.id) return;
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      alert("No room selected. Please select a room first.");
+      return;
+    }
     try {
-      await api(`/rooms/${room.id}/playback/start_next`, {
+      await api(`/rooms/${currentRoomId}/playback/start_next`, {
         method: "POST"
       });
     } catch (error) {
@@ -430,13 +446,13 @@ export default function Home() {
 
   // Poll queue to check for changes and auto-play next song
   useEffect(() => {
-    const roomId = room?.id || "default-room";
-    if (!roomId) return;
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) return;
 
     let mounted = true;
     const pollQueue = async () => {
       try {
-        const res = await api(`/rooms/${roomId}/queue`);
+        const res = await api(`/rooms/${currentRoomId}/queue`);
         const queueData = res.data || res;
         if (mounted && Array.isArray(queueData)) {
           // Update queue from backend

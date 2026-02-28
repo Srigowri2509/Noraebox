@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 from datetime import datetime, timezone
 from app.db import get_db
@@ -150,4 +151,132 @@ def get_room(room_id: str, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         print(f"Error getting room: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{room_id}/queue")
+def get_queue(room_id: str, db: Session = Depends(get_db)):
+    """Get queue for a room"""
+    try:
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Get queue items
+        queue_items = db.query(QueueItem, Song).join(
+            Song, Song.id == QueueItem.song_id
+        ).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position).all()
+        
+        queue = [
+            {
+                "id": str(qi.id),
+                "song_id": qi.song_id,
+                "title": song.title,
+                "position": qi.position,
+                "added_by": qi.added_by
+            }
+            for qi, song in queue_items
+        ]
+        
+        return queue
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error getting queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/queue/add")
+def add_to_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Add a song to the queue"""
+    try:
+        song_id = payload.get("song_id")
+        added_by = payload.get("added_by", "tablet")
+        
+        if not song_id:
+            raise HTTPException(status_code=400, detail="song_id is required")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Verify song exists
+        song = db.query(Song).filter(Song.id == song_id).first()
+        if not song:
+            raise HTTPException(status_code=404, detail="Song not found")
+        
+        # Get max position for this room
+        max_position = db.query(func.max(QueueItem.position)).filter(
+            QueueItem.room_id == room_id
+        ).scalar() or 0
+        
+        # Create new queue item
+        new_item = QueueItem(
+            room_id=room_id,
+            song_id=song_id,
+            position=max_position + 1,
+            added_by=added_by
+        )
+        db.add(new_item)
+        db.commit()
+        db.refresh(new_item)
+        
+        print(f"POST /rooms/{room_id}/queue/add: Added song {song_id} at position {max_position + 1}")
+        return {"status": "added", "queue_id": str(new_item.id), "position": new_item.position}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error adding to queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/queue/remove")
+def remove_from_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Remove a song from the queue by position"""
+    try:
+        position = payload.get("position")
+        
+        if position is None:
+            raise HTTPException(status_code=400, detail="position is required")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Find queue item by position
+        queue_item = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id,
+            QueueItem.position == position
+        ).first()
+        
+        if not queue_item:
+            raise HTTPException(status_code=404, detail="Queue item not found")
+        
+        # Remove item
+        db.delete(queue_item)
+        
+        # Reorder remaining items
+        remaining_items = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id,
+            QueueItem.position > position
+        ).all()
+        
+        for item in remaining_items:
+            item.position -= 1
+        
+        db.commit()
+        
+        print(f"POST /rooms/{room_id}/queue/remove: Removed item at position {position}")
+        return {"status": "removed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error removing from queue: {e}")
         raise HTTPException(status_code=500, detail=str(e))
