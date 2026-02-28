@@ -5,12 +5,13 @@ import { ensureDeviceRegistered } from "./init/registerDevice";
 import { api } from "./api";
 import updateService from "./services/updateService";
 import { loadRemoteConfig } from "./config";
+import { useRoom } from "./context/RoomContext";
 
 export default function App() {
+  const { roomId, setRoomId } = useRoom(); // Use RoomContext instead of local state
   const [showRoomSelect, setShowRoomSelect] = useState(false);
   const [rooms, setRooms] = useState([]);
   const [deviceInfo, setDeviceInfo] = useState(null);
-  const [roomId, setRoomId] = useState(null);
   const [isChecking, setIsChecking] = useState(true);
   const [error, setError] = useState(null);
   const mountedRef = useRef(true);
@@ -87,12 +88,10 @@ export default function App() {
           // Device not assigned - show room selection
           setRooms(result.rooms || []);
           setShowRoomSelect(true);
-          setRoomId(null);
+          setRoomId(""); // Clear room in context
         } else {
           // Device is assigned - use the assigned room
-          setRoomId(result.room_id);
-          localStorage.setItem("room_id", result.room_id);
-          localStorage.setItem("roomId", result.room_id);
+          setRoomId(result.room_id); // Update RoomContext (also updates localStorage)
         }
       } catch (error) {
         if (timeoutRef.current) {
@@ -145,12 +144,10 @@ export default function App() {
       });
       console.log("Device assigned to room:", selectedRoomId);
       
-      localStorage.setItem("room_id", selectedRoomId);
-      localStorage.setItem("roomId", selectedRoomId);
+      // Update RoomContext (this also updates localStorage)
       setRoomId(selectedRoomId);
       setShowRoomSelect(false);
-      // Reload to ensure all components use the new room_id
-      window.location.reload();
+      // No need to reload - RoomContext will update all components
     } catch (error) {
       console.error("Error assigning device to room:", error);
       alert(`Failed to assign room: ${error.message || "Unknown error"}`);

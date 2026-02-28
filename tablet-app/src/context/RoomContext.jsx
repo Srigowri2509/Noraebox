@@ -5,7 +5,11 @@ const RoomContext = createContext();
 
 export function RoomProvider({ children }) {
   // Use room_id from localStorage (set by device registration)
-  const [roomId, setRoomId] = useState(localStorage.getItem("room_id") || localStorage.getItem("roomId") || "");
+  // Initialize with empty string, not null, to avoid issues with falsy checks
+  const [roomId, setRoomId] = useState(() => {
+    const stored = localStorage.getItem("room_id") || localStorage.getItem("roomId");
+    return stored || "";
+  });
   const [queue, setQueue] = useState([]);
   const [room, setRoom] = useState(null);
 

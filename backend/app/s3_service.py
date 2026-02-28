@@ -55,10 +55,14 @@ def get_file_url(s3_key: str):
         # Ensure no double slashes in URL
         base_url = S3_BASE_URL.rstrip('/')
         key_path = full_key.lstrip('/')
-        url = f"{base_url}/{key_path}"
+        # URL-encode the key path to handle spaces and special characters
+        from urllib.parse import quote
+        encoded_key = quote(key_path, safe='/')  # Safe='/' preserves forward slashes in paths
+        url = f"{base_url}/{encoded_key}"
         print(f"✅ Generated public URL: {url}")
         print(f"   - Bucket: {S3_BUCKET_NAME}, Region: {AWS_REGION}")
         print(f"   - Full key: {full_key} (original: {s3_key}, prefix: '{S3_KEY_PREFIX}')")
+        print(f"   - Encoded key: {encoded_key}")
         return url
     
     # For private buckets, generate presigned URL

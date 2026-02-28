@@ -304,9 +304,9 @@ export default function Home() {
     
     // Allow duplicate songs in queue (user requirement)
     
-    // Get room ID - use roomId from context or room.id, but don't use default-room
+    // Get room ID - use roomId from context or room.id
     const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) {
+    if (!currentRoomId || currentRoomId === "") {
       alert("No room selected. Please select a room first.");
       return;
     }
@@ -371,7 +371,7 @@ export default function Home() {
 
   const handlePlaySong = async (song) => {
     const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) {
+    if (!currentRoomId || currentRoomId === "") {
       alert("No room selected. Please select a room first.");
       return;
     }
@@ -392,7 +392,7 @@ export default function Home() {
 
   const handleReadyToSing = async () => {
     const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) {
+    if (!currentRoomId || currentRoomId === "") {
       alert("No room selected. Please select a room first.");
       return;
     }
@@ -484,7 +484,7 @@ export default function Home() {
   // Poll queue to check for changes and auto-play next song
   useEffect(() => {
     const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) return;
+    if (!currentRoomId || currentRoomId === "") return;
 
     let mounted = true;
     const pollQueue = async () => {
