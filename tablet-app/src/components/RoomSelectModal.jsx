@@ -63,36 +63,25 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
             <p className="font-semibold mb-2">⚠️ Backend Connection Issue</p>
             <p className="text-sm">Cannot load rooms. Please ensure the backend server is running at {API_BASE}</p>
             <p className="text-xs mt-1 text-yellow-300">Check browser console (F12) for detailed error messages.</p>
-            <p className="text-sm mt-2">If you have a room ID, enter it below:</p>
-            <input
-              type="text"
-              value={selectedRoomId}
-              onChange={(e) => setSelectedRoomId(e.target.value)}
-              placeholder="Enter room ID (UUID)"
-              className="w-full mt-2 bg-black/50 text-white px-3 py-2 rounded border border-gray-600 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && selectedRoomId) {
-                  handleAssign();
-                }
-              }}
-            />
-            <code className="text-xs block mt-2 bg-black/50 p-2 rounded">localStorage.setItem("room_id", "your-room-id")</code>
           </div>
         ) : (
           <>
             <div className="mb-6">
-              <label className="block text-white mb-2">Select Room:</label>
+              <label className="block text-white mb-2 font-semibold">Select Room:</label>
               <select
                 value={selectedRoomId}
                 onChange={(e) => setSelectedRoomId(e.target.value)}
-                className="w-full bg-slate-700 text-white px-4 py-2 rounded border border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                className="w-full bg-slate-700 text-white px-4 py-3 rounded border-2 border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
               >
                 <option value="">-- Select a room --</option>
-                {rooms.map((room) => (
-                  <option key={room.id} value={room.id}>
-                    {room.name || `Room ${room.id.slice(0, 8)}`}
-                  </option>
-                ))}
+                {rooms.map((room, index) => {
+                  const roomNum = index + 1;
+                  return (
+                    <option key={room.id} value={room.id}>
+                      Room {roomNum}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div className="mb-4 p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
