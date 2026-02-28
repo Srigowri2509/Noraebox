@@ -346,6 +346,10 @@ export default function Home() {
     const songToRemove = queue[index];
     console.log("🗑️ Removing song from queue:", songToRemove?.title || songToRemove?.id, "at index:", index);
     
+    // Get the actual position from the queue item (backend uses 1-based positions)
+    // If position is not available, use index + 1 (convert 0-based to 1-based)
+    const position = songToRemove?.position ?? (index + 1);
+    
     // Update local state immediately for instant feedback
     const newQueue = queue.filter((_, i) => i !== index);
     setQueue(newQueue);
@@ -354,9 +358,9 @@ export default function Home() {
     try {
       await api(`/rooms/${room.id}/queue/remove`, {
         method: "POST",
-        body: JSON.stringify({ position: index })
+        body: JSON.stringify({ position: position })
       });
-      console.log("✅ Queue item removed from backend");
+      console.log("✅ Queue item removed from backend at position:", position);
     } catch (error) {
       console.error("Error removing from queue:", error);
       // Revert local state if backend call fails
@@ -473,8 +477,16 @@ export default function Home() {
         const res = await api(`/rooms/${currentRoomId}/queue`);
         const queueData = res.data || res;
         if (mounted && Array.isArray(queueData)) {
-          // Update queue from backend
-          setQueue(queueData.map(item => item.songs || item));
+          // Update queue from backend - preserve position field from backend
+          setQueue(queueData.map(item => {
+            // If item has nested song data, merge it, otherwise use item as-is
+            const queueItem = item.songs || item;
+            // Ensure position is preserved
+            return {
+              ...queueItem,
+              position: item.position || queueItem.position
+            };
+          }));
         }
       } catch (error) {
         console.error("Error polling queue:", error);

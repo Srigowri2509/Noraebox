@@ -35,30 +35,54 @@ def start_session(
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
         
-        # Create new session with status='active' and session_end_time set
+        # Check if there's already an active session (due to unique constraint)
+        existing_session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
         now = datetime.now(timezone.utc)
         session_end_time = now + timedelta(minutes=minutes)
         
-        new_session = RoomSession(
-            room_id=room_id,
-            status="active",
-            total_minutes=minutes,
-            session_created_at=now,
-            session_start_time=now,
-            session_end_time=session_end_time,
-            current_song_id=None,
-            current_song_start_time=None
-        )
-        db.add(new_session)
-        db.commit()
-        db.refresh(new_session)
-        
-        # Update room status
-        room.status = 'active'
-        db.commit()
-        
-        print(f"POST /sessions/start: Session created with id {new_session.id}")
-        return {"status": "started"}
+        if existing_session:
+            # Update existing session instead of creating new one
+            print(f"POST /sessions/start: Updating existing session {existing_session.id}")
+            existing_session.total_minutes = minutes
+            existing_session.session_start_time = now
+            existing_session.session_end_time = session_end_time
+            existing_session.current_song_id = None
+            existing_session.current_song_start_time = None
+            db.commit()
+            db.refresh(existing_session)
+            
+            # Update room status
+            room.status = 'active'
+            db.commit()
+            
+            print(f"POST /sessions/start: Session updated with id {existing_session.id}")
+            return {"status": "started", "session_id": str(existing_session.id), "updated": True}
+        else:
+            # Create new session
+            new_session = RoomSession(
+                room_id=room_id,
+                status="active",
+                total_minutes=minutes,
+                session_created_at=now,
+                session_start_time=now,
+                session_end_time=session_end_time,
+                current_song_id=None,
+                current_song_start_time=None
+            )
+            db.add(new_session)
+            db.commit()
+            db.refresh(new_session)
+            
+            # Update room status
+            room.status = 'active'
+            db.commit()
+            
+            print(f"POST /sessions/start: Session created with id {new_session.id}")
+            return {"status": "started", "session_id": str(new_session.id), "updated": False}
     except HTTPException:
         raise
     except Exception as e:
