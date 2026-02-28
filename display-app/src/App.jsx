@@ -28,6 +28,10 @@ export default function App() {
   // Register device on mount
   useEffect(() => {
     (async () => {
+      // Clear any stale room data from localStorage first
+      localStorage.removeItem("room_id");
+      localStorage.removeItem("roomId");
+      
       try {
         const result = await ensureDeviceRegistered();
         console.log("Display App: Registration result:", result);
@@ -55,9 +59,6 @@ export default function App() {
           // No room assigned in backend - show room selection (BLOCK everything until room selected)
           console.log("Display App: No room assigned - showing room selection");
           console.log("Registration result:", { assigned: result.assigned, room_id: result.room_id });
-          // Clear any stale localStorage room data
-          localStorage.removeItem("room_id");
-          localStorage.removeItem("roomId");
           setShowRoomSelect(true);
           setRoomId(null);
         }

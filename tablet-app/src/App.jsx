@@ -42,17 +42,14 @@ export default function App() {
     // Set a maximum timeout to prevent infinite waiting (12 seconds)
     timeoutRef.current = setTimeout(() => {
       if (mountedRef.current) {
-        console.warn("Device registration timeout - proceeding with fallback");
-        const existingRoomId = localStorage.getItem("room_id") || localStorage.getItem("roomId");
-        if (existingRoomId) {
-          setRoomId(existingRoomId);
-          setIsChecking(false);
-        } else {
-          setShowRoomSelect(true);
-          setRooms([]);
-          setIsChecking(false);
-          setError("Backend connection timeout. Please start the backend server or enter a room ID manually.");
-        }
+        console.warn("Device registration timeout - showing room selection");
+        // Clear any stale room data and show room selection
+        localStorage.removeItem("room_id");
+        localStorage.removeItem("roomId");
+        setShowRoomSelect(true);
+        setRooms([]);
+        setIsChecking(false);
+        setError("Backend connection timeout. Please start the backend server or select a room.");
       }
     }, 12000);
     
@@ -66,6 +63,10 @@ export default function App() {
         if (!mountedRef.current) return;
         
         setDeviceInfo(result.device);
+        
+        // Clear any stale room data from localStorage first
+        localStorage.removeItem("room_id");
+        localStorage.removeItem("roomId");
         
         if (!result.assigned || !result.room_id) {
           // Device not assigned - show room selection
@@ -86,19 +87,14 @@ export default function App() {
         console.error("Error registering device:", error);
         if (!mountedRef.current) return;
         
-        // If backend is down, check if we have a room_id in localStorage
-        const existingRoomId = localStorage.getItem("room_id") || localStorage.getItem("roomId");
-        if (existingRoomId) {
-          // Use existing room_id and proceed
-          console.log("Using existing room_id from localStorage:", existingRoomId);
-          setRoomId(existingRoomId);
-        } else {
-          // Backend is down and no room_id - show room select with empty rooms
-          console.warn("Backend unavailable and no room_id found. Showing room select with empty list.");
-          setShowRoomSelect(true);
-          setRooms([]);
-          setError(error.message || "Cannot connect to backend");
-        }
+        // Backend is down - always show room select (don't use stale localStorage data)
+        console.warn("Backend unavailable. Showing room select.");
+        // Clear any stale room data
+        localStorage.removeItem("room_id");
+        localStorage.removeItem("roomId");
+        setShowRoomSelect(true);
+        setRooms([]);
+        setError(error.message || "Cannot connect to backend");
       } finally {
         if (mountedRef.current) {
           setIsChecking(false);
