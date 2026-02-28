@@ -87,18 +87,46 @@ export default function Home() {
       return [];
     }
     
+    // Log sample song structure for debugging
+    if (allSongs.length > 0) {
+      console.log('Sample song structure:', {
+        id: allSongs[0].id,
+        title: allSongs[0].title,
+        language: allSongs[0].language,
+        artist: allSongs[0].artist,
+        artist_name: allSongs[0].artist_name,
+        album: allSongs[0].album
+      });
+    }
+    
     let filtered = [...allSongs];
     const initialCount = filtered.length;
     
     // Filter by language
     if (filters.language !== "all") {
       const before = filtered.length;
+      const filterLangLower = filters.language.toLowerCase().trim();
       filtered = filtered.filter(song => {
-        const songLang = song.language?.trim();
-        const matches = songLang && songLang.toLowerCase() === filters.language.toLowerCase();
+        const songLang = song.language;
+        if (!songLang) {
+          return false;
+        }
+        const songLangLower = String(songLang).toLowerCase().trim();
+        const matches = songLangLower === filterLangLower;
+        
+        if (!matches && before < 20) {
+          console.log(`Language mismatch: song language="${songLang}" (${songLangLower}) vs filter="${filters.language}" (${filterLangLower})`);
+        }
         return matches;
       });
       console.log(`Language filter (${filters.language}): ${before} -> ${filtered.length}`);
+      if (filtered.length === 0 && before > 0) {
+        // Show available languages from the unfiltered list
+        const availableLangs = [...new Set(
+          allSongs.map(s => s.language).filter(Boolean)
+        )].slice(0, 10);
+        console.warn(`⚠️ No songs found for language "${filters.language}". Available languages in database:`, availableLangs);
+      }
     }
     
     // Filter by artist (use selectedArtist if set, otherwise use filters.artist)
@@ -164,6 +192,15 @@ export default function Home() {
     console.log(`Final filtered count: ${filtered.length} from ${initialCount} total songs`);
     if (filtered.length > 0) {
       console.log('Sample filtered song:', filtered[0]);
+      console.log('First few filtered songs:', filtered.slice(0, 3).map(s => ({
+        title: s.title,
+        language: s.language,
+        artist: s.artist || s.artist_name
+      })));
+    } else if (initialCount > 0) {
+      console.warn('⚠️ All songs were filtered out!');
+      console.warn('Available languages in songs:', [...new Set(allSongs.map(s => s.language).filter(Boolean))]);
+      console.warn('Available artists in songs:', [...new Set(allSongs.map(s => s.artist || s.artist_name).filter(Boolean))].slice(0, 10));
     }
     console.log('=== END FILTERING ===');
     
