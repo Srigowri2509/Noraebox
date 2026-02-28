@@ -353,6 +353,33 @@ export default function Home() {
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
+  // Helper function to check if a song is already in the queue (by song_id or title)
+  const isSongInQueue = (song, currentQueue) => {
+    if (!song || !currentQueue || currentQueue.length === 0) return false;
+    
+    const songId = song.id || song.song_id;
+    const songTitleNormalized = song.title?.trim().toLowerCase();
+    
+    // Check by song_id
+    const foundById = currentQueue.some(q => {
+      const queueSongId = q.song_id || q.id;
+      return queueSongId === songId;
+    });
+    
+    if (foundById) return true;
+    
+    // Check by title (case-insensitive)
+    if (songTitleNormalized) {
+      const foundByTitle = currentQueue.some(q => {
+        const queueTitle = q.title?.trim().toLowerCase();
+        return queueTitle === songTitleNormalized;
+      });
+      if (foundByTitle) return true;
+    }
+    
+    return false;
+  };
+  
   const handleAddToQueue = async (song) => {
     if (!song || !song.id) {
       console.error("Invalid song object:", song);
@@ -376,20 +403,7 @@ export default function Home() {
     }
     
     // Frontend check: prevent adding if song is already in queue
-    // Check by song_id first (most reliable)
-    const alreadyInQueueById = queue?.some(q => {
-      const queueSongId = q.song_id || q.id; // Check both song_id and id (for backward compatibility)
-      return queueSongId === songId;
-    });
-    
-    // Also check by title (case-insensitive) to prevent duplicates with same title but different IDs
-    const songTitleNormalized = song.title?.trim().toLowerCase();
-    const alreadyInQueueByTitle = songTitleNormalized && queue?.some(q => {
-      const queueTitle = q.title?.trim().toLowerCase();
-      return queueTitle === songTitleNormalized;
-    });
-    
-    if (alreadyInQueueById || alreadyInQueueByTitle) {
+    if (isSongInQueue(song, queue)) {
       console.log("ℹ️ Song already in queue (frontend check):", song.title, "song_id:", songId);
       console.log("Current queue:", queue);
       alert("This song is already in the queue.");
@@ -421,8 +435,15 @@ export default function Home() {
           console.log("✅ Successfully added to queue:", song.title);
         } catch (err) {
           console.error("Error refreshing queue after add:", err);
-          // Fallback: add to local state if refresh fails
-          setQueue((q) => [...(q || []), { ...song, song_id: songId }]);
+          // Fallback: add to local state if refresh fails (with duplicate check)
+          setQueue((prev) => {
+            const newItem = { ...song, song_id: songId };
+            if (isSongInQueue(newItem, prev)) {
+              console.log("⚠️ Song already in queue (fallback check):", song.title);
+              return prev; // already in queue
+            }
+            return [...prev, newItem];
+          });
         }
       } else if (response.status === "already_exists") {
         console.log("ℹ️ Song already in queue (backend check):", song.title);
