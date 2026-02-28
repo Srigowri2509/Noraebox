@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import distinct, or_
+from sqlalchemy import distinct, or_, text
 from typing import List
+import json
 from app.db import get_db
 from app.models import Song, SongArtist, Artist
 from app.schemas import SongResponse
@@ -39,74 +40,114 @@ def list_songs(
     try:
         print(f"GET /songs called (search={search}, signed_urls={signed_urls})")
         
-        # Eagerly load song_artists and artist relationships
-        query = db.query(Song).options(
-            joinedload(Song.song_artists).joinedload(SongArtist.artist)
-        )
+        # Build base SQL query with GROUP BY to prevent duplicates
+        base_query = """
+            SELECT 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count,
+                COALESCE(
+                    json_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', a.id,
+                            'name', a.name,
+                            'image_url', a.image_url
+                        )
+                    ) FILTER (WHERE a.id IS NOT NULL),
+                    '[]'::json
+                ) AS artists
+            FROM songs s
+            LEFT JOIN song_artists sa ON s.id = sa.song_id
+            LEFT JOIN artist a ON sa.artist_id = a.id
+        """
         
+        # Add WHERE clause if search is provided
+        where_clause = ""
         if search:
             like_pattern = f"%{search}%"
-            # Search in song fields AND artist names (join with Artist table)
-            query = query.outerjoin(SongArtist).outerjoin(Artist).filter(
-                or_(
-                    Song.title.ilike(like_pattern),
-                    Song.album.ilike(like_pattern),
-                    Song.language.ilike(like_pattern),
-                    Artist.name.ilike(like_pattern),  # Search by artist name
-                )
-            ).distinct()  # Ensure unique songs even if multiple artists match
+            where_clause = f"""
+            WHERE (
+                LOWER(s.title) LIKE LOWER(:search_pattern)
+                OR LOWER(s.album) LIKE LOWER(:search_pattern)
+                OR LOWER(s.language) LIKE LOWER(:search_pattern)
+                OR LOWER(a.name) LIKE LOWER(:search_pattern)
+            )
+            """
         
-        songs = query.all()
+        # Complete query with GROUP BY
+        query_sql = base_query + where_clause + """
+            GROUP BY 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count
+            ORDER BY s.title
+        """
         
-        print(f"Fetched {len(songs)} songs from database")
+        # Execute query
+        if search:
+            result = db.execute(text(query_sql), {"search_pattern": like_pattern})
+        else:
+            result = db.execute(text(query_sql))
+        
+        rows = result.fetchall()
+        
+        print(f"Fetched {len(rows)} songs from database")
         
         # Build result list
-        result = []
-        for song in songs:
+        songs = []
+        for row in rows:
+            # Parse artists JSON (it's already a Python list from PostgreSQL)
+            artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
+            
             # Generate signed URL if requested (default is True)
-            file_url_value = song.file_url
-            if signed_urls and song.file_url:
+            file_url_value = row.file_url
+            if signed_urls and row.file_url:
                 try:
-                    print(f"Generating signed URL for song {song.id}: {song.file_url}")
-                    file_url_value = generate_signed_url(song.file_url)
-                    print(f"✅ Generated signed URL for song {song.id}: {file_url_value[:80]}...")
+                    print(f"Generating signed URL for song {row.id}: {row.file_url}")
+                    file_url_value = generate_signed_url(row.file_url)
+                    print(f"✅ Generated signed URL for song {row.id}: {file_url_value[:80]}...")
                 except Exception as e:
-                    print(f"❌ ERROR: Failed to generate signed URL for song {song.id} ({song.file_url}): {e}")
+                    print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({row.file_url}): {e}")
                     import traceback
                     traceback.print_exc()
                     # Fallback to S3 key
-                    file_url_value = song.file_url
+                    file_url_value = row.file_url
             else:
-                print(f"⚠️ Skipping signed URL for song {song.id} (signed_urls={signed_urls}, file_url={song.file_url})")
+                print(f"⚠️ Skipping signed URL for song {row.id} (signed_urls={signed_urls}, file_url={row.file_url})")
+            
+            # Get first artist for backward compatibility (artist, artist_id, artist_image fields)
+            first_artist = artists_list[0] if artists_list else None
             
             song_data = {
-                "id": song.id,
-                "title": song.title,
-                "album": song.album,
-                "language": song.language,
+                "id": row.id,
+                "title": row.title,
+                "album": row.album,
+                "language": row.language,
                 "file_url": file_url_value,  # Signed URL if requested, otherwise S3 key
-                "s3_key": song.file_url,  # Always include original S3 key
-                "play_count": song.play_count,
-                "artist": None,  # Will be set from song_artists relationship
-                "artist_id": None,
-                "artist_image": None
+                "s3_key": row.file_url,  # Always include original S3 key
+                "play_count": row.play_count,
+                "artists": artists_list,  # Full array of all artists
+                "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
+                "artist_id": str(first_artist["id"]) if first_artist else None,  # Backward compatibility
+                "artist_image": first_artist.get("image_url") if first_artist else None  # Backward compatibility
             }
             
-            if song.song_artists and len(song.song_artists) > 0:
-                artist_rel = song.song_artists[0]
-                if artist_rel.artist:
-                    song_data["artist_id"] = artist_rel.artist.id
-                    song_data["artist"] = artist_rel.artist.name
-                    song_data["artist_image"] = artist_rel.artist.image_url
-            
-            result.append(song_data)
+            songs.append(song_data)
         
         url_type = "signed URLs" if signed_urls else "S3 keys"
-        print(f"Returning {len(result)} songs with {url_type}")
-        return result
+        print(f"Returning {len(songs)} songs with {url_type}")
+        return songs
 
     except Exception as e:
         print(f"Error in list_songs: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
