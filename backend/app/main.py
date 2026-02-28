@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import songs, rooms, sessions, devices, stats
+from app.routers import songs, rooms, sessions, devices, stats, queue
 from pathlib import Path
 import traceback
 import json
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(songs.router, prefix="/songs")
 app.include_router(rooms.router, prefix="/rooms")
 app.include_router(sessions.router, prefix="/sessions")
+app.include_router(queue.router, prefix="/queue")
 app.include_router(devices.router, prefix="/devices")
 app.include_router(stats.router, prefix="/stats")
 

@@ -19,8 +19,13 @@
                     └──────┬──────┘
                            │
                     ┌──────▼──────┐
-                    │  PostgreSQL │
-                    │  (Database) │
+                    │  AWS RDS    │
+                    │ PostgreSQL  │
+                    └─────────────┘
+                           │
+                    ┌──────▼──────┐
+                    │   AWS S3    │
+                    │ (File Store)│
                     └─────────────┘
 ```
 
@@ -139,10 +144,12 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 #### **Songs** (`/songs`)
 - ✅ `GET /songs` - List all songs with artist data (JOIN with artists table)
-- ✅ `GET /songs?search={query}` - Search songs by title
+- ✅ `GET /songs?search={query}` - Search songs by title, artist, album, language, or singer
 - ✅ `GET /songs/languages` - Get unique languages
 - ✅ `GET /songs/{song_id}` - Get single song with artist data
 - ✅ `POST /songs/upload` - Upload new song (not used by frontend)
+
+**Note:** All `file_url` values are **AWS S3 presigned URLs** generated on-demand. The database stores only the S3 object key (e.g., `Undipova.mp4`), and the backend generates temporary signed URLs when serving songs.
 
 **Response Format:**
 ```json
@@ -152,7 +159,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
     "title": "Song Title",
     "album": "Album Name",
     "language": "English",
-    "file_url": "https://...",
+    "file_url": "https://noraebox-audio-storage.s3.ap-south-2.amazonaws.com/Undipova.mp4?X-Amz-...",
     "artist": "Artist Name",
     "artist_image": "https://..."
   }
@@ -213,9 +220,11 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-## 🗄️ Database (PostgreSQL)
+## 🗄️ Database (AWS RDS PostgreSQL)
 
 **Status: ✅ CONNECTED** (via SQLAlchemy)
+
+**Infrastructure:** AWS RDS PostgreSQL instance in `ap-south-2` region
 
 ### Tables
 
@@ -267,6 +276,42 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    - `song_id` (integer)
    - `event_type` (text)
    - `timestamp` (timestamp)
+
+---
+
+## ☁️ AWS Services
+
+### **AWS S3 (File Storage)**
+**Status: ✅ CONFIGURED**
+
+**Purpose:** Store and serve song video files (MP4)
+
+**Configuration:**
+- **Bucket:** `noraebox-audio-storage` (configured via `S3_BUCKET_NAME` env var)
+- **Region:** `ap-south-2` (configured via `AWS_REGION` env var)
+- **Access:** Private bucket with presigned URLs
+- **URL Format:** `https://noraebox-audio-storage.s3.ap-south-2.amazonaws.com/{key}?X-Amz-...`
+
+**How It Works:**
+- Song `file_url` in database stores only the S3 object key (e.g., `Undipova.mp4`)
+- Backend generates presigned URLs on-demand when serving songs via `/songs` endpoints
+- Presigned URLs expire after 1 hour (configurable via `S3_SIGNED_URL_EXPIRATION`)
+- Uses AWS IAM role for authentication (no access keys needed in production)
+
+**Backend Service:** `app/s3_service.py`
+
+### **AWS RDS (Database)**
+**Status: ✅ CONFIGURED**
+
+**Purpose:** PostgreSQL database for all application data
+
+**Configuration:**
+- **Engine:** PostgreSQL
+- **Region:** `ap-south-2`
+- **Connection:** Via `DATABASE_URL` environment variable
+- **Format:** `postgresql://user:password@rds-endpoint:5432/database`
+
+**Backend Service:** `app/db.py`
 
 ---
 
@@ -423,7 +468,7 @@ npm run dev
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Backend Server | ✅ Ready | Must be running |
-| Database Connection | ✅ Working | Via Supabase |
+| Database Connection | ✅ Working | Via AWS RDS (PostgreSQL) |
 | Admin-App | ✅ Working | Needs backend |
 | Tablet-App | ✅ Working | Needs backend |
 | Display-App | ✅ Working | Needs backend |

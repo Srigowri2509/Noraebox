@@ -1,6 +1,6 @@
 -- ============================================
 -- DISCONNECT DEVICES FROM ROOMS
--- Run this in Supabase SQL Editor
+-- Run this in AWS RDS PostgreSQL (via psql or AWS Console)
 -- ============================================
 
 -- 1. Disconnect ALL tablet and display devices from rooms

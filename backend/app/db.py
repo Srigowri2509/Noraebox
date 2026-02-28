@@ -17,8 +17,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("Missing DATABASE_URL environment variable")
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+# Create SQLAlchemy engine with connection pooling optimized for AWS RDS
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # Verify connections before using
+    pool_size=10,  # Number of connections to maintain
+    max_overflow=20,  # Additional connections that can be created
+    pool_recycle=3600,  # Recycle connections after 1 hour (RDS best practice)
+    echo=False  # Set to True for SQL query logging in development
+)
 
 # Create SessionLocal class
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
