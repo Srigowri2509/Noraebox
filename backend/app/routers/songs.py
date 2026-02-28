@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import distinct, or_
 from typing import List
 from app.db import get_db
@@ -30,7 +30,10 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
     try:
         print(f"GET /songs called (search={search})")
         
-        query = db.query(Song)
+        # Eagerly load song_artists and artist relationships
+        query = db.query(Song).options(
+            joinedload(Song.song_artists).joinedload(SongArtist.artist)
+        )
         
         if search:
             like_pattern = f"%{search}%"
@@ -40,7 +43,6 @@ def list_songs(search: str = None, db: Session = Depends(get_db)):
                     Song.album.ilike(like_pattern),
                     Song.language.ilike(like_pattern),
                     Song.artist.ilike(like_pattern),
-                    Song.singer.ilike(like_pattern),
                 )
             )
         
@@ -93,7 +95,10 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid song ID format: {song_id}")
         
-        song = db.query(Song).filter(Song.id == song_id_int).first()
+        # Eagerly load song_artists and artist relationships
+        song = db.query(Song).options(
+            joinedload(Song.song_artists).joinedload(SongArtist.artist)
+        ).filter(Song.id == song_id_int).first()
         
         if not song:
             raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")

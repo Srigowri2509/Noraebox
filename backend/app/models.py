@@ -59,7 +59,6 @@ class Song(Base):
     language = Column(String, nullable=True)
     file_url = Column(Text, nullable=True)
     play_count = Column(Integer, default=0)
-    singer = Column(String, nullable=True)
     artist = Column(String, nullable=True)  # fallback field
     
     # Relationships
