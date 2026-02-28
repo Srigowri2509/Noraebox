@@ -199,7 +199,7 @@ export default function Display({ roomId }) {
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  // Handle video ended - call backend to mark playback ended
+  // Handle video ended - call backend to mark playback ended and auto-start next song
   const handleVideoEnded = async () => {
     console.log("🎵 Video ended, notifying backend for autoplay");
     try {
@@ -209,32 +209,77 @@ export default function Display({ roomId }) {
       
       console.log("✅ Playback ended response:", response);
       
-      // If backend auto-started next song, fetch it immediately
-      if (response && response.status === "next_started" && response.song_id) {
+      // If backend auto-started next song, use it immediately
+      if (response && response.status === "next_started") {
         console.log("🎵 Backend auto-started next song:", response.song_id);
-        // Immediately fetch the new song instead of waiting for next poll
-        try {
-          const songData = await api(`/songs/${response.song_id}`);
-          const videoUrl = songData.file_url || songData.video_url || songData.url;
-          if (videoUrl) {
+        
+        // Try to use song data from response first (faster)
+        if (response.song && response.song.file_url) {
+          const videoUrl = response.song.file_url;
+          // Get signed URL for the song
+          try {
+            const signedUrlResponse = await api(`/songs/${response.song_id}/signed-url`);
+            const finalVideoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+            
             setCurrentSong({
-              ...songData,
+              ...response.song,
+              videoUrl: finalVideoUrl
+            });
+            console.log("✅ Next song loaded immediately from response:", response.song.title);
+            return; // Successfully loaded next song
+          } catch (urlErr) {
+            console.warn("⚠️ Could not get signed URL, using file_url directly:", urlErr);
+            // Fallback to file_url if signed URL fails
+            setCurrentSong({
+              ...response.song,
               videoUrl: videoUrl
             });
-            console.log("✅ Next song loaded immediately:", songData.title);
-            return; // Don't clear current song, we already set the new one
+            console.log("✅ Next song loaded with file_url:", response.song.title);
+            return;
           }
-        } catch (err) {
-          console.error("❌ Error fetching next song:", err);
         }
+        
+        // Fallback: fetch song details if not in response
+        if (response.song_id) {
+          try {
+            const songData = await api(`/songs/${response.song_id}`);
+            const videoUrl = songData.file_url || songData.video_url || songData.url;
+            if (videoUrl) {
+              // Get signed URL
+              try {
+                const signedUrlResponse = await api(`/songs/${response.song_id}/signed-url`);
+                const finalVideoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+                setCurrentSong({
+                  ...songData,
+                  videoUrl: finalVideoUrl
+                });
+              } catch (urlErr) {
+                // Use file_url if signed URL fails
+                setCurrentSong({
+                  ...songData,
+                  videoUrl: videoUrl
+                });
+              }
+              console.log("✅ Next song loaded immediately:", songData.title);
+              return; // Don't clear current song, we already set the new one
+            }
+          } catch (err) {
+            console.error("❌ Error fetching next song:", err);
+          }
+        }
+      }
+      
+      // No next song available or fetch failed
+      if (response && response.status === "ended") {
+        console.log("ℹ️ No more songs in queue");
       }
       
       // Clear current song if no next song or fetch failed
       setCurrentSong(null);
-      // Will be updated on next poll (2 seconds)
+      // Will be updated on next poll (2 seconds) if a new song is added
     } catch (error) {
       console.error("❌ Error notifying playback ended:", error);
-      setCurrentSong(null);
+      // Don't clear current song on error - let it retry or wait for next poll
     }
   };
 

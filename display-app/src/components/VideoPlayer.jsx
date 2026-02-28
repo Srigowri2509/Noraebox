@@ -41,24 +41,57 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     };
   }, [hasUserInteracted]);
 
-  // Periodic check to ensure video keeps playing
+  // Aggressive periodic check to ensure video keeps playing (prevents getting stuck)
   useEffect(() => {
     if (!song || !song.videoUrl || !vref.current) return;
     
     const video = vref.current;
+    let lastPlayTime = video.currentTime;
+    let stuckCount = 0;
+    
     const playCheckInterval = setInterval(() => {
-      // If video should be playing but is paused (and not ended), resume it
-      if (video && !video.ended && video.paused && video.readyState >= 2) {
+      if (!video) return;
+      
+      // Check if video should be playing but is paused (and not ended)
+      if (!video.ended && video.paused && video.readyState >= 2) {
         const timeRemaining = video.duration - video.currentTime;
-        // Only auto-resume if there's significant time left (more than 2 seconds)
-        if (timeRemaining > 2) {
+        // Only auto-resume if there's significant time left (more than 1 second)
+        if (timeRemaining > 1) {
           console.log("VideoPlayer: Auto-resuming paused video (periodic check)");
           video.play().catch(err => {
             console.error("VideoPlayer: Failed to auto-resume:", err);
           });
         }
       }
-    }, 2000); // Check every 2 seconds
+      
+      // Check if video is stuck (not progressing even though it's playing)
+      if (!video.paused && !video.ended && video.readyState >= 2) {
+        const currentTime = video.currentTime;
+        // If time hasn't changed in 3 seconds, video is stuck
+        if (Math.abs(currentTime - lastPlayTime) < 0.1) {
+          stuckCount++;
+          if (stuckCount >= 3) { // Stuck for 3+ checks (3+ seconds)
+            console.warn("⚠️ VideoPlayer: Video appears stuck, attempting to resume...");
+            const savedTime = currentTime;
+            video.pause();
+            setTimeout(() => {
+              if (video && !video.ended) {
+                video.currentTime = savedTime;
+                video.play().catch(err => {
+                  console.error("VideoPlayer: Failed to resume stuck video:", err);
+                });
+              }
+            }, 100);
+            stuckCount = 0;
+          }
+        } else {
+          stuckCount = 0; // Reset if video is progressing
+        }
+        lastPlayTime = currentTime;
+      } else {
+        stuckCount = 0; // Reset if paused or ended
+      }
+    }, 1000); // Check every 1 second (more frequent)
     
     return () => clearInterval(playCheckInterval);
   }, [song]);
@@ -112,9 +145,27 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         }
       };
       
-      // Handle buffering/stalled - resume when ready
+      // Handle buffering/stalled - aggressively resume when ready
       const handleWaiting = () => {
         console.log("VideoPlayer: Video waiting/buffering...");
+        // Set up a timeout to force resume if buffering takes too long
+        const bufferingTimeout = setTimeout(() => {
+          if (video && video.readyState >= 2 && !video.ended) {
+            console.log("VideoPlayer: Buffering timeout, attempting to resume...");
+            video.play().catch(err => {
+              console.error("VideoPlayer: Failed to resume after buffering timeout:", err);
+            });
+          }
+        }, 5000); // Force resume after 5 seconds of buffering
+        
+        // Clean up timeout when video starts playing again
+        const handleResumeAfterWait = () => {
+          clearTimeout(bufferingTimeout);
+          video.removeEventListener('playing', handleResumeAfterWait);
+          video.removeEventListener('canplay', handleResumeAfterWait);
+        };
+        video.addEventListener('playing', handleResumeAfterWait, { once: true });
+        video.addEventListener('canplay', handleResumeAfterWait, { once: true });
       };
       
       const handlePlaying = () => {
@@ -124,15 +175,54 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       
       // Handle when video can continue playing after buffering/stalling
       const handleCanPlayAfterStall = () => {
-        if (video && video.paused && !video.ended) {
-          console.log("VideoPlayer: Resuming after stalling/buffering...");
-          setTimeout(() => {
-            if (video && video.paused && !video.ended) {
+        console.log("VideoPlayer: Video stalled, attempting to resume...");
+        if (video && !video.ended) {
+          // More aggressive resume - try multiple times
+          const attemptResume = (attempt = 1) => {
+            if (video && !video.ended && video.readyState >= 2) {
+              if (video.paused) {
+                video.play()
+                  .then(() => {
+                    console.log("✅ VideoPlayer: Successfully resumed after stalling");
+                  })
+                  .catch(err => {
+                    console.error(`VideoPlayer: Resume attempt ${attempt} failed:`, err);
+                    // Retry up to 3 times
+                    if (attempt < 3) {
+                      setTimeout(() => attemptResume(attempt + 1), 500);
+                    }
+                  });
+              } else {
+                // Video is playing but stalled - try seeking slightly forward
+                const currentTime = video.currentTime;
+                video.currentTime = currentTime + 0.1;
+                console.log("VideoPlayer: Seeking forward to unstuck video");
+              }
+            }
+          };
+          setTimeout(() => attemptResume(), 100);
+        }
+      };
+      
+      // Handle suspend event (browser paused video to save resources)
+      const handleSuspend = () => {
+        console.log("VideoPlayer: Video suspended by browser, will resume when ready");
+      };
+      
+      // Handle progress event - track if video is actually loading
+      let lastBufferedEnd = 0;
+      const handleProgress = () => {
+        if (video && video.buffered.length > 0) {
+          const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+          if (bufferedEnd > lastBufferedEnd) {
+            lastBufferedEnd = bufferedEnd;
+            // Video is buffering, ensure it plays when ready
+            if (video.paused && !video.ended && video.readyState >= 3) {
               video.play().catch(err => {
-                console.error("VideoPlayer: Failed to resume after stalling:", err);
+                console.error("VideoPlayer: Failed to play after progress:", err);
               });
             }
-          }, 200);
+          }
         }
       };
       
@@ -197,6 +287,8 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('stalled', handleCanPlayAfterStall);
+      video.addEventListener('suspend', handleSuspend);
+      video.addEventListener('progress', handleProgress);
       
       // Load and play video
       // Always start muted to bypass autoplay restrictions
@@ -232,6 +324,8 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         video.removeEventListener('waiting', handleWaiting);
         video.removeEventListener('playing', handlePlaying);
         video.removeEventListener('stalled', handleCanPlayAfterStall);
+        video.removeEventListener('suspend', handleSuspend);
+        video.removeEventListener('progress', handleProgress);
       };
     } else if (!song || !song.videoUrl) {
       setError(null);

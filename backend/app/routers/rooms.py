@@ -377,16 +377,18 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             RoomSession.status == 'active'
         ).first()
         
+        now = datetime.now(timezone.utc)
+        
         if not session:
             # Create a new active session with default 60 minutes
-            now = datetime.now(timezone.utc)
+            # Timer starts NOW (first song is being played)
             session_end_time = now + timedelta(minutes=60)
             session = RoomSession(
                 room_id=room_id,
                 status='active',
                 total_minutes=60,
                 session_created_at=now,
-                session_start_time=now,
+                session_start_time=now,  # Timer starts when first song plays
                 session_end_time=session_end_time,
                 current_song_id=next_item.song_id,
                 current_song_start_time=now
@@ -394,11 +396,13 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             db.add(session)
             # Update room status
             room.status = 'active'
-            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with 60 minutes")
+            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with 60 minutes, timer starts now")
         else:
             # Update existing session with next song
+            # DO NOT update session_start_time - timer should continue from when it first started
             session.current_song_id = next_item.song_id
-            session.current_song_start_time = datetime.now(timezone.utc)
+            session.current_song_start_time = now  # Only update current song start time
+            print(f"POST /rooms/{room_id}/playback/start_next: Continuing session, timer NOT restarted")
         
         # Remove the song from queue
         db.delete(next_item)
@@ -462,19 +466,30 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
         
         if next_item:
             # Auto-start next song
+            now = datetime.now(timezone.utc)
+            
             if not session:
+                # Create a new active session with default 60 minutes
+                # Timer starts NOW (first song is being played)
+                session_end_time = now + timedelta(minutes=60)
                 session = RoomSession(
                     room_id=room_id,
                     status='active',
-                    session_created_at=datetime.now(timezone.utc),
-                    session_start_time=datetime.now(timezone.utc),
+                    total_minutes=60,
+                    session_created_at=now,
+                    session_start_time=now,  # Timer starts when first song plays
+                    session_end_time=session_end_time,
                     current_song_id=next_item.song_id,
-                    current_song_start_time=datetime.now(timezone.utc)
+                    current_song_start_time=now
                 )
                 db.add(session)
+                print(f"POST /rooms/{room_id}/playback/ended: Creating new session with 60 minutes, timer starts now")
             else:
+                # Update existing session with next song
+                # DO NOT update session_start_time - timer should continue from when it first started
                 session.current_song_id = next_item.song_id
-                session.current_song_start_time = datetime.now(timezone.utc)
+                session.current_song_start_time = now  # Only update current song start time
+                print(f"POST /rooms/{room_id}/playback/ended: Continuing session, timer NOT restarted")
             
             # Remove from queue
             db.delete(next_item)
@@ -726,7 +741,7 @@ def update_room_status(room_id: str, payload: dict = Body(...), db: Session = De
 
 @router.post("/{room_id}/end")
 def end_room_session(room_id: str, db: Session = Depends(get_db)):
-    """End a room session"""
+    """End a room session - delete/end the current session"""
     try:
         # Verify room exists
         room = db.query(Room).filter(Room.id == room_id).first()
@@ -734,7 +749,7 @@ def end_room_session(room_id: str, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Room not found")
         
         # Update active session to 'ended'
-        updated = db.query(RoomSession).filter(
+        result = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
             RoomSession.status == 'active'
         ).update({"status": "ended"})
@@ -744,11 +759,65 @@ def end_room_session(room_id: str, db: Session = Depends(get_db)):
         room.is_active = False
         db.commit()
         
-        print(f"POST /rooms/{room_id}/end: Session ended successfully")
-        return {"status": "ended"}
+        print(f"POST /rooms/{room_id}/end: Session ended successfully (updated {result} session(s))")
+        return {"status": "ended", "message": "Session ended successfully"}
     except HTTPException:
         raise
     except Exception as e:
         db.rollback()
         print(f"Error ending session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/extend")
+def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Extend the current session by adding minutes to the total time"""
+    try:
+        minutes = payload.get("minutes")
+        if not minutes or minutes <= 0:
+            raise HTTPException(status_code=400, detail="minutes must be a positive integer")
+        
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+        
+        # Get active session
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
+        ).first()
+        
+        if not session:
+            raise HTTPException(status_code=404, detail="No active session found for this room")
+        
+        # Add minutes to total_minutes
+        session.total_minutes = (session.total_minutes or 0) + minutes
+        
+        # Recalculate session_end_time based on session_start_time (if timer has started)
+        # or from now (if timer hasn't started yet)
+        now = datetime.now(timezone.utc)
+        if session.session_start_time:
+            # Timer has started - extend from the original start time
+            session.session_end_time = session.session_start_time + timedelta(minutes=session.total_minutes)
+            print(f"POST /rooms/{room_id}/extend: Extended session by {minutes} minutes (timer already started)")
+        else:
+            # Timer hasn't started yet - extend from now
+            session.session_end_time = now + timedelta(minutes=session.total_minutes)
+            print(f"POST /rooms/{room_id}/extend: Extended session by {minutes} minutes (timer not started yet)")
+        
+        db.commit()
+        db.refresh(session)
+        
+        print(f"POST /rooms/{room_id}/extend: Session extended successfully. New total: {session.total_minutes} minutes")
+        return {
+            "status": "extended",
+            "total_minutes": session.total_minutes,
+            "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error extending session: {e}")
         raise HTTPException(status_code=500, detail=str(e))

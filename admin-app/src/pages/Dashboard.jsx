@@ -98,40 +98,18 @@ export default function Dashboard() {
       return;
     }
     try {
-      // Get current session state from room_sessions
-      const sessionData = await api(`/rooms/${selectedRoom.id}/session`);
-      const session = sessionData.session;
-      
-      if (!session || !selectedRoom.is_active) {
+      if (!selectedRoom.is_active) {
         // If session not active, just start a new one
         await startRoom(minutes);
         return;
       }
       
-      // Calculate remaining time from session_start_time
-      let newTotalMinutes = minutes;
-      if (session.session_start_time && session.total_minutes) {
-        const startedAt = new Date(session.session_start_time);
-        const now = new Date();
-        const elapsedMinutes = (now - startedAt) / 60000;
-        const remainingMinutes = Math.max(0, session.total_minutes - elapsedMinutes);
-        newTotalMinutes = remainingMinutes + minutes;
-        
-        console.log(`Extending session for room ${selectedRoom.id} by ${minutes} minutes`);
-        console.log(`Current remaining: ${remainingMinutes.toFixed(1)} min, New total: ${newTotalMinutes.toFixed(1)} min`);
-      } else {
-        // Session ready but idle - just add to total_minutes
-        newTotalMinutes = (session.total_minutes || 0) + minutes;
-        console.log(`Extending session for room ${selectedRoom.id} by ${minutes} minutes (session not started yet)`);
-      }
-      
-      // Update room_sessions total_minutes via room status endpoint
-      // Note: We need to update room_sessions, but for now use the status endpoint
-      // TODO: Create proper endpoint to update room_sessions.total_minutes
-      await api(`/rooms/${selectedRoom.id}/status`, {
-        method: "PUT",
+      // Use the extend endpoint to add minutes to current session
+      console.log(`Extending session for room ${selectedRoom.id} by ${minutes} minutes`);
+      await api(`/rooms/${selectedRoom.id}/extend`, {
+        method: "POST",
         body: JSON.stringify({
-          total_minutes: newTotalMinutes
+          minutes: minutes
         })
       });
       
