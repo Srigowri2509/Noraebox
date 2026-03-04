@@ -44,6 +44,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
   // Simplified playback: load and play the given URL, rely on browser controls/autoplay.
   useEffect(() => {
     if (!song || !song.videoUrl) {
+      console.log("VideoPlayer: No song or videoUrl", { hasSong: !!song, videoUrl: song?.videoUrl });
       setError(null);
       setLoading(false);
       return;
@@ -51,8 +52,10 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
 
     const video = vref.current;
     console.log("VideoPlayer: Simple effect. Has ref?", !!video, "URL:", song.videoUrl);
+    console.log("VideoPlayer: Full song object:", { title: song.title, videoUrl: song.videoUrl, file_url: song.file_url });
     if (!video) {
       // Ref not attached yet; wait for next render
+      console.log("VideoPlayer: Video ref not attached yet, waiting...");
       return;
     }
 
@@ -60,13 +63,35 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     setLoading(true);
 
     const handleCanPlay = () => {
-      console.log("VideoPlayer: canplay");
+      console.log("VideoPlayer: canplay - video is ready to play");
+      setLoading(false);
+      // Try to play when ready
+      if (video.paused) {
+        const playPromise = video.play();
+        if (playPromise && playPromise.then) {
+          playPromise
+            .then(() => {
+              console.log("VideoPlayer: Successfully started playing after canplay");
+            })
+            .catch((err) => {
+              console.warn("VideoPlayer: Play failed after canplay:", err);
+            });
+        }
+      }
+    };
+
+    const handleCanPlayThrough = () => {
+      console.log("VideoPlayer: canplaythrough - video can play through without buffering");
       setLoading(false);
     };
 
     const handlePlaying = () => {
-      console.log("VideoPlayer: playing");
+      console.log("VideoPlayer: playing - video is now playing");
       setLoading(false);
+    };
+
+    const handleLoadedData = () => {
+      console.log("VideoPlayer: loadeddata - video data loaded");
     };
 
     const handleError = (e) => {
@@ -77,32 +102,57 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         networkState: video.networkState,
         readyState: video.readyState,
         src: video.currentSrc || video.src,
+        videoUrl: song.videoUrl,
       });
+      
+      // Log more details about the error
+      if (video.error) {
+        const errorCode = video.error.code;
+        const errorMessages = {
+          1: "MEDIA_ERR_ABORTED - The user aborted the video",
+          2: "MEDIA_ERR_NETWORK - Network error while loading video",
+          3: "MEDIA_ERR_DECODE - Error decoding video",
+          4: "MEDIA_ERR_SRC_NOT_SUPPORTED - Video format not supported or source not found"
+        };
+        console.error(`VideoPlayer: Error code ${errorCode}: ${errorMessages[errorCode] || "Unknown error"}`);
+      }
+      
       setError("Failed to load video");
       setLoading(false);
     };
 
     video.addEventListener("canplay", handleCanPlay);
+    video.addEventListener("canplaythrough", handleCanPlayThrough);
     video.addEventListener("playing", handlePlaying);
+    video.addEventListener("loadeddata", handleLoadedData);
     video.addEventListener("error", handleError);
 
     try {
+      // Set source first
+      console.log("VideoPlayer: Setting video src to:", song.videoUrl);
+      video.src = song.videoUrl;
+      
       // Autoplay muted to satisfy browser policies
       video.muted = true;
       video.autoplay = true;
-      console.log("VideoPlayer: Calling load() and play()");
+      console.log("VideoPlayer: Calling load() to start loading video");
       video.load();
+      
+      // Try to play immediately (browser may allow muted autoplay)
+      // If it fails, the canplay event handler will retry
       const playPromise = video.play();
       if (playPromise && playPromise.then) {
         playPromise
           .then(() => {
-            console.log("VideoPlayer: play() resolved");
+            console.log("VideoPlayer: play() resolved immediately - video should start playing");
             setLoading(false);
           })
           .catch((err) => {
-            console.warn("VideoPlayer: play() rejected:", err);
-            setLoading(false);
+            console.warn("VideoPlayer: play() rejected immediately (will retry on canplay):", err);
+            // Don't set loading to false yet - wait for canplay event
           });
+      } else {
+        console.log("VideoPlayer: play() returned non-promise");
       }
     } catch (e) {
       console.error("VideoPlayer: Exception during simple setup:", e);
@@ -112,7 +162,9 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     return () => {
       console.log("VideoPlayer: Cleaning up simple listeners");
       video.removeEventListener("canplay", handleCanPlay);
+      video.removeEventListener("canplaythrough", handleCanPlayThrough);
       video.removeEventListener("playing", handlePlaying);
+      video.removeEventListener("loadeddata", handleLoadedData);
       video.removeEventListener("error", handleError);
     };
   }, [song]);
@@ -179,7 +231,6 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         disablePictureInPicture={true}
         controlsList="nodownload nofullscreen noremoteplayback"
         playsInline
-        autoPlay
         muted={true}
         preload="auto"
         crossOrigin="anonymous"
@@ -192,7 +243,6 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           cursor: 'default',
           backgroundColor: 'black'
         }}
-        src={song.videoUrl}
       >
         Your browser does not support the video tag.
       </video>
