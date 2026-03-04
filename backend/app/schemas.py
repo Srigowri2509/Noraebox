@@ -67,10 +67,14 @@ class SongResponse(BaseModel):
     album: Optional[str]
     language: Optional[str]
     file_url: Optional[str]
-    play_count: int
+    # play_count can be NULL in DB; default to 0 in API
+    play_count: Optional[int] = 0
     artist: Optional[str]
-    artist_id: Optional[UUID] = None
+    # Your artist IDs are integers (not UUIDs), so expose them as int
+    artist_id: Optional[int] = None
     artist_image: Optional[str] = None
+    # Optional explicit artist_name field used by some frontends
+    artist_name: Optional[str] = None
     
     class Config:
         from_attributes = True

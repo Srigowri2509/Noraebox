@@ -123,6 +123,9 @@ def list_songs(
             # Get first artist for backward compatibility (artist, artist_id, artist_image fields)
             first_artist = artists_list[0] if artists_list else None
             
+            # Ensure play_count is an integer (fallback to 0 if NULL)
+            play_count_value = row.play_count if isinstance(row.play_count, int) and row.play_count is not None else int(row.play_count or 0)
+
             song_data = {
                 "id": row.id,
                 "title": row.title,
@@ -130,11 +133,12 @@ def list_songs(
                 "language": row.language,
                 "file_url": file_url_value,  # Signed URL if requested, otherwise S3 key
                 "s3_key": row.file_url,  # Always include original S3 key
-                "play_count": row.play_count,
+                "play_count": play_count_value,
                 "artists": artists_list,  # Full array of all artists
                 "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
                 "artist_name": first_artist["name"] if first_artist else None,  # Explicit artist_name for frontend
-                "artist_id": str(first_artist["id"]) if first_artist else None,  # Backward compatibility
+                # artist_id is an integer in your DB
+                "artist_id": int(first_artist["id"]) if (first_artist and "id" in first_artist and first_artist["id"] is not None) else None,
                 # Your artist table does not have an image_url column; keep this for future but it will be None
                 "artist_image": first_artist.get("image_url") if (isinstance(first_artist, dict) and "image_url" in first_artist) else None
             }
