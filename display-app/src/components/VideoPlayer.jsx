@@ -65,6 +65,13 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     const handleCanPlay = () => {
       console.log("VideoPlayer: canplay - video is ready to play");
       setLoading(false);
+      
+      // If user has interacted, unmute for audio playback
+      if (hasUserInteracted && video.muted) {
+        video.muted = false;
+        console.log("VideoPlayer: Unmuting video (user has interacted)");
+      }
+      
       // Try to play when ready
       if (video.paused) {
         const playPromise = video.play();
@@ -72,6 +79,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           playPromise
             .then(() => {
               console.log("VideoPlayer: Successfully started playing after canplay");
+              // Unmute after successful play if user has interacted
+              if (hasUserInteracted && video.muted) {
+                video.muted = false;
+                console.log("VideoPlayer: Unmuting after successful play");
+              }
             })
             .catch((err) => {
               console.warn("VideoPlayer: Play failed after canplay:", err);
@@ -132,10 +144,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       console.log("VideoPlayer: Setting video src to:", song.videoUrl);
       video.src = song.videoUrl;
       
-      // Autoplay muted to satisfy browser policies
-      video.muted = true;
+      // Autoplay: Start muted to satisfy browser policies, but unmute if user has already interacted
+      // This allows audio to play automatically after the first user interaction
+      video.muted = !hasUserInteracted;
       video.autoplay = true;
-      console.log("VideoPlayer: Calling load() to start loading video");
+      console.log(`VideoPlayer: Starting video ${hasUserInteracted ? 'unmuted' : 'muted'} (hasUserInteracted: ${hasUserInteracted})`);
       video.load();
       
       // Try to play immediately (browser may allow muted autoplay)
@@ -146,6 +159,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           .then(() => {
             console.log("VideoPlayer: play() resolved immediately - video should start playing");
             setLoading(false);
+            // Unmute after successful play if user has interacted
+            if (hasUserInteracted && video.muted) {
+              video.muted = false;
+              console.log("VideoPlayer: Unmuting after successful immediate play");
+            }
           })
           .catch((err) => {
             console.warn("VideoPlayer: play() rejected immediately (will retry on canplay):", err);
@@ -221,17 +239,22 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           onEnded && onEnded();
         }}
         onClick={() => {
-          // Mark interaction so browser is allowed to autoplay with sound later
+          // Mark interaction so browser is allowed to autoplay with sound
           if (!hasUserInteracted) {
             setHasUserInteracted(true);
             sessionStorage.setItem("video_autoplay_enabled", "true");
+          }
+          // Unmute immediately on click
+          if (vref.current) {
+            vref.current.muted = false;
+            console.log("VideoPlayer: Unmuted on user click");
           }
         }}
         controls={true}
         disablePictureInPicture={true}
         controlsList="nodownload nofullscreen noremoteplayback"
         playsInline
-        muted={true}
+        muted={!hasUserInteracted}
         preload="auto"
         crossOrigin="anonymous"
         style={{ 
