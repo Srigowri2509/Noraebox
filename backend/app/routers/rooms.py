@@ -31,13 +31,22 @@ def list_rooms(db: Session = Depends(get_db)):
 def get_room_session(room_id: str, db: Session = Depends(get_db)):
     """Get room session data - backward compatibility endpoint"""
     try:
-        # Get the most recent session (active or latest)
+        # Get the most recent ACTIVE session first, then fall back to most recent session
         session = db.query(RoomSession).filter(
-            RoomSession.room_id == room_id
+            RoomSession.room_id == room_id,
+            RoomSession.status == 'active'
         ).order_by(RoomSession.session_created_at.desc()).first()
+        
+        # If no active session, get the most recent session of any status
+        if not session:
+            session = db.query(RoomSession).filter(
+                RoomSession.room_id == room_id
+            ).order_by(RoomSession.session_created_at.desc()).first()
 
         if not session:
             return {"session": None, "queue": []}
+        
+        print(f"📊 GET /rooms/{room_id}/session: Found session id={session.id}, status={session.status}, total_minutes={session.total_minutes}")
 
         # Get queue
         queue_items = db.query(QueueItem, Song).join(
@@ -560,12 +569,19 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
     """Start a session for a room - short endpoint /rooms/{room_id}/start"""
     try:
         # Support both "minutes" and "total_minutes" in payload
-        minutes = payload.get("minutes") or payload.get("total_minutes", DEFAULT_SESSION_MINUTES)
+        # Only use default if neither is provided
+        minutes = None
+        if "total_minutes" in payload:
+            minutes = payload.get("total_minutes")
+        elif "minutes" in payload:
+            minutes = payload.get("minutes")
+        else:
+            minutes = DEFAULT_SESSION_MINUTES
         
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
         
-        print(f"POST /rooms/{room_id}/sessions/start: Starting session with {minutes} minutes")
+        print(f"📝 POST /rooms/{room_id}/start: Starting session with {minutes} minutes (from payload: {payload})")
         
         # Verify room exists
         room = db.query(Room).filter(Room.id == room_id).first()
@@ -641,12 +657,19 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
     """Start a session for a room - alternative endpoint under /rooms"""
     try:
         # Support both "minutes" and "total_minutes" in payload
-        minutes = payload.get("minutes") or payload.get("total_minutes", DEFAULT_SESSION_MINUTES)
+        # Only use default if neither is provided
+        minutes = None
+        if "total_minutes" in payload:
+            minutes = payload.get("total_minutes")
+        elif "minutes" in payload:
+            minutes = payload.get("minutes")
+        else:
+            minutes = DEFAULT_SESSION_MINUTES
         
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
         
-        print(f"POST /rooms/{room_id}/sessions/start: Starting session with {minutes} minutes")
+        print(f"📝 POST /rooms/{room_id}/sessions/start: Starting session with {minutes} minutes (from payload: {payload})")
         
         # Verify room exists
         room = db.query(Room).filter(Room.id == room_id).first()
@@ -824,11 +847,11 @@ def end_room_session(room_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{room_id}/extend")
 def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
-    """Set the total session time to the specified minutes (replaces existing total_minutes)"""
+    """Add minutes to the current session time (extends the remaining time)"""
     try:
         # Support both "minutes" and "total_minutes" for consistency
-        minutes = payload.get("minutes") or payload.get("total_minutes")
-        if not minutes or minutes <= 0:
+        extend_minutes = payload.get("minutes") or payload.get("total_minutes")
+        if not extend_minutes or extend_minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
         
         # Verify room exists
@@ -845,27 +868,30 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
         if not session:
             raise HTTPException(status_code=404, detail="No active session found for this room")
         
-        # SET total_minutes to the new value (don't add to existing)
-        old_total = session.total_minutes
-        session.total_minutes = minutes
-        print(f"📝 POST /rooms/{room_id}/extend: Setting total_minutes from {old_total} to {minutes}")
-        
-        # Recalculate session_end_time based on session_start_time (if timer has started)
-        # or from now (if timer hasn't started yet)
         now = datetime.now(timezone.utc)
+        old_total = session.total_minutes
+        
+        # Calculate how to extend based on whether timer has started
         if session.session_start_time:
-            # Timer has started - recalculate end time from the original start time with new total
+            # Timer has started - calculate remaining time and add extend_minutes to it
+            elapsed_minutes = (now - session.session_start_time).total_seconds() / 60
+            remaining_minutes = max(0, session.total_minutes - elapsed_minutes)
+            new_remaining = remaining_minutes + extend_minutes
+            # Set total_minutes to elapsed + new_remaining so the timer shows the correct remaining time
+            session.total_minutes = int(elapsed_minutes) + int(new_remaining)
+            # Recalculate end time from start time with new total
             session.session_end_time = session.session_start_time + timedelta(minutes=session.total_minutes)
-            print(f"POST /rooms/{room_id}/extend: Updated session time to {minutes} minutes (timer already started, recalculated end time)")
+            print(f"📝 POST /rooms/{room_id}/extend: Timer running - Remaining: {remaining_minutes:.1f} min, Adding: {extend_minutes} min, New remaining: {new_remaining:.1f} min, New total: {session.total_minutes} min")
         else:
-            # Timer hasn't started yet - set end time from now
+            # Timer hasn't started yet - just add to total_minutes
+            session.total_minutes = (session.total_minutes or 0) + extend_minutes
             session.session_end_time = now + timedelta(minutes=session.total_minutes)
-            print(f"POST /rooms/{room_id}/extend: Updated session time to {minutes} minutes (timer not started yet)")
+            print(f"📝 POST /rooms/{room_id}/extend: Timer not started - Adding {extend_minutes} min to total, New total: {session.total_minutes} min")
         
         db.commit()
         db.refresh(session)
         
-        print(f"✅ POST /rooms/{room_id}/extend: Session time updated successfully. New total_minutes: {session.total_minutes}")
+        print(f"✅ POST /rooms/{room_id}/extend: Session extended successfully. Old total: {old_total}, New total_minutes: {session.total_minutes}")
         return {
             "status": "extended",
             "total_minutes": session.total_minutes,

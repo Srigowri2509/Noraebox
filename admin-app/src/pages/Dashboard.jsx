@@ -116,18 +116,22 @@ export default function Dashboard() {
         return;
       }
       
-      // Use the extend endpoint to add minutes to current session
-      console.log(`Extending session for room ${selectedRoom.id} by ${minutes} minutes`);
+      // Use the extend endpoint to set total minutes for current session
+      console.log(`Setting session time for room ${selectedRoom.id} to ${minutes} minutes`);
       await api(`/rooms/${selectedRoom.id}/extend`, {
         method: "POST",
         body: JSON.stringify({
-          minutes: minutes
+          minutes: minutes,
+          total_minutes: minutes  // Also send as total_minutes for clarity
         })
       });
       
-      console.log("Session extended successfully");
+      console.log("Session time updated successfully");
       setSelectedRoom(null);
-      loadRooms();
+      // Force refresh rooms immediately
+      await loadRooms();
+      // Also refresh after a short delay to ensure backend has committed
+      setTimeout(() => loadRooms(), 500);
     } catch (err) {
       console.error("Error extending room:", err);
       alert(`Failed to extend session: ${err.message || "Unknown error"}`);

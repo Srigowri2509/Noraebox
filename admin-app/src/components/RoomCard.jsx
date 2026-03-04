@@ -10,7 +10,11 @@ export default function RoomCard({ room, onExtend, onEnd }) {
     const fetchSession = async () => {
       try {
         const sessionData = await api(`/rooms/${room.id}/session`);
-        setSession(sessionData.session);
+        const session = sessionData.session;
+        if (session) {
+          console.log(`📊 Admin RoomCard: Fetched session for ${room.name} - total_minutes: ${session.total_minutes}`);
+        }
+        setSession(session);
       } catch (error) {
         console.error("Error fetching session:", error);
         setSession(null);
@@ -32,10 +36,13 @@ export default function RoomCard({ room, onExtend, onEnd }) {
       return null; // Session ready but idle - no timer yet
     }
 
+    console.log(`⏱️ Admin RoomCard: Computing timer - total_minutes: ${session.total_minutes}, session_start_time: ${session.session_start_time}`);
     const start = new Date(session.session_start_time);
     const now = new Date();
     const elapsed = (now - start) / 60000;
-    return Math.max(0, session.total_minutes - elapsed);
+    const remaining = Math.max(0, session.total_minutes - elapsed);
+    console.log(`⏱️ Admin RoomCard: Elapsed: ${elapsed.toFixed(2)} min, Remaining: ${remaining.toFixed(2)} min`);
+    return remaining;
   };
 
   useEffect(() => {
