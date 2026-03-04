@@ -62,9 +62,9 @@ export default function App() {
         // Clear any stale room data and show room selection
         localStorage.removeItem("room_id");
         localStorage.removeItem("roomId");
-        setShowRoomSelect(true);
-        setRooms([]);
-        setIsChecking(false);
+          setShowRoomSelect(true);
+          setRooms([]);
+          setIsChecking(false);
         setError("Backend connection timeout. Please start the backend server or select a room.");
       }
     }, 12000);
@@ -106,9 +106,9 @@ export default function App() {
         // Clear any stale room data
         localStorage.removeItem("room_id");
         localStorage.removeItem("roomId");
-        setShowRoomSelect(true);
-        setRooms([]);
-        setError(error.message || "Cannot connect to backend");
+          setShowRoomSelect(true);
+          setRooms([]);
+          setError(error.message || "Cannot connect to backend");
       } finally {
         if (mountedRef.current) {
           setIsChecking(false);

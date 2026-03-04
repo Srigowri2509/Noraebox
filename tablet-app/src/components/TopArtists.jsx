@@ -39,8 +39,8 @@ export default function TopArtists({ artists = [], onArtistSelect, selectedArtis
           No artists found. Add songs to your database to see artists here.
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-          {list.map((a, i) => {
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        {list.map((a, i) => {
           const artistName = a.name || a.artist;
           const songCount = a.songCount || a.count || 0;
           return (
@@ -81,7 +81,7 @@ export default function TopArtists({ artists = [], onArtistSelect, selectedArtis
             </div>
           );
         })}
-        </div>
+      </div>
       )}
 
     </section>

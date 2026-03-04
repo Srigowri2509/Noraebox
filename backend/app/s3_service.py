@@ -27,18 +27,25 @@ if not S3_PUBLIC_BUCKET:
         )
     )
 
-def get_file_url(s3_key: str):
+def get_file_url(s3_key: str, language: str = None):
     """
     Get the URL for an S3 object.
     
     For public buckets: Returns a simple public URL (no signature, no expiry)
     For private buckets: Returns a presigned URL (with signature and expiry)
     
-    s3_key can be:
-    - Just the object key (e.g. 'Undipova.mp4' or 'Telugu/song.mp4')
-    - A full S3 URL (will be returned as-is if it's already a URL)
+    Args:
+        s3_key: The S3 object key (e.g. 'Undipova.mp4' or 'Telugu/song.mp4')
+        language: Optional language name (e.g. 'Telugu', 'Hindi', 'English') to use as prefix.
+                  If provided, will be used instead of S3_KEY_PREFIX.
+                  If not provided, falls back to S3_KEY_PREFIX if set.
     
-    If S3_KEY_PREFIX is set, it will be prepended to the key (only if s3_key is not already a full URL).
+    s3_key can be:
+    - Just the object key (e.g. 'Undipova.mp4')
+    - A full S3 URL (will be returned as-is if it's already a URL)
+    - Already prefixed (e.g. 'Telugu/song.mp4') - will be used as-is
+    
+    The language prefix will be automatically added if the key doesn't already have it.
     """
     if not s3_key:
         return None
@@ -48,17 +55,33 @@ def get_file_url(s3_key: str):
         print(f"⚠️ s3_key is already a full URL, returning as-is: {s3_key}")
         return s3_key
     
-    # Apply prefix if set (e.g., "songs/" or "videos/")
-    # Only apply prefix if the key doesn't already start with a path segment
-    prefix = S3_KEY_PREFIX.strip().strip('/')
-    if prefix and not s3_key.startswith(prefix):
-        prefix = prefix + '/'
-    else:
-        prefix = ''
+    # Determine prefix: use language if provided, otherwise fall back to S3_KEY_PREFIX
+    prefix = None
+    if language:
+        # Use language as prefix (e.g., "Telugu" -> "Telugu/")
+        prefix = language.strip().strip('/')
+        print(f"🌐 Using language '{prefix}' as prefix")
+    elif S3_KEY_PREFIX:
+        # Fall back to S3_KEY_PREFIX if no language provided
+        prefix = S3_KEY_PREFIX.strip().strip('/')
+        print(f"🔧 Using S3_KEY_PREFIX '{prefix}' as prefix")
     
-    # Build full key: prefix + s3_key
-    # Remove any leading slash from s3_key to avoid double slashes
-    full_key = prefix + s3_key.lstrip('/') if prefix else s3_key.lstrip('/')
+    # Apply prefix if we have one and the key doesn't already have it
+    if prefix:
+        # Check if the key already starts with the prefix (with or without slash)
+        key_starts_with_prefix = s3_key.startswith(prefix + '/') or s3_key.startswith(prefix)
+        if not key_starts_with_prefix:
+            # Add prefix with slash: "Telugu/" + "song.mp4" = "Telugu/song.mp4"
+            full_key = prefix + '/' + s3_key.lstrip('/')
+            print(f"🔧 Applied prefix '{prefix}/' to key: '{s3_key}' -> '{full_key}'")
+        else:
+            # Key already has prefix, use as-is
+            full_key = s3_key.lstrip('/')
+            print(f"✅ Key already has prefix '{prefix}', using as-is: '{full_key}'")
+    else:
+        # No prefix available, use key as-is
+        full_key = s3_key.lstrip('/')
+        print(f"⚠️ No prefix available (language={language}, S3_KEY_PREFIX={S3_KEY_PREFIX}), using key as-is: '{full_key}'")
     
     # For public buckets, return simple URL
     if S3_PUBLIC_BUCKET:
@@ -128,11 +151,16 @@ def get_file_url(s3_key: str):
 
 
 # Keep generate_signed_url for backward compatibility, but it now uses get_file_url
-def generate_signed_url(s3_key: str, expiration: int = None):
+def generate_signed_url(s3_key: str, expiration: int = None, language: str = None):
     """
     Backward compatibility wrapper for get_file_url.
+    
+    Args:
+        s3_key: The S3 object key
+        expiration: Ignored (kept for backward compatibility)
+        language: Optional language name to use as prefix (e.g. 'Telugu', 'Hindi')
     """
-    return get_file_url(s3_key)
+    return get_file_url(s3_key, language=language)
 
 
 def check_key_exists(s3_key: str) -> bool:

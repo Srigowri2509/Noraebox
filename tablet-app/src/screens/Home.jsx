@@ -146,12 +146,12 @@ export default function Home() {
       if (!filterLower) {
         console.log('Empty artist filter, skipping');
       } else {
-        filtered = filtered.filter(song => {
-          // Check both artist_name (from join) and artist (fallback field)
+      filtered = filtered.filter(song => {
+        // Check both artist_name (from join) and artist (fallback field)
           const songArtist = (song.artist_name || song.artist);
-          if (!songArtist) {
-            return false;
-          }
+        if (!songArtist) {
+          return false;
+        }
           const songArtistLower = String(songArtist).toLowerCase().trim();
           
           // More flexible matching: check if filter is contained in song artist or vice versa
@@ -194,9 +194,9 @@ export default function Home() {
           
           if (!matches && before < 20) {
             console.log(`Singer mismatch: song artist="${songArtist}" (${songArtistLower}) vs filter="${filters.singer}" (${filterLower})`);
-          }
-          return matches;
-        });
+        }
+        return matches;
+      });
         console.log(`Singer filter (${filters.singer}): ${before} -> ${filtered.length}`);
         if (filtered.length === 0 && before > 0) {
           // Show available artists from the unfiltered list
@@ -369,7 +369,7 @@ export default function Home() {
     
     return foundById;
   };
-  
+
   const handleAddToQueue = async (song) => {
     if (!song || !song.id) {
       console.error("Invalid song object:", song);
@@ -422,7 +422,7 @@ export default function Home() {
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
           setQueue(queueRes || []);
-          console.log("✅ Successfully added to queue:", song.title);
+      console.log("✅ Successfully added to queue:", song.title);
         } catch (err) {
           console.error("Error refreshing queue after add:", err);
           // Fallback: add to local state if refresh fails (with duplicate check)
@@ -577,7 +577,7 @@ export default function Home() {
         } catch (err) {
           console.error("Error adding/playing song:", err);
           // Fallback: try direct play
-          await handlePlaySong(filteredSongs[0]);
+        await handlePlaySong(filteredSongs[0]);
         }
       } else {
         alert("No songs available to play. Please add songs to queue or filter songs.");

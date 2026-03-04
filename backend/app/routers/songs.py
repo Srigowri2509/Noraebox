@@ -105,15 +105,19 @@ def list_songs(
             artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
             
             # S3 key comes directly from songs.file_url.
-            # You can store full keys like 'Telugu/song.mp4', 'Hindi/song.mp4', etc.
+            # The file_url should be just the filename (e.g. 'song.mp4'), 
+            # and the language prefix will be automatically added based on row.language
             s3_key_for_signing = row.file_url or ""
+            
+            # Use the song's language to determine the S3 prefix (e.g., "Telugu" -> "Telugu/")
+            song_language = row.language or None
             
             # Generate signed URL if requested (default now False for speed)
             file_url_value = s3_key_for_signing
             if signed_urls and row.file_url:
                 try:
-                    print(f"Generating signed URL for song {row.id}: {s3_key_for_signing}")
-                    file_url_value = generate_signed_url(s3_key_for_signing)
+                    print(f"Generating signed URL for song {row.id} (language: {song_language}): {s3_key_for_signing}")
+                    file_url_value = generate_signed_url(s3_key_for_signing, language=song_language)
                     print(f"✅ Generated signed URL for song {row.id}: {file_url_value[:80]}...")
                 except Exception as e:
                     print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({s3_key_for_signing}): {e}")
@@ -210,14 +214,19 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
         
         # S3 key comes directly from songs.file_url
+        # The file_url should be just the filename (e.g. 'song.mp4'),
+        # and the language prefix will be automatically added based on row.language
         s3_key_for_signing = row.file_url or ""
+        
+        # Use the song's language to determine the S3 prefix (e.g., "Telugu" -> "Telugu/")
+        song_language = row.language or None
         
         # Generate signed URL for playback
         signed_url = None
         if s3_key_for_signing:
             try:
-                print(f"Generating signed URL for song {song_id_int}: {s3_key_for_signing}")
-                signed_url = generate_signed_url(s3_key_for_signing)
+                print(f"Generating signed URL for song {song_id_int} (language: {song_language}): {s3_key_for_signing}")
+                signed_url = generate_signed_url(s3_key_for_signing, language=song_language)
             except Exception as e:
                 print(f"Warning: Failed to generate signed URL for song {song_id_int}: {e}")
                 signed_url = s3_key_for_signing
@@ -265,14 +274,17 @@ def get_song_signed_url(song_id: str, db: Session = Depends(get_db)):
         if not song.file_url:
             raise HTTPException(status_code=404, detail=f"Song {song_id_int} has no file_url")
         
+        # Use the song's language to determine the S3 prefix
+        song_language = song.language or None
+        
         # Generate URL (public or presigned)
         try:
-            file_url = generate_signed_url(song.file_url)
+            file_url = generate_signed_url(song.file_url, language=song_language)
             return {"signed_url": file_url, "s3_key": song.file_url, "url": file_url}
         except Exception as e:
             print(f"Error generating URL for song {song_id_int}: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to generate URL: {str(e)}")
-    
+
     except HTTPException:
         raise
     except Exception as e:
