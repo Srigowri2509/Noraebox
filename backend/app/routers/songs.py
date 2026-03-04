@@ -158,50 +158,78 @@ def list_songs(
 
 @router.get("/{song_id}", response_model=SongResponse)
 def get_song(song_id: str, db: Session = Depends(get_db)):
-    """Get song by ID"""
+    """Get song by ID (uses raw SQL to avoid ORM/schema mismatches)"""
     try:
         try:
             song_id_int = int(song_id)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid song ID format: {song_id}")
         
-        # Eagerly load song_artists and artist relationships
-        song = db.query(Song).options(
-            joinedload(Song.song_artists).joinedload(SongArtist.artist)
-        ).filter(Song.id == song_id_int).first()
+        # Raw SQL similar to list_songs but filtered by ID
+        query_sql = """
+            SELECT 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count,
+                COALESCE(
+                    json_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', a.id,
+                            'name', a.name
+                        )
+                    ) FILTER (WHERE a.id IS NOT NULL),
+                    '[]'::json
+                ) AS artists
+            FROM songs s
+            LEFT JOIN song_artists sa ON s.id = sa.song_id
+            LEFT JOIN artist a ON sa.artist_id = a.id
+            WHERE s.id = :song_id
+            GROUP BY 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count
+        """
         
-        if not song:
+        result = db.execute(text(query_sql), {"song_id": song_id_int})
+        row = result.fetchone()
+        
+        if not row:
             raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")
         
-        # 🔐 Generate signed URL only for individual song requests (when actually playing)
+        # Parse artists JSON
+        artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
+        
+        # Generate signed URL for playback
         signed_url = None
-        if song.file_url:
+        if row.file_url:
             try:
-                signed_url = generate_signed_url(song.file_url)
+                signed_url = generate_signed_url(row.file_url)
             except Exception as e:
                 print(f"Warning: Failed to generate signed URL for song {song_id_int}: {e}")
-                # Fallback to returning the S3 key
-                signed_url = song.file_url
-
-        song_data = {
-            "id": song.id,
-            "title": song.title,
-            "album": song.album,
-            "language": song.language,
-            "file_url": signed_url,  # <-- SIGNED URL (only for individual song requests)
-            "s3_key": song.file_url,  # Also include original S3 key
-            "play_count": song.play_count,
-            "artist": None,  # Will be set from song_artists relationship
-            "artist_id": None,
-            "artist_image": None
-        }
+                signed_url = row.file_url
         
-        if song.song_artists and len(song.song_artists) > 0:
-            artist_rel = song.song_artists[0]
-            if artist_rel.artist:
-                song_data["artist_id"] = artist_rel.artist.id
-                song_data["artist"] = artist_rel.artist.name
-                song_data["artist_image"] = artist_rel.artist.image_url
+        first_artist = artists_list[0] if artists_list else None
+        
+        song_data = {
+            "id": row.id,
+            "title": row.title,
+            "album": row.album,
+            "language": row.language,
+            "file_url": signed_url,        # signed/public URL for playback
+            "s3_key": row.file_url,        # original S3 key
+            "play_count": int(row.play_count or 0),
+            "artists": artists_list,
+            "artist": first_artist["name"] if first_artist else None,
+            "artist_name": first_artist["name"] if first_artist else None,
+            "artist_id": int(first_artist["id"]) if (first_artist and "id" in first_artist and first_artist["id"] is not None) else None,
+            "artist_image": None,  # No image column in DB schema
+        }
         
         return song_data
 
