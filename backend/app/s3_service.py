@@ -34,24 +34,37 @@ def get_file_url(s3_key: str):
     For public buckets: Returns a simple public URL (no signature, no expiry)
     For private buckets: Returns a presigned URL (with signature and expiry)
     
-    s3_key should be only the object key (e.g. 'Undipova.mp4'), NOT a full S3 URL.
+    s3_key can be:
+    - Just the object key (e.g. 'Undipova.mp4' or 'Telugu/song.mp4')
+    - A full S3 URL (will be returned as-is if it's already a URL)
     
-    If S3_KEY_PREFIX is set, it will be prepended to the key.
+    If S3_KEY_PREFIX is set, it will be prepended to the key (only if s3_key is not already a full URL).
     """
     if not s3_key:
         return None
     
+    # If s3_key is already a full URL (starts with http:// or https://), return it as-is
+    if s3_key.startswith('http://') or s3_key.startswith('https://'):
+        print(f"⚠️ s3_key is already a full URL, returning as-is: {s3_key}")
+        return s3_key
+    
     # Apply prefix if set (e.g., "songs/" or "videos/")
+    # Only apply prefix if the key doesn't already start with a path segment
     prefix = S3_KEY_PREFIX.strip().strip('/')
-    if prefix:
+    if prefix and not s3_key.startswith(prefix):
         prefix = prefix + '/'
+    else:
+        prefix = ''
     
     # Build full key: prefix + s3_key
     # Remove any leading slash from s3_key to avoid double slashes
-    full_key = prefix + s3_key.lstrip('/')
+    full_key = prefix + s3_key.lstrip('/') if prefix else s3_key.lstrip('/')
     
     # For public buckets, return simple URL
     if S3_PUBLIC_BUCKET:
+        if not S3_BUCKET_NAME:
+            raise RuntimeError("S3_BUCKET_NAME must be set when using public bucket mode")
+        
         # Ensure no double slashes in URL
         base_url = S3_BASE_URL.rstrip('/')
         key_path = full_key.lstrip('/')
