@@ -398,8 +398,15 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             room.status = 'active'
             print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with 60 minutes, timer starts now")
         else:
+            # If admin already created a session but timer hasn't started yet, start it now
+            if not session.session_start_time:
+                session.session_start_time = now
+                # Respect the total_minutes assigned by admin
+                total_minutes = session.total_minutes or 60
+                session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
+                print(f"POST /rooms/{room_id}/playback/start_next: Starting timer now for existing session")
             # Update existing session with next song
-            # DO NOT update session_start_time - timer should continue from when it first started
+            # DO NOT reset session_start_time if it already exists - timer should continue
             session.current_song_id = next_item.song_id
             session.current_song_start_time = now  # Only update current song start time
             print(f"POST /rooms/{room_id}/playback/start_next: Continuing session, timer NOT restarted")
@@ -485,8 +492,14 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
                 db.add(session)
                 print(f"POST /rooms/{room_id}/playback/ended: Creating new session with 60 minutes, timer starts now")
             else:
+                # If admin already created a session but timer hasn't started yet, start it now
+                if not session.session_start_time:
+                    session.session_start_time = now
+                    total_minutes = session.total_minutes or 60
+                    session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
+                    print(f"POST /rooms/{room_id}/playback/ended: Starting timer now for existing session")
                 # Update existing session with next song
-                # DO NOT update session_start_time - timer should continue from when it first started
+                # DO NOT reset session_start_time if it already exists - timer should continue
                 session.current_song_id = next_item.song_id
                 session.current_song_start_time = now  # Only update current song start time
                 print(f"POST /rooms/{room_id}/playback/ended: Continuing session, timer NOT restarted")
@@ -557,15 +570,16 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             RoomSession.status == 'active'
         ).first()
         
-        now = datetime.now(timezone.utc)
-        session_end_time = now + timedelta(minutes=minutes)
-        
         if existing_session:
             # Update existing session instead of creating new one
             print(f"POST /rooms/{room_id}/start: Updating existing session {existing_session.id}")
             existing_session.total_minutes = minutes
-            existing_session.session_start_time = now
-            existing_session.session_end_time = session_end_time
+            # IMPORTANT: Do NOT start the timer here.
+            # Timer should start only when the first song actually starts playing.
+            # Keep existing session_start_time as-is (usually None until first song).
+            existing_session.session_start_time = existing_session.session_start_time
+            # Clear end time so it can be recalculated when timer starts
+            existing_session.session_end_time = None
             existing_session.current_song_id = None
             existing_session.current_song_start_time = None
             db.commit()
@@ -579,13 +593,15 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             return {"status": "started", "session_id": str(existing_session.id), "updated": True}
         else:
             # Create new session
+            now = datetime.now(timezone.utc)
             new_session = RoomSession(
                 room_id=room_id,
                 status="active",
                 total_minutes=minutes,
                 session_created_at=now,
-                session_start_time=now,
-                session_end_time=session_end_time,
+                # Timer will start when the first song actually plays
+                session_start_time=None,
+                session_end_time=None,
                 current_song_id=None,
                 current_song_start_time=None
             )
@@ -631,15 +647,15 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
             RoomSession.status == 'active'
         ).first()
         
-        now = datetime.now(timezone.utc)
-        session_end_time = now + timedelta(minutes=minutes)
-        
         if existing_session:
             # Update existing session instead of creating new one
             print(f"POST /rooms/{room_id}/sessions/start: Updating existing session {existing_session.id}")
             existing_session.total_minutes = minutes
-            existing_session.session_start_time = now
-            existing_session.session_end_time = session_end_time
+            # IMPORTANT: Do NOT start the timer here.
+            # Timer should start only when the first song actually starts playing.
+            existing_session.session_start_time = existing_session.session_start_time
+            # Clear end time so it can be recalculated when timer starts
+            existing_session.session_end_time = None
             existing_session.current_song_id = None
             existing_session.current_song_start_time = None
             db.commit()
@@ -653,13 +669,15 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
             return {"status": "started", "session_id": str(existing_session.id), "updated": True}
         else:
             # Create new session
+            now = datetime.now(timezone.utc)
             new_session = RoomSession(
                 room_id=room_id,
                 status="active",
                 total_minutes=minutes,
                 session_created_at=now,
-                session_start_time=now,
-                session_end_time=session_end_time,
+                # Timer will start when the first song actually plays
+                session_start_time=None,
+                session_end_time=None,
                 current_song_id=None,
                 current_song_start_time=None
             )

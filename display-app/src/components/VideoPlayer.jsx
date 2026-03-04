@@ -41,60 +41,9 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     };
   }, [hasUserInteracted]);
 
-  // Aggressive periodic check to ensure video keeps playing (prevents getting stuck)
-  useEffect(() => {
-    if (!song || !song.videoUrl || !vref.current) return;
-    
-    const video = vref.current;
-    let lastPlayTime = video.currentTime;
-    let stuckCount = 0;
-    
-    const playCheckInterval = setInterval(() => {
-      if (!video) return;
-      
-      // Check if video should be playing but is paused (and not ended)
-      if (!video.ended && video.paused && video.readyState >= 2) {
-        const timeRemaining = video.duration - video.currentTime;
-        // Only auto-resume if there's significant time left (more than 1 second)
-        if (timeRemaining > 1) {
-          console.log("VideoPlayer: Auto-resuming paused video (periodic check)");
-          video.play().catch(err => {
-            console.error("VideoPlayer: Failed to auto-resume:", err);
-          });
-        }
-      }
-      
-      // Check if video is stuck (not progressing even though it's playing)
-      if (!video.paused && !video.ended && video.readyState >= 2) {
-        const currentTime = video.currentTime;
-        // If time hasn't changed in 3 seconds, video is stuck
-        if (Math.abs(currentTime - lastPlayTime) < 0.1) {
-          stuckCount++;
-          if (stuckCount >= 3) { // Stuck for 3+ checks (3+ seconds)
-            console.warn("⚠️ VideoPlayer: Video appears stuck, attempting to resume...");
-            const savedTime = currentTime;
-            video.pause();
-            setTimeout(() => {
-              if (video && !video.ended) {
-                video.currentTime = savedTime;
-                video.play().catch(err => {
-                  console.error("VideoPlayer: Failed to resume stuck video:", err);
-                });
-              }
-            }, 100);
-            stuckCount = 0;
-          }
-        } else {
-          stuckCount = 0; // Reset if video is progressing
-        }
-        lastPlayTime = currentTime;
-      } else {
-        stuckCount = 0; // Reset if paused or ended
-      }
-    }, 1000); // Check every 1 second (more frequent)
-    
-    return () => clearInterval(playCheckInterval);
-  }, [song]);
+  // Note: We intentionally do NOT auto-resume paused videos.
+  // If the video is paused (e.g. by the user), it should stay paused
+  // and the session timer will keep running independently.
   
   useEffect(() => {
     if (song && song.videoUrl && vref.current) {
@@ -126,23 +75,9 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         console.log("VideoPlayer: Video data loaded");
       };
       
-      // Handle unexpected pauses - auto-resume if video stops unexpectedly
+      // Handle pause - do NOT auto-resume so the video can be paused
       const handlePause = () => {
-        // Only auto-resume if pause wasn't intentional (e.g., not at end)
-        if (video && !video.ended && video.currentTime > 0 && video.duration > 0) {
-          const timeRemaining = video.duration - video.currentTime;
-          // If there's more than 1 second left, it's an unexpected pause
-          if (timeRemaining > 1) {
-            console.warn("⚠️ VideoPlayer: Unexpected pause detected, resuming...");
-            setTimeout(() => {
-              if (video && video.paused && !video.ended) {
-                video.play().catch(err => {
-                  console.error("VideoPlayer: Failed to resume after pause:", err);
-                });
-              }
-            }, 100);
-          }
-        }
+        console.log("VideoPlayer: Video paused");
       };
       
       // Handle buffering/stalled - aggressively resume when ready
@@ -376,21 +311,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
   
   return (
     <div className="video-wrapper" style={{ position: 'relative', width: '100%', height: '100%', zIndex: 1 }}>
-      {loading && (
-        <div style={{
-          position: 'absolute',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          color: 'white',
-          zIndex: 10,
-          backgroundColor: 'rgba(0,0,0,0.7)',
-          padding: '20px',
-          borderRadius: '8px'
-        }}>
-          Loading video...
-        </div>
-      )}
+      {/* No explicit loading overlay - while loading, the default page is visible behind */}
       <video
         ref={vref}
         className="video-element"

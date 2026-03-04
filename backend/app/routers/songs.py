@@ -134,6 +134,7 @@ def list_songs(
                 "play_count": row.play_count,
                 "artists": artists_list,  # Full array of all artists
                 "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
+                "artist_name": first_artist["name"] if first_artist else None,  # Explicit artist_name for frontend
                 "artist_id": str(first_artist["id"]) if first_artist else None,  # Backward compatibility
                 "artist_image": first_artist.get("image_url") if first_artist else None  # Backward compatibility
             }
