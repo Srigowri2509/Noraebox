@@ -63,6 +63,9 @@ export default function Display({ roomId }) {
         const session = sessionData.session;
         console.log("Display polling session for room:", roomId);
         console.log("Session data:", session);
+        if (session) {
+          console.log(`📊 Display: Session total_minutes from backend: ${session.total_minutes}`);
+        }
 
         // If no session, show idle
         if (!session) {
@@ -98,7 +101,10 @@ export default function Display({ roomId }) {
           try {
             const startedAt = new Date(session.session_start_time);
             const now = new Date();
-            const totalSeconds = session.total_minutes * 60;
+            // Use the total_minutes from the session (set by admin)
+            const totalMinutes = session.total_minutes;
+            console.log(`⏱️ Display: Timer calculation - total_minutes: ${totalMinutes}, session_start_time: ${session.session_start_time}`);
+            const totalSeconds = totalMinutes * 60;
             const elapsedSeconds = Math.floor((now - startedAt) / 1000);
             const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
             const remainingMs = remainingSeconds * 1000;

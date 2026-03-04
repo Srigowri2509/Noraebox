@@ -56,18 +56,21 @@ def get_room_session(room_id: str, db: Session = Depends(get_db)):
             for qi, song in queue_items
         ]
 
+        session_response = {
+            "id": str(session.id),
+            "room_id": str(session.room_id),
+            "status": session.status,
+            "total_minutes": session.total_minutes,
+            "session_created_at": session.session_created_at.isoformat() if session.session_created_at else None,
+            "session_start_time": session.session_start_time.isoformat() if session.session_start_time else None,
+            "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None,
+            "current_song_id": session.current_song_id,
+            "current_song_start_time": session.current_song_start_time.isoformat() if session.current_song_start_time else None
+        }
+        print(f"📊 GET /rooms/{room_id}/session: Returning session with total_minutes={session.total_minutes}")
+        
         return {
-            "session": {
-                "id": str(session.id),
-                "room_id": str(session.room_id),
-                "status": session.status,
-                "total_minutes": session.total_minutes,
-                "session_created_at": session.session_created_at.isoformat() if session.session_created_at else None,
-                "session_start_time": session.session_start_time.isoformat() if session.session_start_time else None,
-                "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None,
-                "current_song_id": session.current_song_id,
-                "current_song_start_time": session.current_song_start_time.isoformat() if session.current_song_start_time else None
-            },
+            "session": session_response,
             "queue": queue
         }
     except Exception as e:
@@ -578,6 +581,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
         if existing_session:
             # Update existing session instead of creating new one
             print(f"POST /rooms/{room_id}/start: Updating existing session {existing_session.id}")
+            print(f"📝 POST /rooms/{room_id}/start: Updating existing session - setting total_minutes to {minutes}")
             existing_session.total_minutes = minutes
             # IMPORTANT: Do NOT start the timer here.
             # Timer should start only when the first song actually starts playing.
@@ -589,6 +593,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             existing_session.current_song_start_time = None
             db.commit()
             db.refresh(existing_session)
+            print(f"✅ POST /rooms/{room_id}/start: Session updated - total_minutes is now {existing_session.total_minutes}")
             
             # Update room status
             room.status = 'active'
@@ -599,6 +604,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
         else:
             # Create new session
             now = datetime.now(timezone.utc)
+            print(f"📝 POST /rooms/{room_id}/start: Creating new session with total_minutes={minutes}")
             new_session = RoomSession(
                 room_id=room_id,
                 status="active",
@@ -613,6 +619,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             db.add(new_session)
             db.commit()
             db.refresh(new_session)
+            print(f"✅ POST /rooms/{room_id}/start: Session created - total_minutes is {new_session.total_minutes}")
             
             # Update room status
             room.status = 'active'
