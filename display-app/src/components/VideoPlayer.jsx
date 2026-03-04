@@ -43,14 +43,19 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
 
   // Simplified playback: load and play the given URL, rely on browser controls/autoplay.
   useEffect(() => {
-    if (!song || !song.videoUrl || !vref.current) {
+    if (!song || !song.videoUrl) {
       setError(null);
       setLoading(false);
       return;
     }
 
     const video = vref.current;
-    console.log("VideoPlayer: Loading video (simple):", song.videoUrl);
+    console.log("VideoPlayer: Simple effect. Has ref?", !!video, "URL:", song.videoUrl);
+    if (!video) {
+      // Ref not attached yet; wait for next render
+      return;
+    }
+
     setError(null);
     setLoading(true);
 
@@ -187,9 +192,8 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           cursor: 'default',
           backgroundColor: 'black'
         }}
+        src={song.videoUrl}
       >
-        <source src={song.videoUrl} type="video/mp4" />
-        <source src={song.videoUrl} type="video/webm" />
         Your browser does not support the video tag.
       </video>
     </div>
