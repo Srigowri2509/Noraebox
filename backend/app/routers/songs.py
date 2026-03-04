@@ -104,21 +104,32 @@ def list_songs(
             # Parse artists JSON (it's already a Python list from PostgreSQL)
             artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
             
-            # Generate signed URL if requested (default is True)
-            file_url_value = row.file_url
+            # Determine S3 key, supporting optional language-based folders.
+            # If file_url already contains a '/', assume it has full path like 'Telugu/song.mp4'.
+            # If not, and language is present, build '<Language>/<filename>' so future Hindi/English work too.
+            base_key = row.file_url or ""
+            language_folder = (row.language or "").strip()
+            if "/" in base_key or not language_folder:
+                s3_key_for_signing = base_key
+            else:
+                # Use language value directly as folder name (respecting whatever case you store)
+                s3_key_for_signing = f"{language_folder}/{base_key.lstrip('/')}"
+            
+            # Generate signed URL if requested (default now False for speed)
+            file_url_value = s3_key_for_signing
             if signed_urls and row.file_url:
                 try:
-                    print(f"Generating signed URL for song {row.id}: {row.file_url}")
-                    file_url_value = generate_signed_url(row.file_url)
+                    print(f"Generating signed URL for song {row.id}: {s3_key_for_signing}")
+                    file_url_value = generate_signed_url(s3_key_for_signing)
                     print(f"✅ Generated signed URL for song {row.id}: {file_url_value[:80]}...")
                 except Exception as e:
-                    print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({row.file_url}): {e}")
+                    print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({s3_key_for_signing}): {e}")
                     import traceback
                     traceback.print_exc()
                     # Fallback to S3 key
-                    file_url_value = row.file_url
+                    file_url_value = s3_key_for_signing
             else:
-                print(f"⚠️ Skipping signed URL for song {row.id} (signed_urls={signed_urls}, file_url={row.file_url})")
+                print(f"⚠️ Skipping signed URL for song {row.id} (signed_urls={signed_urls}, file_url={row.file_url}, s3_key={s3_key_for_signing})")
             
             # Get first artist for backward compatibility (artist, artist_id, artist_image fields)
             first_artist = artists_list[0] if artists_list else None
@@ -132,7 +143,7 @@ def list_songs(
                 "album": row.album,
                 "language": row.language,
                 "file_url": file_url_value,  # Signed URL if requested, otherwise S3 key
-                "s3_key": row.file_url,  # Always include original S3 key
+                "s3_key": s3_key_for_signing,  # Actual S3 key including language folder if used
                 "play_count": play_count_value,
                 "artists": artists_list,  # Full array of all artists
                 "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
@@ -205,14 +216,23 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         # Parse artists JSON
         artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
         
+        # Determine S3 key with optional language-based folder
+        base_key = row.file_url or ""
+        language_folder = (row.language or "").strip()
+        if "/" in base_key or not language_folder:
+            s3_key_for_signing = base_key
+        else:
+            s3_key_for_signing = f"{language_folder}/{base_key.lstrip('/')}"
+        
         # Generate signed URL for playback
         signed_url = None
-        if row.file_url:
+        if s3_key_for_signing:
             try:
-                signed_url = generate_signed_url(row.file_url)
+                print(f"Generating signed URL for song {song_id_int}: {s3_key_for_signing}")
+                signed_url = generate_signed_url(s3_key_for_signing)
             except Exception as e:
                 print(f"Warning: Failed to generate signed URL for song {song_id_int}: {e}")
-                signed_url = row.file_url
+                signed_url = s3_key_for_signing
         
         first_artist = artists_list[0] if artists_list else None
         
