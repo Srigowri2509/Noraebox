@@ -9,6 +9,9 @@ from app.schemas import RoomResponse
 
 router = APIRouter()
 
+# Default duration (in minutes) for sessions created automatically when playback starts
+DEFAULT_SESSION_MINUTES = 15
+
 
 @router.get("/", response_model=List[RoomResponse])
 def list_rooms(db: Session = Depends(get_db)):
@@ -380,13 +383,14 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
         now = datetime.now(timezone.utc)
         
         if not session:
-            # Create a new active session with default 60 minutes
+            # Create a new active session with default minutes
             # Timer starts NOW (first song is being played)
-            session_end_time = now + timedelta(minutes=60)
+            session_minutes = DEFAULT_SESSION_MINUTES
+            session_end_time = now + timedelta(minutes=session_minutes)
             session = RoomSession(
                 room_id=room_id,
                 status='active',
-                total_minutes=60,
+                total_minutes=session_minutes,
                 session_created_at=now,
                 session_start_time=now,  # Timer starts when first song plays
                 session_end_time=session_end_time,
@@ -396,15 +400,15 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             db.add(session)
             # Update room status
             room.status = 'active'
-            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with 60 minutes, timer starts now")
+            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with {session_minutes} minutes, timer starts now")
         else:
             # If admin already created a session but timer hasn't started yet, start it now
             if not session.session_start_time:
                 session.session_start_time = now
-                # Respect the total_minutes assigned by admin
-                total_minutes = session.total_minutes or 60
+                # Respect the total_minutes assigned by admin, fallback to default if missing
+                total_minutes = session.total_minutes or DEFAULT_SESSION_MINUTES
                 session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
-                print(f"POST /rooms/{room_id}/playback/start_next: Starting timer now for existing session")
+                print(f"POST /rooms/{room_id}/playback/start_next: Starting timer now for existing session ({total_minutes} minutes)")
             # Update existing session with next song
             # DO NOT reset session_start_time if it already exists - timer should continue
             session.current_song_id = next_item.song_id
@@ -476,13 +480,14 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
             now = datetime.now(timezone.utc)
             
             if not session:
-                # Create a new active session with default 60 minutes
+                # Create a new active session with default minutes
                 # Timer starts NOW (first song is being played)
-                session_end_time = now + timedelta(minutes=60)
+                session_minutes = DEFAULT_SESSION_MINUTES
+                session_end_time = now + timedelta(minutes=session_minutes)
                 session = RoomSession(
                     room_id=room_id,
                     status='active',
-                    total_minutes=60,
+                    total_minutes=session_minutes,
                     session_created_at=now,
                     session_start_time=now,  # Timer starts when first song plays
                     session_end_time=session_end_time,
@@ -490,14 +495,14 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
                     current_song_start_time=now
                 )
                 db.add(session)
-                print(f"POST /rooms/{room_id}/playback/ended: Creating new session with 60 minutes, timer starts now")
+                print(f"POST /rooms/{room_id}/playback/ended: Creating new session with {session_minutes} minutes, timer starts now")
             else:
                 # If admin already created a session but timer hasn't started yet, start it now
                 if not session.session_start_time:
                     session.session_start_time = now
-                    total_minutes = session.total_minutes or 60
+                    total_minutes = session.total_minutes or DEFAULT_SESSION_MINUTES
                     session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
-                    print(f"POST /rooms/{room_id}/playback/ended: Starting timer now for existing session")
+                    print(f"POST /rooms/{room_id}/playback/ended: Starting timer now for existing session ({total_minutes} minutes)")
                 # Update existing session with next song
                 # DO NOT reset session_start_time if it already exists - timer should continue
                 session.current_song_id = next_item.song_id
@@ -552,7 +557,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
     """Start a session for a room - short endpoint /rooms/{room_id}/start"""
     try:
         # Support both "minutes" and "total_minutes" in payload
-        minutes = payload.get("minutes") or payload.get("total_minutes", 60)
+        minutes = payload.get("minutes") or payload.get("total_minutes", DEFAULT_SESSION_MINUTES)
         
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")
@@ -629,7 +634,7 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
     """Start a session for a room - alternative endpoint under /rooms"""
     try:
         # Support both "minutes" and "total_minutes" in payload
-        minutes = payload.get("minutes") or payload.get("total_minutes", 60)
+        minutes = payload.get("minutes") or payload.get("total_minutes", DEFAULT_SESSION_MINUTES)
         
         if not minutes or minutes <= 0:
             raise HTTPException(status_code=400, detail="minutes must be a positive integer")

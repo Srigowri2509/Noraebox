@@ -28,7 +28,7 @@ def get_languages(db: Session = Depends(get_db)):
 @router.get("/", response_model=List[SongResponse])
 def list_songs(
     search: str = None, 
-    signed_urls: bool = Query(True, description="Generate signed URLs for all songs (default: True)"),
+    signed_urls: bool = Query(False, description="Generate signed URLs for all songs (default: False, faster)"),
     db: Session = Depends(get_db)
 ):
     """List all songs with artist data
