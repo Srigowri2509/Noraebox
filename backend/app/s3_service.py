@@ -55,12 +55,19 @@ def get_file_url(s3_key: str):
         # Ensure no double slashes in URL
         base_url = S3_BASE_URL.rstrip('/')
         key_path = full_key.lstrip('/')
-        # URL-encode the key path to handle spaces and special characters
+        # URL-encode the key path to handle spaces and special characters,
+        # but DO NOT encode '+' or other safe characters that S3 keys
+        # commonly use literally (e.g. 'arere+yekkada.mp4').
+        #
+        # If we encode '+' as '%2B', it won't match your actual object key
+        # and S3 will return 404, which is exactly what was causing
+        # "Failed to load video" for keys like 'Telugu/Some+Song.mp4'.
         from urllib.parse import quote
         # Encode each segment separately to preserve forward slashes
-        # Split by '/' and encode each part, then join back
+        # Allow typical safe characters used in S3 keys
+        SAFE_CHARS = "-_.~+"
         path_parts = key_path.split('/')
-        encoded_parts = [quote(part, safe='') for part in path_parts]
+        encoded_parts = [quote(part, safe=SAFE_CHARS) for part in path_parts]
         encoded_key = '/'.join(encoded_parts)
         url = f"{base_url}/{encoded_key}"
         print(f"✅ Generated public URL: {url}")
