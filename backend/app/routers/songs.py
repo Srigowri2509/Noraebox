@@ -53,8 +53,7 @@ def list_songs(
                     json_agg(
                         DISTINCT jsonb_build_object(
                             'id', a.id,
-                            'name', a.name,
-                            'image_url', a.image_url
+                            'name', a.name
                         )
                     ) FILTER (WHERE a.id IS NOT NULL),
                     '[]'::json
@@ -136,7 +135,8 @@ def list_songs(
                 "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
                 "artist_name": first_artist["name"] if first_artist else None,  # Explicit artist_name for frontend
                 "artist_id": str(first_artist["id"]) if first_artist else None,  # Backward compatibility
-                "artist_image": first_artist.get("image_url") if first_artist else None  # Backward compatibility
+                # Your artist table does not have an image_url column; keep this for future but it will be None
+                "artist_image": first_artist.get("image_url") if (isinstance(first_artist, dict) and "image_url" in first_artist) else None
             }
             
             songs.append(song_data)
