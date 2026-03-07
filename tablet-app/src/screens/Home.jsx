@@ -75,31 +75,26 @@ export default function Home() {
 const filteredSongs = useMemo(() => {
   if (!allSongs || allSongs.length === 0) return [];
 
-  const normalize = (str) =>
-    String(str || "")
-      .toLowerCase()
-      .trim()
-      .replace(/\s+/g, " ");
+  const normalize = (v) => String(v || "").toLowerCase().trim();
 
-  return allSongs.filter((song) => {
+  return allSongs.filter(song => {
+
     /* LANGUAGE */
     if (filters.language !== "all") {
-      if (!song.language) return false;
       if (normalize(song.language) !== normalize(filters.language)) {
         return false;
       }
     }
 
-    /* ARTIST (COMPOSER ONLY) */
-    const artistSearch = selectedArtist || filters.artist;
-    if (artistSearch) {
-      const search = normalize(artistSearch);
+    /* ARTIST = COMPOSER */
+    if (filters.artist || selectedArtist) {
+      const search = normalize(selectedArtist || filters.artist);
 
       const composers = (song.artists || [])
-        .filter((a) => a?.role === "composer")
-        .map((a) => normalize(a.name));
+        .filter(a => a.role === "composer")
+        .map(a => normalize(a.name));
 
-      if (!composers.some((name) => name.includes(search))) {
+      if (!composers.some(name => name.includes(search))) {
         return false;
       }
     }
@@ -109,18 +104,16 @@ const filteredSongs = useMemo(() => {
       const search = normalize(filters.singer);
 
       const singers = (song.artists || [])
-        .filter((a) => a?.role === "singer")
-        .map((a) => normalize(a.name));
+        .filter(a => a.role === "singer")
+        .map(a => normalize(a.name));
 
-      if (!singers.some((name) => name.includes(search))) {
+      if (!singers.some(name => name.includes(search))) {
         return false;
       }
     }
 
     /* ALBUM */
     if (filters.album) {
-      if (!song.album) return false;
-
       if (!normalize(song.album).includes(normalize(filters.album))) {
         return false;
       }
@@ -128,8 +121,6 @@ const filteredSongs = useMemo(() => {
 
     /* SONG TITLE */
     if (filters.songName) {
-      if (!song.title) return false;
-
       if (!normalize(song.title).includes(normalize(filters.songName))) {
         return false;
       }
@@ -138,7 +129,7 @@ const filteredSongs = useMemo(() => {
     return true;
   });
 
-  }, [allSongs, filters, selectedArtist]);  
+}, [allSongs, filters, selectedArtist]);  
 
   const topArtists = useMemo(() => {
     console.log('=== COMPUTING TOP ARTISTS ===');
