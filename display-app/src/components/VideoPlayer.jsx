@@ -66,20 +66,20 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       console.log("VideoPlayer: canplay - video is ready to play");
       setLoading(false);
       
-      // If user has interacted, unmute for audio playback
+      // Automatically unmute if user has interacted before
       if (hasUserInteracted && video.muted) {
         video.muted = false;
-        console.log("VideoPlayer: Unmuting video (user has interacted)");
+        console.log("VideoPlayer: Unmuting video for auto-play (user has interacted)");
       }
       
-      // Try to play when ready
+      // Always try to play when ready (auto-play when song starts)
       if (video.paused) {
         const playPromise = video.play();
         if (playPromise && playPromise.then) {
           playPromise
             .then(() => {
               console.log("VideoPlayer: Successfully started playing after canplay");
-              // Unmute after successful play if user has interacted
+              // Ensure unmuted after successful play if user has interacted
               if (hasUserInteracted && video.muted) {
                 video.muted = false;
                 console.log("VideoPlayer: Unmuting after successful play");
@@ -88,6 +88,12 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
             .catch((err) => {
               console.warn("VideoPlayer: Play failed after canplay:", err);
             });
+        }
+      } else {
+        // Video is already playing, but ensure it's unmuted if user has interacted
+        if (hasUserInteracted && video.muted) {
+          video.muted = false;
+          console.log("VideoPlayer: Unmuting already playing video");
         }
       }
     };
@@ -100,6 +106,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     const handlePlaying = () => {
       console.log("VideoPlayer: playing - video is now playing");
       setLoading(false);
+      // Ensure audio is unmuted when playing if user has interacted
+      if (hasUserInteracted && video.muted) {
+        video.muted = false;
+        console.log("VideoPlayer: Unmuting on playing event");
+      }
     };
 
     const handleLoadedData = () => {
@@ -151,7 +162,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       console.log(`VideoPlayer: Starting video ${hasUserInteracted ? 'unmuted' : 'muted'} (hasUserInteracted: ${hasUserInteracted})`);
       video.load();
       
-      // Try to play immediately (browser may allow muted autoplay)
+      // Try to play immediately when song starts (browser may allow muted autoplay)
       // If it fails, the canplay event handler will retry
       const playPromise = video.play();
       if (playPromise && playPromise.then) {
@@ -159,10 +170,10 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
           .then(() => {
             console.log("VideoPlayer: play() resolved immediately - video should start playing");
             setLoading(false);
-            // Unmute after successful play if user has interacted
+            // Automatically unmute after successful play if user has interacted
             if (hasUserInteracted && video.muted) {
               video.muted = false;
-              console.log("VideoPlayer: Unmuting after successful immediate play");
+              console.log("VideoPlayer: Auto-unmuting after successful immediate play");
             }
           })
           .catch((err) => {
@@ -185,7 +196,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       video.removeEventListener("loadeddata", handleLoadedData);
       video.removeEventListener("error", handleError);
     };
-  }, [song]);
+  }, [song, hasUserInteracted]);
 
   useImperativeHandle(ref, () => ({
     play: () => {

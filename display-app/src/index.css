@@ -135,6 +135,26 @@ html,body,#root { height: 100%; }
   font-size: 20px; 
 }
 
+/* Hide play button from video controls - only show pause */
+/* Chrome/Safari/Edge */
+video::-webkit-media-controls-play-button {
+  display: none !important;
+}
+video::-webkit-media-controls-start-playback-button {
+  display: none !important;
+}
+video::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+}
+/* Firefox - hide play button in controls */
+video[controls]::--webkit-media-controls-play-button {
+  display: none !important;
+}
+/* Additional approach: hide play button when video is paused */
+video[controls][paused]::-webkit-media-controls-play-button {
+  display: none !important;
+}
+
 /* NEXT SONG SLIDE-IN BANNER */
 .next-banner {
   position: relative;
