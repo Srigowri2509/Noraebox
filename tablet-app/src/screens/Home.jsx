@@ -381,20 +381,38 @@ export default function Home() {
           const allArtistNames = [];
           let hasRoleInfo = false;
           
-          // Process artists array - only include singers
+          // Check if any artist in the array has role info
+          const hasAnyRoleInArray = artistsArray.some(a => 
+            a && typeof a === 'object' && a.role
+          );
+          
+          // Process artists array - only include singers (role="singer")
           artistsArray.forEach(a => {
             if (a === null || a === undefined) return;
             
             // Check role - for "Singer" field, ONLY include "singer" role
             const role = a.role ? String(a.role).toLowerCase().trim() : null;
+            
+            // STRICT FILTERING:
+            // 1. If role exists and is NOT "singer", skip
+            // 2. If role is null but other artists have roles, skip (to be strict)
+            // 3. Only include if role === "singer" OR (no role AND no other artists have roles)
+            
             if (role) {
               hasRoleInfo = true;
+              // Has role - only include if it's "singer"
               if (role !== 'singer') {
-                // Skip non-singers when searching in "Singer" field
+                return; // Skip non-singers
+              }
+            } else {
+              // No role for this artist
+              if (hasAnyRoleInArray) {
+                // Other artists have roles, so this one without role should be skipped
+                // (it's likely a composer or other role that wasn't properly set)
                 return;
               }
+              // No role info anywhere in the array - include for backward compatibility
             }
-            // If no role info, we'll include it as fallback (for backward compatibility)
             
             // Handle object format: {id: 275, name: "Arijit Singh", role: "singer"}
             if (typeof a === 'object' && a !== null) {
@@ -402,25 +420,19 @@ export default function Home() {
               const name = a.name || a.artist || a.artist_name;
               if (name) {
                 allArtistNames.push(String(name));
-              } else {
-                // If no name field, try to stringify the object (fallback)
-                // But skip if it's just an object with only id
-                const keys = Object.keys(a);
-                if (keys.length > 1 || !keys.includes('id')) {
-                  allArtistNames.push(String(a));
-                }
               }
             } else {
-              // Handle string format - include if no role info or role is singer
-              if (!hasRoleInfo || role === 'singer') {
+              // Handle string format - only include if no role info exists anywhere
+              if (!hasAnyRoleInArray) {
                 allArtistNames.push(String(a));
               }
             }
           });
           
-          // Also check artist_name and artist for backward compatibility (if no role info)
-          // Only include if we don't have role-based filtering
-          if (!hasRoleInfo) {
+          // Only use fallback fields if we have NO role information at all in the artists array
+          // AND the artists array is empty or was created from fallback
+          if (!hasRoleInfo && !hasAnyRoleInArray && artistsArray.length === 0) {
+            // No artists array at all - use fallback fields
             if (song.artist_name) {
               allArtistNames.push(String(song.artist_name));
             }
