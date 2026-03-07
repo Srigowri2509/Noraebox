@@ -77,8 +77,15 @@ def list_songs(
             )
             """
         
-        # Complete query - GROUP BY is already in base_query
+        # Complete query with GROUP BY after WHERE clause
         query_sql = base_query + where_clause + """
+            GROUP BY 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count
             ORDER BY s.title
         """
         
