@@ -274,31 +274,20 @@ export default function Home() {
         const normalizedFilter = normalize(filterLower);
         
         // Check if any artist name matches (with normalization)
+        // STRICT MATCHING: Only check if artist name contains the filter string
+        // "aa" will only match strings containing "aa", not "ana" or "appa"
         const matches = uniqueNames.some(artistName => {
           const normalizedArtist = normalize(artistName);
           
-          // Try multiple matching strategies:
-          // 1. Exact match after normalization
-          if (normalizedArtist === normalizedFilter) return true;
-          
-          // 2. Contains match (normalized)
-          if (normalizedArtist.includes(normalizedFilter)) return true;
-          if (normalizedFilter.includes(normalizedArtist)) return true;
-          
-          // 3. Word boundary match (for partial names)
-          const filterWords = normalizedFilter.split(/\s+/).filter(w => w.length > 0);
-          const artistWords = normalizedArtist.split(/\s+/).filter(w => w.length > 0);
-          
-          // Check if all filter words appear in artist name
-          if (filterWords.length > 0 && filterWords.every(word => 
-            artistWords.some(aw => aw.includes(word) || word.includes(aw))
-          )) {
+          // Simple contains check: artist name must contain the filter string
+          // This ensures "aa" only matches "aa", not "ana" or "appa"
+          if (normalizedArtist.includes(normalizedFilter)) {
             return true;
           }
           
-          // 4. Original string match (case-insensitive, with special chars)
+          // Also check original string (case-insensitive) for special characters
           const artistLower = String(artistName).toLowerCase().trim();
-          if (artistLower.includes(filterLower) || filterLower.includes(artistLower)) {
+          if (artistLower.includes(filterLower)) {
             return true;
           }
           
@@ -468,31 +457,20 @@ export default function Home() {
           const normalizedFilter = normalize(filterLower);
           
           // Check if any artist name matches (with normalization)
+          // STRICT MATCHING: Only check if artist name contains the filter string
+          // "aa" will only match strings containing "aa", not "ana" or "appa"
           const matches = uniqueNames.some(artistName => {
             const normalizedArtist = normalize(artistName);
             
-            // Try multiple matching strategies:
-            // 1. Exact match after normalization
-            if (normalizedArtist === normalizedFilter) return true;
-            
-            // 2. Contains match (normalized)
-            if (normalizedArtist.includes(normalizedFilter)) return true;
-            if (normalizedFilter.includes(normalizedArtist)) return true;
-            
-            // 3. Word boundary match (for partial names)
-            const filterWords = normalizedFilter.split(/\s+/).filter(w => w.length > 0);
-            const artistWords = normalizedArtist.split(/\s+/).filter(w => w.length > 0);
-            
-            // Check if all filter words appear in artist name
-            if (filterWords.length > 0 && filterWords.every(word => 
-              artistWords.some(aw => aw.includes(word) || word.includes(aw))
-            )) {
+            // Simple contains check: artist name must contain the filter string
+            // This ensures "aa" only matches "aa", not "ana" or "appa"
+            if (normalizedArtist.includes(normalizedFilter)) {
               return true;
             }
             
-            // 4. Original string match (case-insensitive, with special chars)
+            // Also check original string (case-insensitive) for special characters
             const artistLower = String(artistName).toLowerCase().trim();
-            if (artistLower.includes(filterLower) || filterLower.includes(artistLower)) {
+            if (artistLower.includes(filterLower)) {
               return true;
             }
             
@@ -613,36 +591,89 @@ export default function Home() {
     const map = {};
     let songsWithArtists = 0;
     let songsWithoutArtists = 0;
+    let arijitCount = 0; // Debug counter for Arijit Singh
     
     allSongs.forEach(s => {
-      // Use artist_name from join, fallback to artist field
-      const artistName = s.artist_name || s.artist;
-      if (!artistName) {
-        songsWithoutArtists++;
-        return;
+      // First, try to use the artists array (which includes all artists with roles)
+      let artistsToCount = [];
+      
+      if (Array.isArray(s.artists) && s.artists.length > 0) {
+        // Use all artists from the array
+        artistsToCount = s.artists.map(a => {
+          if (typeof a === 'object' && a !== null) {
+            return {
+              name: a.name || a.artist || a.artist_name,
+              image: a.image_url || s.artist_image
+            };
+          }
+          return {
+            name: String(a),
+            image: s.artist_image
+          };
+        }).filter(a => a.name); // Filter out empty names
       }
-      // Normalize artist name to avoid duplicates (case-insensitive)
-      const normalizedName = artistName.trim();
-      if (!normalizedName) {
+      
+      // Fallback to artist_name/artist if artists array is empty
+      if (artistsToCount.length === 0) {
+        const artistName = s.artist_name || s.artist;
+        if (artistName) {
+          artistsToCount = [{
+            name: artistName,
+            image: s.artist_image
+          }];
+        }
+      }
+      
+      if (artistsToCount.length === 0) {
         songsWithoutArtists++;
         return;
       }
       
       songsWithArtists++;
       
-      if (!map[normalizedName]) {
-        map[normalizedName] = {
-          name: normalizedName,
-          songCount: 0,
-          image: s.artist_image || "/default-artist.jpg",
-        };
-      }
-      map[normalizedName].songCount += 1;
+      // Count each artist in the song
+      artistsToCount.forEach(artistInfo => {
+        const artistName = artistInfo.name;
+        if (!artistName) return;
+        
+        // Normalize artist name to avoid duplicates (case-insensitive)
+        const normalizedName = artistName.trim();
+        if (!normalizedName) return;
+        
+        // Debug: Count Arijit Singh
+        if (normalizedName.toLowerCase().includes('arijit')) {
+          arijitCount++;
+          console.log(`Found Arijit in song ${s.id}: ${s.title}`, {
+            artistName: normalizedName,
+            artists: s.artists
+          });
+        }
+        
+        if (!map[normalizedName]) {
+          map[normalizedName] = {
+            name: normalizedName,
+            songCount: 0,
+            image: artistInfo.image || "/default-artist.jpg",
+          };
+        }
+        map[normalizedName].songCount += 1;
+      });
     });
 
     console.log(`Songs with artists: ${songsWithArtists}, without: ${songsWithoutArtists}`);
     console.log(`Unique artists found: ${Object.keys(map).length}`);
+    console.log(`Arijit Singh count: ${arijitCount}`);
     console.log('Artist names:', Object.keys(map).slice(0, 10));
+    
+    // Log Arijit Singh's entry if it exists
+    const arijitEntry = Object.values(map).find(a => 
+      a.name.toLowerCase().includes('arijit')
+    );
+    if (arijitEntry) {
+      console.log('Arijit Singh entry:', arijitEntry);
+    } else {
+      console.warn('⚠️ Arijit Singh not found in top artists map!');
+    }
 
     // Get unique artists, sort by song count, limit to 6
     const result = Object.values(map)

@@ -75,9 +75,15 @@ class SongResponse(BaseModel):
     artist_image: Optional[str] = None
     # Optional explicit artist_name field used by some frontends
     artist_name: Optional[str] = None
+    # Full array of all artists with roles (from song_artists table)
+    artists: Optional[List[Dict[str, Any]]] = []
+    # S3 key (internal, for reference)
+    s3_key: Optional[str] = None
     
     class Config:
         from_attributes = True
+        # Allow extra fields in case we add more in the future
+        extra = "allow"
 
 
 # Queue Schemas
