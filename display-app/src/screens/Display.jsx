@@ -23,6 +23,7 @@ export default function Display({ roomId }) {
   const lastSongIdRef = useRef(null);
 
   // Enable autoplay on any user interaction (click, touch, keypress)
+  // For display apps, enable autoplay immediately to allow automatic playback
   useEffect(() => {
     const enableAutoplay = () => {
       sessionStorage.setItem('video_autoplay_enabled', 'true');
@@ -32,10 +33,30 @@ export default function Display({ roomId }) {
     // Check if already enabled
     if (sessionStorage.getItem('video_autoplay_enabled') === 'true') {
       console.log("✅ Autoplay already enabled from previous session");
+    } else {
+      // For display apps, enable autoplay immediately
+      // This allows videos to play automatically with audio
+      try {
+        // Try to unlock audio context immediately
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            console.log("✅ Audio context resumed - enabling autoplay");
+            enableAutoplay();
+          }).catch(() => {
+            console.log("Note: Audio context resume failed, will wait for user interaction");
+          });
+        } else {
+          // Audio context is already active, enable autoplay
+          enableAutoplay();
+        }
+      } catch (e) {
+        console.log("Note: Audio context not available, will wait for user interaction");
+      }
     }
     
     // Listen for any user interaction on the page
-    const events = ['click', 'touchstart', 'keydown', 'mousedown'];
+    const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown'];
     events.forEach(event => {
       document.addEventListener(event, enableAutoplay, { once: true, passive: true });
     });
@@ -142,8 +163,23 @@ export default function Display({ roomId }) {
             const songData = await api(`/songs/${currentSongId}`);
             console.log("🎵 Display: Song data fetched:", songData);
             
-            // Map file_url to videoUrl for VideoPlayer component
-            const videoUrl = songData.file_url || songData.video_url || songData.url;
+            // Get video URL - prefer signed URL endpoint to ensure correct language path
+            let videoUrl = songData.file_url || songData.video_url || songData.url;
+            
+            // If file_url doesn't look like a full URL, get signed URL explicitly
+            // This ensures the language folder path (Hindi/, Telugu/, etc.) is correctly included
+            if (videoUrl && !videoUrl.startsWith('http://') && !videoUrl.startsWith('https://')) {
+              console.log("⚠️ Display: file_url is not a full URL, fetching signed URL with language path");
+              try {
+                const signedUrlResponse = await api(`/songs/${currentSongId}/signed-url`);
+                videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+                console.log("✅ Display: Got signed URL with language path:", videoUrl.substring(0, 100) + '...');
+              } catch (urlErr) {
+                console.warn("⚠️ Display: Could not get signed URL, using file_url as-is:", urlErr);
+                // Fallback to file_url - backend should have already added language prefix
+              }
+            }
+            
             if (!videoUrl) {
               console.error("❌ Display: Song has no file_url!", songData);
               setCurrentSong(null);
@@ -152,7 +188,7 @@ export default function Display({ roomId }) {
                 ...songData,
                 videoUrl: videoUrl
               });
-              console.log("✅ Display: New song loaded:", songData.title, "Video URL:", videoUrl);
+              console.log("✅ Display: New song loaded:", songData.title, "Language:", songData.language, "Video URL:", videoUrl.substring(0, 100) + '...');
             }
           } catch (err) {
             console.error("❌ Display: Error fetching song:", err);

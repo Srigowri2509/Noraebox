@@ -15,7 +15,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
   // Track if we've had user interaction globally (persists across songs)
   const [hasUserInteracted, setHasUserInteracted] = useState(() => {
     // Check if user has interacted before (stored in sessionStorage)
-    return sessionStorage.getItem('video_autoplay_enabled') === 'true';
+    // Also check if we're in a kiosk/display mode where autoplay should be enabled
+    const stored = sessionStorage.getItem('video_autoplay_enabled') === 'true';
+    // For display apps, assume autoplay is allowed (user will interact eventually)
+    // This allows videos to start playing immediately
+    return stored || true; // Default to true for display app
   });
 
   // Enable autoplay on any user interaction with the page
@@ -29,10 +33,33 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
     };
     
     // Listen for any user interaction
-    const events = ['click', 'touchstart', 'keydown'];
+    const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown'];
     events.forEach(event => {
-      document.addEventListener(event, enableAutoplay, { once: true });
+      document.addEventListener(event, enableAutoplay, { once: true, passive: true });
     });
+    
+    // Also try to enable autoplay immediately on page load for display apps
+    // This helps with automatic playback
+    if (!hasUserInteracted) {
+      // Try to enable autoplay by simulating a user gesture
+      // Some browsers allow this for display/kiosk apps
+      try {
+        // Create a temporary audio context to "unlock" audio
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === 'suspended') {
+          audioContext.resume().then(() => {
+            console.log("✅ Audio context resumed - autoplay enabled");
+            setHasUserInteracted(true);
+            sessionStorage.setItem('video_autoplay_enabled', 'true');
+          });
+        } else {
+          setHasUserInteracted(true);
+          sessionStorage.setItem('video_autoplay_enabled', 'true');
+        }
+      } catch (e) {
+        console.log("Note: Audio context not available, will wait for user interaction");
+      }
+    }
     
     return () => {
       events.forEach(event => {
@@ -74,6 +101,11 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       
       // Always try to play when ready (auto-play when song starts)
       if (video.paused) {
+        // Try playing unmuted first if user has interacted
+        if (hasUserInteracted && video.muted) {
+          video.muted = false;
+        }
+        
         const playPromise = video.play();
         if (playPromise && playPromise.then) {
           playPromise
@@ -84,9 +116,24 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
                 video.muted = false;
                 console.log("VideoPlayer: Unmuting after successful play");
               }
+              
+              // Double-check unmute after a brief delay
+              setTimeout(() => {
+                if (hasUserInteracted && video.muted && !video.paused) {
+                  video.muted = false;
+                  console.log("VideoPlayer: Force unmuting after canplay delay");
+                }
+              }, 200);
             })
             .catch((err) => {
               console.warn("VideoPlayer: Play failed after canplay:", err);
+              // If unmuted play failed, try muted
+              if (!video.muted && err.name === 'NotAllowedError') {
+                video.muted = true;
+                video.play().catch(() => {
+                  console.warn("VideoPlayer: Muted play also failed");
+                });
+              }
             });
         }
       } else {
@@ -155,34 +202,65 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       console.log("VideoPlayer: Setting video src to:", song.videoUrl);
       video.src = song.videoUrl;
       
-      // Autoplay: Start muted to satisfy browser policies, but unmute if user has already interacted
-      // This allows audio to play automatically after the first user interaction
+      // For display apps, try to play with audio immediately
+      // Start unmuted if user has interacted, otherwise start muted but unmute as soon as possible
       video.muted = !hasUserInteracted;
       video.autoplay = true;
+      video.playsInline = true;
       console.log(`VideoPlayer: Starting video ${hasUserInteracted ? 'unmuted' : 'muted'} (hasUserInteracted: ${hasUserInteracted})`);
       video.load();
       
-      // Try to play immediately when song starts (browser may allow muted autoplay)
-      // If it fails, the canplay event handler will retry
-      const playPromise = video.play();
-      if (playPromise && playPromise.then) {
-        playPromise
-          .then(() => {
+      // Try to play immediately when song starts - try unmuted first if possible
+      const tryPlay = async () => {
+        try {
+          // First attempt: try playing unmuted if user has interacted
+          if (hasUserInteracted && video.muted) {
+            video.muted = false;
+          }
+          
+          const playPromise = video.play();
+          if (playPromise && playPromise.then) {
+            await playPromise;
             console.log("VideoPlayer: play() resolved immediately - video should start playing");
             setLoading(false);
-            // Automatically unmute after successful play if user has interacted
+            
+            // Ensure unmuted after successful play
             if (hasUserInteracted && video.muted) {
               video.muted = false;
               console.log("VideoPlayer: Auto-unmuting after successful immediate play");
             }
-          })
-          .catch((err) => {
-            console.warn("VideoPlayer: play() rejected immediately (will retry on canplay):", err);
-            // Don't set loading to false yet - wait for canplay event
-          });
-      } else {
-        console.log("VideoPlayer: play() returned non-promise");
-      }
+            
+            // If still muted, try to unmute after a short delay (some browsers allow this)
+            if (video.muted) {
+              setTimeout(() => {
+                if (hasUserInteracted && video.muted) {
+                  video.muted = false;
+                  console.log("VideoPlayer: Unmuting after delay");
+                }
+              }, 100);
+            }
+          } else {
+            setLoading(false);
+          }
+        } catch (err) {
+          console.warn("VideoPlayer: play() rejected immediately (will retry on canplay):", err);
+          // If unmuted play failed, try muted play as fallback
+          if (!video.muted && err.name === 'NotAllowedError') {
+            console.log("VideoPlayer: Trying muted play as fallback");
+            video.muted = true;
+            try {
+              await video.play();
+              console.log("VideoPlayer: Muted play succeeded, will unmute on canplay");
+            } catch (mutedErr) {
+              console.warn("VideoPlayer: Muted play also failed:", mutedErr);
+            }
+          }
+          // Don't set loading to false yet - wait for canplay event
+        }
+      };
+      
+      // Try playing immediately
+      tryPlay();
     } catch (e) {
       console.error("VideoPlayer: Exception during simple setup:", e);
       setLoading(false);
@@ -265,6 +343,7 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
         disablePictureInPicture={true}
         controlsList="nodownload nofullscreen noremoteplayback"
         playsInline
+        autoPlay
         muted={!hasUserInteracted}
         preload="auto"
         crossOrigin="anonymous"

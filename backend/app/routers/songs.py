@@ -53,7 +53,8 @@ def list_songs(
                     json_agg(
                         DISTINCT jsonb_build_object(
                             'id', a.id,
-                            'name', a.name
+                            'name', a.name,
+                            'role', sa.role
                         )
                     ) FILTER (WHERE a.id IS NOT NULL),
                     '[]'::json
@@ -186,7 +187,8 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
                     json_agg(
                         DISTINCT jsonb_build_object(
                             'id', a.id,
-                            'name', a.name
+                            'name', a.name,
+                            'role', sa.role
                         )
                     ) FILTER (WHERE a.id IS NOT NULL),
                     '[]'::json

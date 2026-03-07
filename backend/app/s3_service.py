@@ -68,16 +68,28 @@ def get_file_url(s3_key: str, language: str = None):
     
     # Apply prefix if we have one and the key doesn't already have it
     if prefix:
-        # Check if the key already starts with the prefix (with or without slash)
-        key_starts_with_prefix = s3_key.startswith(prefix + '/') or s3_key.startswith(prefix)
+        # Check if the key already starts with the prefix followed by a slash
+        # This ensures we match "Hindi/song.mp4" but not "HindiSong.mp4"
+        key_starts_with_prefix = s3_key.startswith(prefix + '/')
+        
+        # Also check if key already has any language-like prefix (e.g., "Telugu/", "Hindi/", etc.)
+        # This handles cases where the database has the prefix but language field might differ
+        has_any_language_prefix = '/' in s3_key and not s3_key.startswith('/')
+        
         if not key_starts_with_prefix:
-            # Add prefix with slash: "Telugu/" + "song.mp4" = "Telugu/song.mp4"
-            full_key = prefix + '/' + s3_key.lstrip('/')
-            print(f"🔧 Applied prefix '{prefix}/' to key: '{s3_key}' -> '{full_key}'")
+            if has_any_language_prefix:
+                # Key already has a language prefix (but different from current language)
+                # Use it as-is - assume the database has the correct prefix
+                full_key = s3_key.lstrip('/')
+                print(f"✅ Key already has language prefix (different from '{prefix}'), using as-is: '{full_key}'")
+            else:
+                # Add prefix with slash: "Telugu/" + "song.mp4" = "Telugu/song.mp4"
+                full_key = prefix + '/' + s3_key.lstrip('/')
+                print(f"🔧 Applied prefix '{prefix}/' to key: '{s3_key}' -> '{full_key}'")
         else:
-            # Key already has prefix, use as-is
+            # Key already has the correct prefix, use as-is
             full_key = s3_key.lstrip('/')
-            print(f"✅ Key already has prefix '{prefix}', using as-is: '{full_key}'")
+            print(f"✅ Key already has prefix '{prefix}/', using as-is: '{full_key}'")
     else:
         # No prefix available, use key as-is
         full_key = s3_key.lstrip('/')

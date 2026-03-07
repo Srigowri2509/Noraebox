@@ -82,6 +82,7 @@ class SongArtist(Base):
     
     song_id = Column(Integer, ForeignKey("songs.id"), primary_key=True)
     artist_id = Column(UUID(as_uuid=True), ForeignKey("artist.id"), primary_key=True)
+    role = Column(String, nullable=True)  # "singer", "composer", etc.
     
     # Relationships
     song = relationship("Song", back_populates="song_artists")
