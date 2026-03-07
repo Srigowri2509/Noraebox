@@ -72,517 +72,73 @@ export default function Home() {
   // Check if there are active filters (including selectedArtist)
   const hasActiveFilters = filters.language !== "all" || filters.artist || filters.singer || filters.album || filters.songName || selectedArtist;
 
-  const filteredSongs = useMemo(() => {
-    console.log('=== FILTERING SONGS ===');
-    console.log('Total songs available:', allSongs?.length || 0);
-    console.log('Active filters:', { 
-      language: filters.language, 
-      artist: filters.artist, 
-      singer: filters.singer,
-      selectedArtist, 
-      album: filters.album, 
-      songName: filters.songName 
-    });
-    
-    if (!allSongs || allSongs.length === 0) {
-      console.log('No songs available for filtering');
-      return [];
-    }
-    
-    // Log sample song structure for debugging
-    if (allSongs.length > 0) {
-      console.log('Sample song structure:', {
-        id: allSongs[0].id,
-        title: allSongs[0].title,
-        language: allSongs[0].language,
-        artist: allSongs[0].artist,
-        artist_name: allSongs[0].artist_name,
-        artists: allSongs[0].artists, // Log the full artists array
-        album: allSongs[0].album
-      });
-      
-      // Log a few songs that might have Arijit Singh (check all roles)
-      const arijitSongs = allSongs.filter(s => {
-        const artists = s.artists || [];
-        return artists.some(a => {
-          const name = (typeof a === 'object' ? a.name : a) || '';
-          return name.toLowerCase().includes('arijit');
-        }) || (s.artist_name && s.artist_name.toLowerCase().includes('arijit')) ||
-             (s.artist && s.artist.toLowerCase().includes('arijit'));
-      });
-      if (arijitSongs.length > 0) {
-        console.log(`Found ${arijitSongs.length} songs with Arijit Singh (any role):`, arijitSongs.slice(0, 5).map(s => ({
-          id: s.id,
-          title: s.title,
-          artists: s.artists, // This should show roles now
-          artist_name: s.artist_name,
-          artist: s.artist
-        })));
-        
-        // Check specifically for singer role
-        const arijitSingerSongs = arijitSongs.filter(s => {
-          const artists = s.artists || [];
-          return artists.some(a => {
-            if (typeof a === 'object' && a.name) {
-              const name = String(a.name).toLowerCase();
-              const role = a.role ? String(a.role).toLowerCase().trim() : null;
-              return name.includes('arijit') && role === 'singer';
-            }
-            return false;
-          });
-        });
-        console.log(`Found ${arijitSingerSongs.length} songs with Arijit Singh as SINGER:`, arijitSingerSongs.slice(0, 3).map(s => ({
-          id: s.id,
-          title: s.title,
-          artists: s.artists
-        })));
-      } else {
-        console.warn('⚠️ No songs found with Arijit Singh in initial data');
-      }
-    }
-    
-    let filtered = [...allSongs];
-    const initialCount = filtered.length;
-    
-    // Filter by language
+const filteredSongs = useMemo(() => {
+  if (!allSongs || allSongs.length === 0) return [];
+
+  const normalize = (str) =>
+    String(str || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ");
+
+  return allSongs.filter((song) => {
+    /* LANGUAGE */
     if (filters.language !== "all") {
-      const before = filtered.length;
-      const filterLangLower = filters.language.toLowerCase().trim();
-      filtered = filtered.filter(song => {
-        const songLang = song.language;
-        if (!songLang) {
-          if (before < 20) {
-            console.log(`Song ${song.id} (${song.title}) has no language field`);
-          }
-          return false;
-        }
-        const songLangLower = String(songLang).toLowerCase().trim();
-        const matches = songLangLower === filterLangLower;
-        
-        if (!matches && before < 20) {
-          console.log(`Language mismatch: song "${song.title}" language="${songLang}" (${songLangLower}) vs filter="${filters.language}" (${filterLangLower})`);
-        }
-        return matches;
-      });
-      console.log(`Language filter (${filters.language}): ${before} -> ${filtered.length}`);
-      if (filtered.length === 0 && before > 0) {
-        // Show available languages from the unfiltered list
-        const availableLangs = [...new Set(
-          allSongs.map(s => s.language).filter(Boolean)
-        )].slice(0, 10);
-        console.warn(`⚠️ No songs found for language "${filters.language}". Available languages in database:`, availableLangs);
-        console.warn(`Sample songs with languages:`, allSongs.slice(0, 5).map(s => ({ title: s.title, language: s.language })));
-      }
-    }
-    
-    // Filter by artist (use selectedArtist if set, otherwise use filters.artist)
-    const artistFilter = selectedArtist || filters.artist;
-    if (artistFilter) {
-      const before = filtered.length;
-      // Handle both string and object for selectedArtist
-      const filterValue = typeof artistFilter === 'string' ? artistFilter : (artistFilter.name || artistFilter.artist || '');
-      const filterLower = filterValue.toLowerCase().trim();
-      
-      if (!filterLower) {
-        console.log('Empty artist filter, skipping');
-      } else {
-      filtered = filtered.filter(song => {
-        // Check all artists in the artists array, not just the first one
-        // For "Artist" field, we want ONLY composers (role="composer")
-        // Fallback to artist_name/artist if artists array is missing
-        let artistsArray = Array.isArray(song.artists) ? song.artists : [];
-        
-        // If no artists array, create one from fallback fields (assume composer role)
-        if (artistsArray.length === 0) {
-          if (song.artist_name) {
-            artistsArray = [{ name: song.artist_name, role: "composer" }];
-          } else if (song.artist) {
-            artistsArray = [{ name: song.artist, role: "composer" }];
-          }
-        }
-        
-        // Extract artist names from the array - filter by role="composer"
-        const allArtistNames = [];
-        let hasRoleInfo = false;
-        
-        // Process artists array - only include composers for "Artist" field
-        artistsArray.forEach(a => {
-          if (a === null || a === undefined) return;
-          
-          // Check role - for "Artist" field, ONLY include "composer" role
-          const role = a.role ? String(a.role).toLowerCase().trim() : null;
-          if (role) {
-            hasRoleInfo = true;
-            if (role !== 'composer') {
-              // Skip non-composers when searching in "Artist" field
-              return;
-            }
-          } else {
-            // If no role info, we'll include it as fallback (for backward compatibility)
-            // But only if we don't have any role info at all
-          }
-          
-          // Handle object format: {id: 275, name: "Arijit Singh", role: "composer"}
-          if (typeof a === 'object' && a !== null) {
-            // Try to get name from various possible fields
-            const name = a.name || a.artist || a.artist_name;
-            if (name) {
-              allArtistNames.push(String(name));
-            } else {
-              // If no name field, try to stringify the object (fallback)
-              // But skip if it's just an object with only id
-              const keys = Object.keys(a);
-              if (keys.length > 1 || !keys.includes('id')) {
-                allArtistNames.push(String(a));
-              }
-            }
-          } else {
-            // Handle string format - only include if no role info or role is composer
-            if (!hasRoleInfo || role === 'composer') {
-              allArtistNames.push(String(a));
-            }
-          }
-        });
-        
-        // Note: We already handled fallback above by creating artistsArray from artist_name/artist
-        // So we don't need to add them again here
-        
-        // Remove duplicates and empty values
-        const uniqueNames = [...new Set(allArtistNames.filter(Boolean))];
-        
-        if (uniqueNames.length === 0) {
-          if (before < 20) {
-            console.log(`Song ${song.id} (${song.title}) has no non-singer artists:`, {
-              artists: song.artists,
-              artist_name: song.artist_name,
-              artist: song.artist
-            });
-          }
-          return false;
-        }
-        
-        // Normalize function to handle special characters and whitespace
-        const normalize = (str) => {
-          return String(str)
-            .toLowerCase()
-            .trim()
-            .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
-            .replace(/[^\w\s]/g, '') // Remove special characters for comparison
-            .trim();
-        };
-        
-        const normalizedFilter = normalize(filterLower);
-        
-        // Check if any artist name matches (with normalization)
-        // STRICT MATCHING: Only check if artist name contains the filter string
-        // "aa" will only match strings containing "aa", not "ana" or "appa"
-        const matches = uniqueNames.some(artistName => {
-          const normalizedArtist = normalize(artistName);
-          
-          // Simple contains check: artist name must contain the filter string
-          // This ensures "aa" only matches "aa", not "ana" or "appa"
-          if (normalizedArtist.includes(normalizedFilter)) {
-            return true;
-          }
-          
-          // Also check original string (case-insensitive) for special characters
-          const artistLower = String(artistName).toLowerCase().trim();
-          if (artistLower.includes(filterLower)) {
-            return true;
-          }
-          
-          return false;
-        });
-        
-        if (!matches && before < 20) {
-          console.log(`Artist (composer) mismatch: song ${song.id} "${song.title}" artists="${uniqueNames.join(', ')}" vs filter="${filterValue}" (${filterLower})`);
-          console.log(`  Normalized: "${uniqueNames.map(n => normalize(n)).join(', ')}" vs "${normalizedFilter}"`);
-          console.log(`  Raw artists array:`, song.artists);
-        }
-        return matches;
-        });
-        console.log(`Artist filter (${filterValue}): ${before} -> ${filtered.length}`);
-        if (filtered.length === 0 && before > 0) {
-          // Show available artists from the unfiltered list
-          const availableArtists = [...new Set(
-            allSongs.flatMap(s => {
-              const artists = s.artists || [];
-              const names = artists.map(a => {
-                if (typeof a === 'object' && a !== null) {
-                  return a.name || a.artist || String(a);
-                }
-                return String(a);
-              }).filter(Boolean);
-              if (s.artist_name) names.push(String(s.artist_name));
-              if (s.artist) names.push(String(s.artist));
-              return names;
-            }).filter(Boolean)
-          )].slice(0, 20); // Show more artists for debugging
-          
-          // Also show artists that are similar to the search term
-          const similarArtists = availableArtists.filter(a => {
-            const normalize = (str) => String(str).toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^\w\s]/g, '');
-            const normalizedFilter = normalize(filterLower);
-            const normalizedArtist = normalize(a);
-            return normalizedArtist.includes(normalizedFilter) || normalizedFilter.includes(normalizedArtist);
-          });
-          
-          console.warn(`⚠️ No songs found for artist "${filterValue}". Available artists in database:`, availableArtists);
-          if (similarArtists.length > 0) {
-            console.warn(`⚠️ Similar artists found:`, similarArtists);
-          }
-          
-          // Debug: Show sample songs with their artists
-          console.log('Sample songs with artists:', allSongs.slice(0, 5).map(s => ({
-            title: s.title,
-            artists: s.artists,
-            artist_name: s.artist_name,
-            artist: s.artist
-          })));
-        }
-      }
-    }
-    
-    // Filter by singer (works the same as artist - searches all artists associated with song)
-    if (filters.singer) {
-      const before = filtered.length;
-      const filterLower = filters.singer.toLowerCase().trim();
-      
-      if (!filterLower) {
-        console.log('Empty singer filter, skipping');
-      } else {
-        filtered = filtered.filter(song => {
-          // Check all artists in the artists array, not just the first one
-          // For "Singer" field, we ONLY want artists with role="singer"
-          // Fallback to artist_name/artist if artists array is missing
-          let artistsArray = Array.isArray(song.artists) ? song.artists : [];
-          
-          // If no artists array, create one from fallback fields
-          if (artistsArray.length === 0) {
-            if (song.artist_name) {
-              artistsArray = [{ name: song.artist_name, role: "singer" }];
-            } else if (song.artist) {
-              artistsArray = [{ name: song.artist, role: "singer" }];
-            }
-          }
-          
-          // Extract artist names from the array - filter by role="singer"
-          const allArtistNames = [];
-          let hasRoleInfo = false;
-          
-          // Check if any artist in the array has role info
-          const hasAnyRoleInArray = artistsArray.some(a => 
-            a && typeof a === 'object' && a.role
-          );
-          
-          // Process artists array - only include singers (role="singer")
-          artistsArray.forEach(a => {
-            if (a === null || a === undefined) return;
-            
-            // Check role - for "Singer" field, ONLY include "singer" role
-            const role = a.role ? String(a.role).toLowerCase().trim() : null;
-            
-            // STRICT FILTERING:
-            // 1. If role exists and is NOT "singer", skip
-            // 2. If role is null but other artists have roles, skip (to be strict)
-            // 3. Only include if role === "singer" OR (no role AND no other artists have roles)
-            
-            if (role) {
-              hasRoleInfo = true;
-              // Has role - only include if it's "singer"
-              if (role !== 'singer') {
-                return; // Skip non-singers
-              }
-            } else {
-              // No role for this artist
-              if (hasAnyRoleInArray) {
-                // Other artists have roles, so this one without role should be skipped
-                // (it's likely a composer or other role that wasn't properly set)
-                return;
-              }
-              // No role info anywhere in the array - include for backward compatibility
-            }
-            
-            // Handle object format: {id: 275, name: "Arijit Singh", role: "singer"}
-            if (typeof a === 'object' && a !== null) {
-              // Try to get name from various possible fields
-              const name = a.name || a.artist || a.artist_name;
-              if (name) {
-                allArtistNames.push(String(name));
-              }
-            } else {
-              // Handle string format - only include if no role info exists anywhere
-              if (!hasAnyRoleInArray) {
-                allArtistNames.push(String(a));
-              }
-            }
-          });
-          
-          // Only use fallback fields if we have NO role information at all in the artists array
-          // AND the artists array is empty or was created from fallback
-          if (!hasRoleInfo && !hasAnyRoleInArray && artistsArray.length === 0) {
-            // No artists array at all - use fallback fields
-            if (song.artist_name) {
-              allArtistNames.push(String(song.artist_name));
-            }
-            if (song.artist) {
-              allArtistNames.push(String(song.artist));
-            }
-          }
-          
-          // Remove duplicates and empty values
-          const uniqueNames = [...new Set(allArtistNames.filter(Boolean))];
-          
-          if (uniqueNames.length === 0) {
-            if (before < 20) {
-              console.log(`Song ${song.id} (${song.title}) has no singers:`, {
-                artists: song.artists,
-                artist_name: song.artist_name,
-                artist: song.artist
-              });
-            }
-            return false;
-          }
-          
-          // Normalize function to handle special characters and whitespace
-          const normalize = (str) => {
-            return String(str)
-              .toLowerCase()
-              .trim()
-              .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
-              .replace(/[^\w\s]/g, '') // Remove special characters for comparison
-              .trim();
-          };
-          
-          const normalizedFilter = normalize(filterLower);
-          
-          // Check if any artist name matches (with normalization)
-          // STRICT MATCHING: Only check if artist name contains the filter string
-          // "aa" will only match strings containing "aa", not "ana" or "appa"
-          const matches = uniqueNames.some(artistName => {
-            const normalizedArtist = normalize(artistName);
-            
-            // Simple contains check: artist name must contain the filter string
-            // This ensures "aa" only matches "aa", not "ana" or "appa"
-            if (normalizedArtist.includes(normalizedFilter)) {
-              return true;
-            }
-            
-            // Also check original string (case-insensitive) for special characters
-            const artistLower = String(artistName).toLowerCase().trim();
-            if (artistLower.includes(filterLower)) {
-              return true;
-            }
-            
-            return false;
-          });
-          
-          if (!matches && before < 20) {
-            console.log(`Singer mismatch: song ${song.id} "${song.title}" singers="${uniqueNames.join(', ')}" vs filter="${filters.singer}" (${filterLower})`);
-            console.log(`  Normalized: "${uniqueNames.map(n => normalize(n)).join(', ')}" vs "${normalizedFilter}"`);
-            console.log(`  Raw artists array:`, song.artists);
-          }
-          return matches;
-        });
-        console.log(`Singer filter (${filters.singer}): ${before} -> ${filtered.length}`);
-        if (filtered.length === 0 && before > 0) {
-          // Show available artists from the unfiltered list
-          const availableArtists = [...new Set(
-            allSongs.flatMap(s => {
-              const artists = s.artists || [];
-              const names = artists.map(a => {
-                if (typeof a === 'object' && a !== null) {
-                  return a.name || a.artist || String(a);
-                }
-                return String(a);
-              }).filter(Boolean);
-              if (s.artist_name) names.push(String(s.artist_name));
-              if (s.artist) names.push(String(s.artist));
-              return names;
-            }).filter(Boolean)
-          )].slice(0, 20); // Show more artists for debugging
-          
-          // Also show artists that are similar to the search term
-          const similarArtists = availableArtists.filter(a => {
-            const normalize = (str) => String(str).toLowerCase().trim().replace(/\s+/g, ' ').replace(/[^\w\s]/g, '');
-            const normalizedFilter = normalize(filterLower);
-            const normalizedArtist = normalize(a);
-            return normalizedArtist.includes(normalizedFilter) || normalizedFilter.includes(normalizedArtist);
-          });
-          
-          console.warn(`⚠️ No songs found for singer "${filters.singer}". Available artists in database:`, availableArtists);
-          if (similarArtists.length > 0) {
-            console.warn(`⚠️ Similar artists found:`, similarArtists);
-          }
-          
-          // Debug: Show sample songs with their artists
-          console.log('Sample songs with artists:', allSongs.slice(0, 5).map(s => ({
-            title: s.title,
-            artists: s.artists,
-            artist_name: s.artist_name,
-            artist: s.artist
-          })));
-        }
-      }
-    }
-    
-    // Filter by album
-    if (filters.album) {
-      const before = filtered.length;
-      const filterLower = filters.album.toLowerCase().trim();
-      filtered = filtered.filter(song => {
-        const songAlbum = song.album?.trim();
-        return songAlbum && songAlbum.toLowerCase().includes(filterLower);
-      });
-      console.log(`Album filter (${filters.album}): ${before} -> ${filtered.length}`);
-    }
-    
-    // Filter by song name
-    if (filters.songName) {
-      const before = filtered.length;
-      const filterLower = filters.songName.toLowerCase().trim();
-      filtered = filtered.filter(song => {
-        const songTitle = song.title?.trim();
-        return songTitle && songTitle.toLowerCase().includes(filterLower);
-      });
-      console.log(`Song name filter (${filters.songName}): ${before} -> ${filtered.length}`);
-    }
-    
-    console.log(`Final filtered count: ${filtered.length} from ${initialCount} total songs`);
-    
-    // Deduplicate by song ID to prevent same song appearing multiple times
-    // (e.g., when a song has composer + multiple singers, it might match multiple times)
-    const seenIds = new Set();
-    const deduplicated = filtered.filter(song => {
-      const songId = song.id;
-      if (seenIds.has(songId)) {
-        console.log(`⚠️ Duplicate song filtered out: ${song.title} (ID: ${songId})`);
+      if (!song.language) return false;
+      if (normalize(song.language) !== normalize(filters.language)) {
         return false;
       }
-      seenIds.add(songId);
-      return true;
-    });
-    
-    if (deduplicated.length < filtered.length) {
-      console.log(`✅ Deduplicated: ${filtered.length} -> ${deduplicated.length} songs`);
     }
-    
-    if (deduplicated.length > 0) {
-      console.log('Sample filtered song:', deduplicated[0]);
-      console.log('First few filtered songs:', deduplicated.slice(0, 3).map(s => ({
-        title: s.title,
-        language: s.language,
-        artist: s.artist || s.artist_name
-      })));
-    } else if (initialCount > 0) {
-      console.warn('⚠️ All songs were filtered out!');
-      console.warn('Available languages in songs:', [...new Set(allSongs.map(s => s.language).filter(Boolean))]);
-      console.warn('Available artists in songs:', [...new Set(allSongs.map(s => s.artist || s.artist_name).filter(Boolean))].slice(0, 10));
+
+    /* ARTIST (COMPOSER ONLY) */
+    const artistSearch = selectedArtist || filters.artist;
+    if (artistSearch) {
+      const search = normalize(artistSearch);
+
+      const composers = (song.artists || [])
+        .filter((a) => a?.role === "composer")
+        .map((a) => normalize(a.name));
+
+      if (!composers.some((name) => name.includes(search))) {
+        return false;
+      }
     }
-    console.log('=== END FILTERING ===');
-    
-    return deduplicated;
-  }, [allSongs, filters, selectedArtist]);
+
+    /* SINGER */
+    if (filters.singer) {
+      const search = normalize(filters.singer);
+
+      const singers = (song.artists || [])
+        .filter((a) => a?.role === "singer")
+        .map((a) => normalize(a.name));
+
+      if (!singers.some((name) => name.includes(search))) {
+        return false;
+      }
+    }
+
+    /* ALBUM */
+    if (filters.album) {
+      if (!song.album) return false;
+
+      if (!normalize(song.album).includes(normalize(filters.album))) {
+        return false;
+      }
+    }
+
+    /* SONG TITLE */
+    if (filters.songName) {
+      if (!song.title) return false;
+
+      if (!normalize(song.title).includes(normalize(filters.songName))) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  }, [allSongs, filters, selectedArtist]);  
 
   const topArtists = useMemo(() => {
     console.log('=== COMPUTING TOP ARTISTS ===');
