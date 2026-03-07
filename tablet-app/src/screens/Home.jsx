@@ -101,7 +101,7 @@ export default function Home() {
         album: allSongs[0].album
       });
       
-      // Log a few songs that might have Arijit Singh
+      // Log a few songs that might have Arijit Singh (check all roles)
       const arijitSongs = allSongs.filter(s => {
         const artists = s.artists || [];
         return artists.some(a => {
@@ -111,12 +111,30 @@ export default function Home() {
              (s.artist && s.artist.toLowerCase().includes('arijit'));
       });
       if (arijitSongs.length > 0) {
-        console.log(`Found ${arijitSongs.length} songs with Arijit Singh:`, arijitSongs.slice(0, 3).map(s => ({
+        console.log(`Found ${arijitSongs.length} songs with Arijit Singh (any role):`, arijitSongs.slice(0, 5).map(s => ({
           id: s.id,
           title: s.title,
-          artists: s.artists,
+          artists: s.artists, // This should show roles now
           artist_name: s.artist_name,
           artist: s.artist
+        })));
+        
+        // Check specifically for singer role
+        const arijitSingerSongs = arijitSongs.filter(s => {
+          const artists = s.artists || [];
+          return artists.some(a => {
+            if (typeof a === 'object' && a.name) {
+              const name = String(a.name).toLowerCase();
+              const role = a.role ? String(a.role).toLowerCase().trim() : null;
+              return name.includes('arijit') && role === 'singer';
+            }
+            return false;
+          });
+        });
+        console.log(`Found ${arijitSingerSongs.length} songs with Arijit Singh as SINGER:`, arijitSingerSongs.slice(0, 3).map(s => ({
+          id: s.id,
+          title: s.title,
+          artists: s.artists
         })));
       } else {
         console.warn('⚠️ No songs found with Arijit Singh in initial data');
@@ -170,22 +188,38 @@ export default function Home() {
       } else {
       filtered = filtered.filter(song => {
         // Check all artists in the artists array, not just the first one
-        // For "Artist" field, we want composers and other roles (NOT singers)
-        const artistsArray = song.artists || [];
+        // For "Artist" field, we want ONLY composers (role="composer")
+        // Fallback to artist_name/artist if artists array is missing
+        let artistsArray = Array.isArray(song.artists) ? song.artists : [];
         
-        // Extract artist names from the array - filter by role
-        // Artist field = composers and other roles (exclude singers)
+        // If no artists array, create one from fallback fields (assume composer role)
+        if (artistsArray.length === 0) {
+          if (song.artist_name) {
+            artistsArray = [{ name: song.artist_name, role: "composer" }];
+          } else if (song.artist) {
+            artistsArray = [{ name: song.artist, role: "composer" }];
+          }
+        }
+        
+        // Extract artist names from the array - filter by role="composer"
         const allArtistNames = [];
+        let hasRoleInfo = false;
         
-        // Process artists array - only include non-singer roles for "Artist" field
+        // Process artists array - only include composers for "Artist" field
         artistsArray.forEach(a => {
           if (a === null || a === undefined) return;
           
-          // Check role - for "Artist" field, exclude "singer" role
+          // Check role - for "Artist" field, ONLY include "composer" role
           const role = a.role ? String(a.role).toLowerCase().trim() : null;
-          if (role === 'singer') {
-            // Skip singers when searching in "Artist" field
-            return;
+          if (role) {
+            hasRoleInfo = true;
+            if (role !== 'composer') {
+              // Skip non-composers when searching in "Artist" field
+              return;
+            }
+          } else {
+            // If no role info, we'll include it as fallback (for backward compatibility)
+            // But only if we don't have any role info at all
           }
           
           // Handle object format: {id: 275, name: "Arijit Singh", role: "composer"}
@@ -203,19 +237,15 @@ export default function Home() {
               }
             }
           } else {
-            // Handle string format
-            allArtistNames.push(String(a));
+            // Handle string format - only include if no role info or role is composer
+            if (!hasRoleInfo || role === 'composer') {
+              allArtistNames.push(String(a));
+            }
           }
         });
         
-        // Also check artist_name and artist for backward compatibility (if no role info)
-        // Only include if we don't have role-based filtering or if it's not a singer
-        if (song.artist_name && artistsArray.length === 0) {
-          allArtistNames.push(String(song.artist_name));
-        }
-        if (song.artist && artistsArray.length === 0) {
-          allArtistNames.push(String(song.artist));
-        }
+        // Note: We already handled fallback above by creating artistsArray from artist_name/artist
+        // So we don't need to add them again here
         
         // Remove duplicates and empty values
         const uniqueNames = [...new Set(allArtistNames.filter(Boolean))];
@@ -335,10 +365,21 @@ export default function Home() {
         filtered = filtered.filter(song => {
           // Check all artists in the artists array, not just the first one
           // For "Singer" field, we ONLY want artists with role="singer"
-          const artistsArray = song.artists || [];
+          // Fallback to artist_name/artist if artists array is missing
+          let artistsArray = Array.isArray(song.artists) ? song.artists : [];
+          
+          // If no artists array, create one from fallback fields
+          if (artistsArray.length === 0) {
+            if (song.artist_name) {
+              artistsArray = [{ name: song.artist_name, role: "singer" }];
+            } else if (song.artist) {
+              artistsArray = [{ name: song.artist, role: "singer" }];
+            }
+          }
           
           // Extract artist names from the array - filter by role="singer"
           const allArtistNames = [];
+          let hasRoleInfo = false;
           
           // Process artists array - only include singers
           artistsArray.forEach(a => {
@@ -346,10 +387,14 @@ export default function Home() {
             
             // Check role - for "Singer" field, ONLY include "singer" role
             const role = a.role ? String(a.role).toLowerCase().trim() : null;
-            if (role && role !== 'singer') {
-              // Skip non-singers when searching in "Singer" field
-              return;
+            if (role) {
+              hasRoleInfo = true;
+              if (role !== 'singer') {
+                // Skip non-singers when searching in "Singer" field
+                return;
+              }
             }
+            // If no role info, we'll include it as fallback (for backward compatibility)
             
             // Handle object format: {id: 275, name: "Arijit Singh", role: "singer"}
             if (typeof a === 'object' && a !== null) {
@@ -366,8 +411,8 @@ export default function Home() {
                 }
               }
             } else {
-              // Handle string format (if no role info, include it as fallback)
-              if (!role || role === 'singer') {
+              // Handle string format - include if no role info or role is singer
+              if (!hasRoleInfo || role === 'singer') {
                 allArtistNames.push(String(a));
               }
             }
@@ -375,11 +420,13 @@ export default function Home() {
           
           // Also check artist_name and artist for backward compatibility (if no role info)
           // Only include if we don't have role-based filtering
-          if (song.artist_name && artistsArray.length === 0) {
-            allArtistNames.push(String(song.artist_name));
-          }
-          if (song.artist && artistsArray.length === 0) {
-            allArtistNames.push(String(song.artist));
+          if (!hasRoleInfo) {
+            if (song.artist_name) {
+              allArtistNames.push(String(song.artist_name));
+            }
+            if (song.artist) {
+              allArtistNames.push(String(song.artist));
+            }
           }
           
           // Remove duplicates and empty values

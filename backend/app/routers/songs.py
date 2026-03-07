@@ -77,15 +77,8 @@ def list_songs(
             )
             """
         
-        # Complete query with GROUP BY
+        # Complete query - GROUP BY is already in base_query
         query_sql = base_query + where_clause + """
-            GROUP BY 
-                s.id,
-                s.title,
-                s.album,
-                s.language,
-                s.file_url,
-                s.play_count
             ORDER BY s.title
         """
         
@@ -103,7 +96,18 @@ def list_songs(
         songs = []
         for row in rows:
             # Parse artists JSON (it's already a Python list from PostgreSQL)
-            artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
+            # Always ensure artists is an array, never null/undefined
+            if row.artists is None:
+                artists_list = []
+            elif isinstance(row.artists, list):
+                artists_list = row.artists
+            elif isinstance(row.artists, str):
+                try:
+                    artists_list = json.loads(row.artists) if row.artists else []
+                except:
+                    artists_list = []
+            else:
+                artists_list = []
             
             # S3 key comes directly from songs.file_url.
             # The file_url should be just the filename (e.g. 'song.mp4'), 
@@ -212,8 +216,18 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         if not row:
             raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")
         
-        # Parse artists JSON
-        artists_list = row.artists if isinstance(row.artists, list) else json.loads(row.artists) if row.artists else []
+        # Parse artists JSON - always ensure it's an array
+        if row.artists is None:
+            artists_list = []
+        elif isinstance(row.artists, list):
+            artists_list = row.artists
+        elif isinstance(row.artists, str):
+            try:
+                artists_list = json.loads(row.artists) if row.artists else []
+            except:
+                artists_list = []
+        else:
+            artists_list = []
         
         # S3 key comes directly from songs.file_url
         # The file_url should be just the filename (e.g. 'song.mp4'),
