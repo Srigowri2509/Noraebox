@@ -13,8 +13,19 @@ export default function SongCard({ song = {}, onQueue }) {
       <div className="flex-1 min-w-0">
         <div className="text-white font-medium text-base truncate mb-1">{song.title || "Unknown title"}</div>
         <div className="text-slate-300 text-sm truncate">
-          {song.artist_name || song.artist || ""}
-          {song.album ? ` • ${song.album}` : ""}
+          {(() => {
+            const singers = (song.artists || [])
+              .filter(a => a.role === "singer")
+              .map(a => a.name)
+              .join(", ");
+
+            const composers = (song.artists || [])
+              .filter(a => a.role === "composer")
+              .map(a => a.name)
+              .join(", ");
+
+            return `${singers || composers || song.artist_name || song.artist || ""}${song.album ? ` • ${song.album}` : ""}`;
+          })()}
         </div>
       </div>
     </div>
