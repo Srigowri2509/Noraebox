@@ -8,8 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:android": "npm run build && npx cap sync android && cd android && ./gradlew assembleRelease",
-    "build:android:debug": "npm run build && npx cap sync android && cd android && ./gradlew assembleDebug",
+    "build:android": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\" && gradlew.bat assembleRelease && cd ..",
+    "build:android:debug": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\" && gradlew.bat assembleDebug && cd ..",
     "apk": "npm run build:android"
   },
   "dependencies": {

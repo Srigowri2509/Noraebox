@@ -21,7 +21,9 @@ if %errorlevel% neq 0 (
 REM Build APK
 echo [3/3] Building Android APK...
 cd android
-call gradlew.bat assembleRelease
+set "JAVA_HOME=C:\Program Files\Android\Android Studio\jbr"
+set "PATH=%JAVA_HOME%\bin;%PATH%"
+call gradlew.bat assembleRelease --no-daemon
 if %errorlevel% neq 0 (
     echo Error: APK build failed
     cd ..
