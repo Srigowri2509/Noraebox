@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from "react";
 import Header from "../components/Header.jsx";
 import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
-import TopArtists from "../components/TopArtists.jsx";
 import MostPlayed from "../components/MostPlayed.jsx";
 import QueueList from "../components/QueueList.jsx";
 import ReadyToSing from "../components/ReadyToSing.jsx";
@@ -129,115 +128,7 @@ const filteredSongs = useMemo(() => {
     return true;
   });
 
-}, [allSongs, filters, selectedArtist]);  
-
-  const topArtists = useMemo(() => {
-    console.log('=== COMPUTING TOP ARTISTS ===');
-    console.log('Total songs:', allSongs?.length || 0);
-    
-    const map = {};
-    let songsWithArtists = 0;
-    let songsWithoutArtists = 0;
-    let arijitCount = 0; // Debug counter for Arijit Singh
-    
-    allSongs.forEach(s => {
-      // First, try to use the artists array (which includes all artists with roles)
-      let artistsToCount = [];
-      
-      if (Array.isArray(s.artists) && s.artists.length > 0) {
-        // Use all artists from the array
-        artistsToCount = s.artists.map(a => {
-          if (typeof a === 'object' && a !== null) {
-            return {
-              name: a.name || a.artist || a.artist_name,
-              image: a.image_url || s.artist_image
-            };
-          }
-          return {
-            name: String(a),
-            image: s.artist_image
-          };
-        }).filter(a => a.name); // Filter out empty names
-      }
-      
-      // Fallback to artist_name/artist if artists array is empty
-      if (artistsToCount.length === 0) {
-        const artistName = s.artist_name || s.artist;
-        if (artistName) {
-          artistsToCount = [{
-            name: artistName,
-            image: s.artist_image
-          }];
-        }
-      }
-      
-      if (artistsToCount.length === 0) {
-        songsWithoutArtists++;
-        return;
-      }
-      
-      songsWithArtists++;
-      
-      // Count each artist in the song
-      artistsToCount.forEach(artistInfo => {
-        const artistName = artistInfo.name;
-        if (!artistName) return;
-        
-        // Normalize artist name to avoid duplicates (case-insensitive)
-        const normalizedName = artistName.trim();
-        if (!normalizedName) return;
-        
-        // Debug: Count Arijit Singh
-        if (normalizedName.toLowerCase().includes('arijit')) {
-          arijitCount++;
-          console.log(`Found Arijit in song ${s.id}: ${s.title}`, {
-            artistName: normalizedName,
-            artists: s.artists
-          });
-        }
-        
-        if (!map[normalizedName]) {
-          map[normalizedName] = {
-            name: normalizedName,
-            songCount: 0,
-            image: artistInfo.image || "/default-artist.jpg",
-          };
-        }
-        map[normalizedName].songCount += 1;
-      });
-    });
-
-    console.log(`Songs with artists: ${songsWithArtists}, without: ${songsWithoutArtists}`);
-    console.log(`Unique artists found: ${Object.keys(map).length}`);
-    console.log(`Arijit Singh count: ${arijitCount}`);
-    console.log('Artist names:', Object.keys(map).slice(0, 10));
-    
-    // Log Arijit Singh's entry if it exists
-    const arijitEntry = Object.values(map).find(a => 
-      a.name.toLowerCase().includes('arijit')
-    );
-    if (arijitEntry) {
-      console.log('Arijit Singh entry:', arijitEntry);
-    } else {
-      console.warn('⚠️ Arijit Singh not found in top artists map!');
-    }
-
-    // Get unique artists, sort by song count, limit to 6
-    const result = Object.values(map)
-      .sort((a, b) => b.songCount - a.songCount)
-      .slice(0, 6)
-      .map((artist, index) => ({
-        id: artist.name.toLowerCase().replace(/\s+/g, '-'),
-        name: artist.name,
-        songCount: artist.songCount,
-        image: artist.image,
-      }));
-    
-    console.log('Top artists result:', result);
-    console.log('=== END TOP ARTISTS ===');
-    
-    return result;
-  }, [allSongs]);
+}, [allSongs, filters, selectedArtist]);
 
   // Fetch most played songs based on play_count
   const [mostPlayed, setMostPlayed] = useState([]);
@@ -625,40 +516,8 @@ const filteredSongs = useMemo(() => {
         <div className="grid grid-cols-12 gap-6 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT */}
           <div className="col-span-8 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-            {/* Top Artists - Always visible */}
-            <TopArtists 
-              artists={topArtists} 
-              selectedArtistName={selectedArtist}
-              onArtistSelect={(a) => {
-                if (a === null) {
-                  // Clear selection
-                  setSelectedArtist(null);
-                } else {
-                  // Set selectedArtist (doesn't show in search bar) and clear search bar artist filter
-                  setSelectedArtist(a.name);
-                  setFilters(p => ({ ...p, artist: "" }));
-                }
-              }} 
-            />
-            
-            {/* Show selected artist indicator */}
-            {selectedArtist && (
-              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ marginTop: "1rem", padding: "1rem 1rem", minHeight: "2rem" }}>
-                <div className="flex items-center gap-2">
-                  <span className="text-cyan-400">🎤</span>
-                  <span className="text-white font-semibold">Showing songs by: <span className="text-cyan-300">{selectedArtist}</span></span>
-                </div>
-                <button
-                  onClick={() => setSelectedArtist(null)}
-                  className="text-gray-400 hover:text-white text-sm underline"
-                >
-                  Clear
-                </button>
-              </div>
-            )}
-            
             {/* Show search results when filters are active, otherwise show Most Played */}
-            <div style={{ marginTop: "2rem", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               {hasActiveFilters ? (
                 <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
                   <SearchResults 
