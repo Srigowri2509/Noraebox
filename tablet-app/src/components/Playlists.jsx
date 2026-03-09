@@ -1,6 +1,21 @@
 import React from "react";
 
 export default function Playlists({ playlists = [], onPlaylistSelect, selectedPlaylistId = null }) {
+  // Hide scrollbar styles
+  React.useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .playlists-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .playlists-scroll {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
   if (!playlists || playlists.length === 0) {
     return (
       <section>
@@ -22,14 +37,14 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
         <h3 className="text-white font-semibold text-lg">Playlists</h3>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+      <div className="flex gap-3 overflow-x-auto pb-2 playlists-scroll" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
         {playlists.map((playlist) => {
           const isSelected = selectedPlaylistId === playlist.id;
           return (
             <div
               key={playlist.id}
               onClick={() => onPlaylistSelect?.(playlist)}
-              className={`rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md ${
+              className={`flex-shrink-0 rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md w-[140px] ${
                 isSelected ? "border-sky-400 shadow-sky-400/20" : ""
               }`}
             >

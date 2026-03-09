@@ -10,9 +10,9 @@ router = APIRouter()
 
 @router.get("/")
 def get_playlists(db: Session = Depends(get_db)):
-    """Get all playlists with song counts"""
+    """Get all playlists with song counts (only non-empty playlists)"""
     try:
-        # Query playlists with song counts
+        # Query playlists with song counts, filtering out empty playlists
         playlists = db.query(
             Playlist.id,
             Playlist.name,
@@ -26,18 +26,23 @@ def get_playlists(db: Session = Depends(get_db)):
             Playlist.name,
             Playlist.description,
             Playlist.image_url
+        ).having(
+            func.count(PlaylistSong.song_id) > 0
         ).order_by(Playlist.name).all()
         
         # Convert to list of dicts
         result = []
         for p in playlists:
-            result.append({
-                "id": str(p.id),
-                "name": p.name,
-                "description": p.description,
-                "image_url": p.image_url,
-                "song_count": p.song_count or 0
-            })
+            song_count = p.song_count or 0
+            # Double check: only include if song_count > 0
+            if song_count > 0:
+                result.append({
+                    "id": str(p.id),
+                    "name": p.name,
+                    "description": p.description,
+                    "image_url": p.image_url,
+                    "song_count": song_count
+                })
         
         return result
     except Exception as e:
@@ -62,22 +67,31 @@ def get_playlist_songs(playlist_id: str, db: Session = Depends(get_db)):
             PlaylistSong.playlist_id == playlist_uuid
         ).order_by(PlaylistSong.position).all()
         
-        # Load artist relationships
+        # Load artist relationships using raw SQL to avoid column issues
+        from sqlalchemy import text
         songs_with_artists = []
         for song in playlist_songs:
-            # Get artists for this song
-            song_artists = db.query(SongArtist, Artist).join(
-                Artist, SongArtist.artist_id == Artist.id
-            ).filter(SongArtist.song_id == song.id).all()
+            # Use raw SQL to get artists - only select columns that exist
+            artist_query = text("""
+                SELECT 
+                    sa.role,
+                    a.id,
+                    a.name
+                FROM song_artists sa
+                JOIN artist a ON sa.artist_id = a.id
+                WHERE sa.song_id = :song_id
+            """)
+            
+            artist_results = db.execute(artist_query, {"song_id": song.id}).fetchall()
             
             # Build artists array
             artists = []
-            for sa, artist in song_artists:
+            for row in artist_results:
                 artists.append({
-                    "id": str(artist.id),
-                    "name": artist.name,
-                    "role": sa.role,
-                    "image_url": artist.image_url
+                    "id": str(row.id),
+                    "name": row.name,
+                    "role": row.role,
+                    "image_url": None  # Column doesn't exist in DB, set to None
                 })
             
             # Build song response
