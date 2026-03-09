@@ -16,7 +16,7 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
   const handleQueue = onAddToQueue || onQueue;
 
   return (
-    <div className="space-y-3 search-results-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+    <div className="space-y-3 search-results-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
       <style>{`
         .search-results-scroll::-webkit-scrollbar {
           display: none;

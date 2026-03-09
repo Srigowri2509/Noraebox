@@ -3,21 +3,6 @@ import React, { useRef, useEffect } from "react";
 export default function QueueList({ queue = [], onRemove }) {
   const scrollContainerRef = useRef(null);
 
-  // Hide scrollbar styles
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = `
-      .queue-scroll::-webkit-scrollbar {
-        display: none;
-      }
-      .queue-scroll {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-    `;
-    document.head.appendChild(style);
-    return () => document.head.removeChild(style);
-  }, []);
 
   // Auto-scroll to bottom when queue updates
   useEffect(() => {
@@ -42,8 +27,13 @@ export default function QueueList({ queue = [], onRemove }) {
         <div 
           ref={scrollContainerRef}
           className="space-y-3 queue-scroll" 
-          style={{ flex: 1, overflowY: "auto", scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
+          <style>{`
+            .queue-scroll::-webkit-scrollbar {
+              display: none;
+            }
+          `}</style>
           {queue.map((s, i) => (
             <div
               key={i}

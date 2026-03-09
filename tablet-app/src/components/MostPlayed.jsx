@@ -12,7 +12,7 @@ export default function MostPlayed({ songs = [], onAddToQueue, onSongSelect }) {
       {songs.length === 0 ? (
         <div className="text-slate-400 text-center py-12" style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>No songs played yet</div>
       ) : (
-        <div className="space-y-3 most-played-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <div className="space-y-3 most-played-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           <style>{`
             .most-played-scroll::-webkit-scrollbar {
               display: none;

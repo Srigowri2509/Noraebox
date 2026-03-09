@@ -153,28 +153,38 @@ function SingerFilter({ value = "", onChange }) {
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-4">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-        <LanguageFilter
-          value={filters.language || "all"}
-          onChange={(val) => onFilterChange?.("language", val)}
-          languages={languages}
-        />
-        <ArtistFilter
-          value={filters.artist || ""}
-          onChange={(val) => onFilterChange?.("artist", val)}
-        />
-        <SingerFilter
-          value={filters.singer || ""}
-          onChange={(val) => onFilterChange?.("singer", val)}
-        />
-        <AlbumFilter
-          value={filters.album || ""}
-          onChange={(val) => onFilterChange?.("album", val)}
-        />
-        <SongNameFilter
-          value={filters.songName || ""}
-          onChange={(val) => onFilterChange?.("songName", val)}
-        />
+      <div className="flex flex-row gap-6 items-start">
+        <div className="flex-1">
+          <LanguageFilter
+            value={filters.language || "all"}
+            onChange={(val) => onFilterChange?.("language", val)}
+            languages={languages}
+          />
+        </div>
+        <div className="flex-1">
+          <ArtistFilter
+            value={filters.artist || ""}
+            onChange={(val) => onFilterChange?.("artist", val)}
+          />
+        </div>
+        <div className="flex-1">
+          <SingerFilter
+            value={filters.singer || ""}
+            onChange={(val) => onFilterChange?.("singer", val)}
+          />
+        </div>
+        <div className="flex-1">
+          <AlbumFilter
+            value={filters.album || ""}
+            onChange={(val) => onFilterChange?.("album", val)}
+          />
+        </div>
+        <div className="flex-1">
+          <SongNameFilter
+            value={filters.songName || ""}
+            onChange={(val) => onFilterChange?.("songName", val)}
+          />
+        </div>
       </div>
     </div>
   );

@@ -18,12 +18,12 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
   }, []);
   if (!playlists || playlists.length === 0) {
     return (
-      <section>
-        <div className="flex items-center gap-2 mb-6">
+      <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+        <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
           <span className="text-sky-300 text-xl">🎵</span>
           <h3 className="text-white font-semibold text-lg">Playlists</h3>
         </div>
-        <div className="text-slate-400 py-6 text-center">
+        <div className="text-slate-400 py-6 text-center" style={{ flex: 1 }}>
           No playlists found.
         </div>
       </section>
@@ -31,13 +31,13 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
   }
 
   return (
-    <section style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
-      <div className="flex items-center gap-2 mb-6">
+    <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
         <span className="text-sky-300 text-xl">🎵</span>
         <h3 className="text-white font-semibold text-lg">Playlists</h3>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-2 playlists-scroll" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}>
+      <div className="flex gap-3 overflow-x-auto pb-2 playlists-scroll" style={{ flex: 1, scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', minHeight: 0, marginTop: '1rem' }}>
         {playlists.map((playlist) => {
           const isSelected = selectedPlaylistId === playlist.id;
           return (
