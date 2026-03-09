@@ -78,14 +78,36 @@ export default function Home() {
   useEffect(() => {
     async function fetchPlaylists() {
       try {
+        console.log('Fetching playlists from /playlists...');
         const res = await api("/playlists");
-        const playlistsData = res.data || res;
-        if (Array.isArray(playlistsData)) {
+        console.log('Playlists API response:', res);
+        
+        // Handle different response formats
+        let playlistsData = null;
+        if (Array.isArray(res)) {
+          // Direct array response
+          playlistsData = res;
+        } else if (res && Array.isArray(res.data)) {
+          // Wrapped in data property
+          playlistsData = res.data;
+        } else if (res && res.playlists && Array.isArray(res.playlists)) {
+          // Wrapped in playlists property
+          playlistsData = res.playlists;
+        } else {
+          console.warn('Unexpected playlists response format:', res);
+          playlistsData = [];
+        }
+        
+        if (Array.isArray(playlistsData) && playlistsData.length > 0) {
           setPlaylists(playlistsData);
-          console.log('Fetched playlists:', playlistsData.length, playlistsData);
+          console.log('✅ Fetched playlists:', playlistsData.length, playlistsData);
+        } else {
+          console.log('No playlists found or empty array');
+          setPlaylists([]);
         }
       } catch (err) {
-        console.error("Failed to fetch playlists", err);
+        console.error("❌ Failed to fetch playlists", err);
+        console.error("Error details:", err.message, err.stack);
         setPlaylists([]);
       }
     }
