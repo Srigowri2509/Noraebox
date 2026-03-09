@@ -22,22 +22,38 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
         <h3 className="text-white font-semibold text-lg">Playlists</h3>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'thin' }}>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
         {playlists.map((playlist) => {
           const isSelected = selectedPlaylistId === playlist.id;
           return (
             <div
               key={playlist.id}
               onClick={() => onPlaylistSelect?.(playlist)}
-              className={`flex-shrink-0 rounded-lg border bg-slate-800/80 border-slate-600 p-4 cursor-pointer hover:-translate-y-1 transition-transform shadow-md min-w-[200px] ${
-                isSelected ? "border-sky-400 shadow-sky-400/20 bg-slate-700/90" : "hover:bg-slate-700/80"
+              className={`rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md ${
+                isSelected ? "border-sky-400 shadow-sky-400/20" : ""
               }`}
             >
-              <div className="text-white font-semibold text-base mb-1">
+              <div className="aspect-square w-full rounded-lg bg-slate-700/70 flex items-center justify-center mb-2 overflow-hidden object-contain relative">
+                {playlist.image_url && playlist.image_url !== "/default-playlist.jpg" ? (
+                  <img
+                    src={playlist.image_url}
+                    alt={playlist.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.log(`Failed to load image: ${playlist.image_url}`);
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                {(!playlist.image_url || playlist.image_url === "/default-playlist.jpg") && (
+                  <span className="text-4xl text-slate-300">📋</span>
+                )}
+              </div>
+              <div className="text-white font-bold text-sm truncate text-center mb-1">
                 {playlist.name}
               </div>
               {playlist.song_count !== undefined && (
-                <div className="text-slate-400 text-sm">
+                <div className="text-slate-400 text-xs text-center">
                   {playlist.song_count} {playlist.song_count === 1 ? 'song' : 'songs'}
                 </div>
               )}
