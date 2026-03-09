@@ -678,7 +678,7 @@ const filteredSongs = useMemo(() => {
           {/* LEFT COLUMN */}
           <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* TOP ROW: Playlists section - fixed height to match Ready to Sing */}
-            <div style={{ height: '180px', flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+            <div style={{ height: '250px', flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
               <Playlists 
                 playlists={playlists} 
                 onPlaylistSelect={handlePlaylistSelect}
