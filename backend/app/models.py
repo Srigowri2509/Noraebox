@@ -113,3 +113,27 @@ class PlaybackEvent(Base):
     
     # Relationships
     song = relationship("Song", back_populates="playback_events")
+
+
+class Playlist(Base):
+    __tablename__ = "playlists"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    image_url = Column(Text, nullable=True)
+    
+    # Relationships
+    playlist_songs = relationship("PlaylistSong", back_populates="playlist")
+
+
+class PlaylistSong(Base):
+    __tablename__ = "playlist_songs"
+    
+    playlist_id = Column(UUID(as_uuid=True), ForeignKey("playlists.id"), primary_key=True)
+    song_id = Column(Integer, ForeignKey("songs.id"), primary_key=True)
+    position = Column(Integer, nullable=True)
+    
+    # Relationships
+    playlist = relationship("Playlist", back_populates="playlist_songs")
+    song = relationship("Song")
