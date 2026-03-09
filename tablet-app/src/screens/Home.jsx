@@ -677,56 +677,60 @@ const filteredSongs = useMemo(() => {
         <div className="grid grid-cols-12 gap-6 flex-1 overflow-hidden" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT COLUMN */}
           <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-            {/* TOP ROW: Playlists section - fixed height to match Ready to Sing */}
-            <div style={{ height: '250px', flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <Playlists 
-                playlists={playlists} 
-                onPlaylistSelect={handlePlaylistSelect}
-                selectedPlaylistId={selectedPlaylistId}
-              />
-              
-              {/* Show selected playlist indicator */}
-              {selectedPlaylistId && (
-                <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "0.75rem 1rem", marginTop: "0.75rem", flexShrink: 0 }}>
-                  <div className="flex items-center gap-2">
-                    <span className="text-cyan-400">📋</span>
-                    <span className="text-white font-semibold text-sm">
-                      Showing playlist: <span className="text-cyan-300">
-                        {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={async () => {
-                        if (playlistSongs.length === 0) {
-                          alert("No songs in this playlist to add.");
-                          return;
-                        }
-                        await handleAddPlaylistToQueue(playlistSongs);
-                      }}
-                      className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-xs font-medium transition-colors"
-                    >
-                      Add All to Queue
-                    </button>
-                    <button
-                      onClick={() => {
-                        setSelectedPlaylistId(null);
-                        setPlaylistSongs([]);
-                      }}
-                      className="text-gray-400 hover:text-white text-xs underline"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              )}
+            {/* TOP ROW: Playlist title + square cards */}
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
+                <span className="text-sky-300 text-xl">🎵</span>
+                <h3 className="text-white font-semibold text-lg">Playlists</h3>
+              </div>
+              <div style={{ height: '170px', flexShrink: 0, overflow: "hidden" }}>
+                <Playlists 
+                  playlists={playlists} 
+                  onPlaylistSelect={handlePlaylistSelect}
+                  selectedPlaylistId={selectedPlaylistId}
+                />
+              </div>
             </div>
 
             {/* BOTTOM ROW: Show search results when filters are active, otherwise show Most Played */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", marginTop: "1.5rem" }}>
               {hasActiveFilters ? (
                 <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                  {selectedPlaylistId && (
+                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "0.75rem 1rem", marginBottom: "1rem", flexShrink: 0 }}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-cyan-400">📋</span>
+                        <span className="text-white font-semibold text-sm">
+                          Showing playlist: <span className="text-cyan-300">
+                            {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={async () => {
+                            if (playlistSongs.length === 0) {
+                              alert("No songs in this playlist to add.");
+                              return;
+                            }
+                            await handleAddPlaylistToQueue(playlistSongs);
+                          }}
+                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-xs font-medium transition-colors"
+                        >
+                          Add All to Queue
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedPlaylistId(null);
+                            setPlaylistSongs([]);
+                          }}
+                          className="text-gray-400 hover:text-white text-xs underline"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <SearchResults 
                     songs={filteredSongs} 
                     onAddToQueue={handleAddToQueue}
@@ -743,13 +747,16 @@ const filteredSongs = useMemo(() => {
 
           {/* RIGHT COLUMN */}
           <div className="col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-            {/* TOP ROW: Ready to Sing - fixed height to match Playlists */}
-            <div style={{ height: '180px', flexShrink: 0 }}>
-              <ReadyToSing 
-                onPlay={handleReadyToSing}
-                onSkip={handleSkip}
-                queueLength={queue?.length || 0}
-              />
+            {/* TOP ROW: Ready to Sing aligned with playlist card row */}
+            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
+              <div style={{ height: '2rem', flexShrink: 0 }} />
+              <div style={{ height: '170px', flexShrink: 0 }}>
+                <ReadyToSing 
+                  onPlay={handleReadyToSing}
+                  onSkip={handleSkip}
+                  queueLength={queue?.length || 0}
+                />
+              </div>
             </div>
             
             {/* BOTTOM ROW: Queue - same height as Results */}

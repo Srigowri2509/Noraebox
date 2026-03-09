@@ -6,7 +6,7 @@ export default function ReadyToSing({ onPlay, onSkip, queueLength = 0 }) {
   const skipDisabled = queueLength === 0;
 
   return (
-    <div className="rounded-2xl bg-[#0f1220]/90 border border-white/10 shadow-xl p-6 flex flex-col items-center justify-center text-center backdrop-blur-md" style={{ height: '100%', minHeight: '180px' }}>
+    <div className="rounded-2xl bg-[#0f1220]/90 border border-white/10 shadow-xl p-5 flex flex-col items-center justify-center text-center backdrop-blur-md" style={{ height: '100%', minHeight: 0 }}>
       
       {/* PLAY BUTTON */}
       <button

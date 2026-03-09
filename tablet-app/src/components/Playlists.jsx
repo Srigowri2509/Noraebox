@@ -19,10 +19,6 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
   if (!playlists || playlists.length === 0) {
     return (
       <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
-          <span className="text-sky-300 text-xl">🎵</span>
-          <h3 className="text-white font-semibold text-lg">Playlists</h3>
-        </div>
         <div className="text-slate-400 py-6 text-center" style={{ flex: 1 }}>
           No playlists found.
         </div>
@@ -32,35 +28,42 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
 
   return (
     <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
-        <span className="text-sky-300 text-xl">🎵</span>
-        <h3 className="text-white font-semibold text-lg">Playlists</h3>
-      </div>
-
-      <div className="flex gap-3 overflow-x-auto pb-2 playlists-scroll" style={{ flex: 1, scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', minHeight: 0, marginTop: '1rem' }}>
+      <div
+        className="flex gap-3 items-stretch overflow-x-auto pb-2 playlists-scroll"
+        style={{
+          flex: 1,
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          minHeight: 0,
+          touchAction: 'pan-x',
+        }}
+      >
         {playlists.map((playlist) => {
           const isSelected = selectedPlaylistId === playlist.id;
+          const imageSrc = typeof playlist.image_url === "string" ? playlist.image_url.trim() : "";
+          const hasImage = imageSrc.length > 0 && imageSrc !== "/default-playlist.jpg";
           return (
             <div
               key={playlist.id}
               onClick={() => onPlaylistSelect?.(playlist)}
-              className={`flex-shrink-0 rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md w-[140px] ${
+              className={`flex-shrink-0 flex flex-col rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md w-[170px] aspect-square ${
                 isSelected ? "border-sky-400 shadow-sky-400/20" : ""
               }`}
             >
-              <div className="aspect-square w-full rounded-lg bg-slate-700/70 flex items-center justify-center mb-2 overflow-hidden object-contain relative">
-                {playlist.image_url && playlist.image_url !== "/default-playlist.jpg" ? (
+              <div className="w-full flex-1 min-h-0 rounded-lg bg-slate-700/70 flex items-center justify-center mb-2 overflow-hidden object-contain relative">
+                {hasImage ? (
                   <img
-                    src={playlist.image_url}
+                    src={imageSrc}
                     alt={playlist.name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      console.log(`Failed to load image: ${playlist.image_url}`);
+                      console.log(`Failed to load image: ${imageSrc}`);
                       e.target.style.display = 'none';
                     }}
                   />
                 ) : null}
-                {(!playlist.image_url || playlist.image_url === "/default-playlist.jpg") && (
+                {!hasImage && (
                   <span className="text-4xl text-slate-300">📋</span>
                 )}
               </div>

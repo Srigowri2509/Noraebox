@@ -12,7 +12,10 @@ export default function QueueList({ queue = [], onRemove }) {
   }, [queue.length]);
 
   return (
-    <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+    <div
+      className="card-surface p-6"
+      style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}
+    >
       <div className="flex items-center gap-2 mb-6">
         <span className="text-sky-300 text-xl">🎵</span>
         <h4 className="text-white font-semibold text-lg">Queue</h4>
@@ -24,10 +27,20 @@ export default function QueueList({ queue = [], onRemove }) {
           <div className="text-slate-500 text-xs">Add songs to get started</div>
         </div>
       ) : (
-        <div 
+        <div
           ref={scrollContainerRef}
-          className="space-y-3 queue-scroll" 
-          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+          className="space-y-3 queue-scroll"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY: "auto",
+            overflowX: "hidden",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+            WebkitOverflowScrolling: "touch",
+            touchAction: "pan-y",
+            overscrollBehavior: "contain",
+          }}
         >
           <style>{`
             .queue-scroll::-webkit-scrollbar {
