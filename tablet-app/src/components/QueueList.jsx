@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from "react";
 
-export default function QueueList({ queue = [], onRemove, onMoveUp, onMoveDown }) {
+export default function QueueList({ queue = [], onRemove }) {
   const scrollContainerRef = useRef(null);
 
   // Hide scrollbar styles
@@ -47,34 +47,8 @@ export default function QueueList({ queue = [], onRemove, onMoveUp, onMoveDown }
           {queue.map((s, i) => (
             <div
               key={i}
-              className="flex items-center gap-2 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group queue-scroll"
+              className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group"
             >
-              {/* Reorder buttons */}
-              <div className="flex flex-col gap-1 shrink-0">
-                <button
-                  onClick={() => onMoveUp?.(i)}
-                  disabled={i === 0}
-                  className={`text-slate-400 hover:text-cyan-400 transition-colors text-xs px-1 py-0.5 ${
-                    i === 0 ? 'opacity-30 cursor-not-allowed' : ''
-                  }`}
-                  aria-label="Move up"
-                  title="Move up"
-                >
-                  ▲
-                </button>
-                <button
-                  onClick={() => onMoveDown?.(i)}
-                  disabled={i === queue.length - 1}
-                  className={`text-slate-400 hover:text-cyan-400 transition-colors text-xs px-1 py-0.5 ${
-                    i === queue.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
-                  }`}
-                  aria-label="Move down"
-                  title="Move down"
-                >
-                  ▼
-                </button>
-              </div>
-              
               <div className="w-14 h-14 rounded-lg bg-slate-700/70 flex items-center justify-center shrink-0">
                 <span className="text-2xl">🎵</span>
               </div>
@@ -86,6 +60,7 @@ export default function QueueList({ queue = [], onRemove, onMoveUp, onMoveDown }
               <button
                 onClick={() => onRemove?.(i)}
                 className="text-slate-400 hover:text-red-400 transition-colors px-2 py-2 text-xl font-bold flex-shrink-0"
+                style={{ marginRight: '16px' }}
                 aria-label="Remove from queue"
               >
                 ✕

@@ -352,109 +352,6 @@ const filteredSongs = useMemo(() => {
     }
   };
 
-  const handleMoveQueueItem = async (fromIndex, toIndex) => {
-    const currentRoomId = roomId || room?.id;
-    if (!currentRoomId || currentRoomId === "") {
-      console.warn("Cannot reorder queue: No room ID");
-      return;
-    }
-    
-    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) {
-      console.warn("Invalid indices for queue reorder:", fromIndex, toIndex);
-      return;
-    }
-    
-    // Only handle adjacent swaps (up/down one position)
-    if (Math.abs(fromIndex - toIndex) !== 1) {
-      console.warn("Can only swap adjacent items");
-      return;
-    }
-    
-    // Update local state immediately for instant feedback
-    const newQueue = [...queue];
-    const [movedItem] = newQueue.splice(fromIndex, 1);
-    newQueue.splice(toIndex, 0, movedItem);
-    setQueue(newQueue);
-    
-    // Update backend - swap the two adjacent items
-    try {
-      const item1 = queue[fromIndex];
-      const item2 = queue[toIndex];
-      const pos1 = item1?.position ?? (fromIndex + 1);
-      const pos2 = item2?.position ?? (toIndex + 1);
-      
-      // Remove both items
-      await api(`/rooms/${currentRoomId}/queue/remove`, {
-        method: "POST",
-        body: JSON.stringify({ position: pos1 })
-      });
-      
-      // Remove item2 (position may have shifted)
-      const item2NewPos = fromIndex < toIndex ? pos2 - 1 : pos2;
-      await api(`/rooms/${currentRoomId}/queue/remove`, {
-        method: "POST",
-        body: JSON.stringify({ position: item2NewPos })
-      });
-      
-      // Re-add in swapped order
-      if (fromIndex < toIndex) {
-        // Moving down: add item2 first, then item1
-        await api(`/rooms/${currentRoomId}/queue/add`, {
-          method: "POST",
-          body: JSON.stringify({
-            song_id: item2.id || item2.song_id,
-            added_by: item2.added_by || "tablet"
-          })
-        });
-        await api(`/rooms/${currentRoomId}/queue/add`, {
-          method: "POST",
-          body: JSON.stringify({
-            song_id: item1.id || item1.song_id,
-            added_by: item1.added_by || "tablet"
-          })
-        });
-      } else {
-        // Moving up: add item1 first, then item2
-        await api(`/rooms/${currentRoomId}/queue/add`, {
-          method: "POST",
-          body: JSON.stringify({
-            song_id: item1.id || item1.song_id,
-            added_by: item1.added_by || "tablet"
-          })
-        });
-        await api(`/rooms/${currentRoomId}/queue/add`, {
-          method: "POST",
-          body: JSON.stringify({
-            song_id: item2.id || item2.song_id,
-            added_by: item2.added_by || "tablet"
-          })
-        });
-      }
-      
-      // Refresh queue from backend to get correct positions
-      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
-      setQueue(queueRes || []);
-      
-      console.log(`✅ Swapped songs at positions ${pos1} and ${pos2}`);
-    } catch (error) {
-      console.error("Error reordering queue:", error);
-      // Revert local state if backend call fails
-      setQueue(queue);
-      console.error("Failed to reorder queue. Please try again.");
-    }
-  };
-
-  const handleMoveUp = (index) => {
-    if (index > 0) {
-      handleMoveQueueItem(index, index - 1);
-    }
-  };
-
-  const handleMoveDown = (index) => {
-    if (index < queue.length - 1) {
-      handleMoveQueueItem(index, index + 1);
-    }
-  };
 
   const handlePlaySong = async (song) => {
     const currentRoomId = roomId || room?.id;
@@ -736,14 +633,16 @@ const filteredSongs = useMemo(() => {
 
   return (
     <div 
-      className="h-screen text-white py-6 relative flex flex-col"
+      className="h-screen text-white relative flex flex-col overflow-hidden"
       style={{
         backgroundImage: "url('/background.jpg')",
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center",
         paddingLeft: "5%",
-        paddingRight: "5%"
+        paddingRight: "5%",
+        paddingTop: "1.5rem",
+        paddingBottom: "1.5rem"
       }}
     >
       {/* Semi-transparent overlay for readability */}
@@ -751,7 +650,7 @@ const filteredSongs = useMemo(() => {
       
       <Header />
 
-      <div style={{ marginTop: "2rem", marginBottom: "2rem" }}>
+      <div style={{ marginTop: "1rem", marginBottom: "1rem", flexShrink: 0 }}>
         <SearchBar 
           filters={filters} 
           onFilterChange={(key, val) => {
@@ -771,23 +670,25 @@ const filteredSongs = useMemo(() => {
       </div>
 
       {songsLoading ? (
-        <div className="text-center py-20">
+        <div className="text-center py-20" style={{ flexShrink: 0 }}>
           <div className="text-cyan-400 text-xl">Loading songs...</div>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-6 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
+        <div className="grid grid-cols-12 gap-6 flex-1 overflow-hidden" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT */}
-          <div className="col-span-8 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* Playlists section - above results */}
-            <Playlists 
-              playlists={playlists} 
-              onPlaylistSelect={handlePlaylistSelect}
-              selectedPlaylistId={selectedPlaylistId}
-            />
+            <div style={{ flexShrink: 0 }}>
+              <Playlists 
+                playlists={playlists} 
+                onPlaylistSelect={handlePlaylistSelect}
+                selectedPlaylistId={selectedPlaylistId}
+              />
+            </div>
             
             {/* Show selected playlist indicator */}
             {selectedPlaylistId && (
-              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "1rem 1rem", minHeight: "2rem", marginTop: "1rem", marginBottom: "1rem" }}>
+              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "1rem 1rem", minHeight: "2rem", marginTop: "1rem", marginBottom: "1rem", flexShrink: 0 }}>
                 <div className="flex items-center gap-2">
                   <span className="text-cyan-400">📋</span>
                   <span className="text-white font-semibold">
@@ -823,9 +724,9 @@ const filteredSongs = useMemo(() => {
             )}
 
             {/* Show search results when filters are active, otherwise show Most Played */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
               {hasActiveFilters ? (
-                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   <SearchResults 
                     songs={filteredSongs} 
                     onAddToQueue={handleAddToQueue}
@@ -833,7 +734,7 @@ const filteredSongs = useMemo(() => {
                   />
                 </div>
               ) : (
-                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
+                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   <MostPlayed songs={mostPlayed} onSongSelect={handleAddToQueue} />
                 </div>
               )}
@@ -841,18 +742,18 @@ const filteredSongs = useMemo(() => {
           </div>
 
           {/* RIGHT */}
-          <div className="col-span-4 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
-            <ReadyToSing 
-              onPlay={handleReadyToSing}
-              onSkip={handleSkip}
-              queueLength={queue?.length || 0}
-            />
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "2rem", minHeight: 0 }}>
+          <div className="col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            <div style={{ flexShrink: 0 }}>
+              <ReadyToSing 
+                onPlay={handleReadyToSing}
+                onSkip={handleSkip}
+                queueLength={queue?.length || 0}
+              />
+            </div>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "1.5rem", minHeight: 0, overflow: "hidden" }}>
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
               />
             </div>
           </div>

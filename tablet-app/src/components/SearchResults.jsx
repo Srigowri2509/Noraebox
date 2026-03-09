@@ -16,7 +16,12 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
   const handleQueue = onAddToQueue || onQueue;
 
   return (
-    <div className="space-y-3" style={{ flex: 1, overflowY: "auto" }}>
+    <div className="space-y-3 search-results-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <style>{`
+        .search-results-scroll::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       {songList.map((s) => (
         <SongCard key={s.id || s.title} song={s} onQueue={handleQueue} />
       ))}
