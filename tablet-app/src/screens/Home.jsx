@@ -5,6 +5,7 @@ import SearchResults from "../components/SearchResults.jsx";
 import MostPlayed from "../components/MostPlayed.jsx";
 import QueueList from "../components/QueueList.jsx";
 import ReadyToSing from "../components/ReadyToSing.jsx";
+import Playlists from "../components/Playlists.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
 import { api, API_BASE } from "../api";
@@ -20,6 +21,11 @@ export default function Home() {
 
   // Separate state for artist selected from TopArtists (doesn't show in search bar)
   const [selectedArtist, setSelectedArtist] = useState(null);
+  
+  // Playlists state
+  const [playlists, setPlaylists] = useState([]);
+  const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
+  const [playlistSongs, setPlaylistSongs] = useState([]);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
@@ -68,10 +74,33 @@ export default function Home() {
     fetchLanguages();
   }, [allSongs]); // Re-fetch when songs are loaded for fallback
 
-  // Check if there are active filters (including selectedArtist)
-  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.singer || filters.album || filters.songName || selectedArtist;
+  // Fetch playlists from backend
+  useEffect(() => {
+    async function fetchPlaylists() {
+      try {
+        const res = await api("/playlists");
+        const playlistsData = res.data || res;
+        if (Array.isArray(playlistsData)) {
+          setPlaylists(playlistsData);
+          console.log('Fetched playlists:', playlistsData.length, playlistsData);
+        }
+      } catch (err) {
+        console.error("Failed to fetch playlists", err);
+        setPlaylists([]);
+      }
+    }
+    fetchPlaylists();
+  }, []);
+
+  // Check if there are active filters (including selectedArtist or playlist)
+  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.singer || filters.album || filters.songName || selectedArtist || selectedPlaylistId;
 
 const filteredSongs = useMemo(() => {
+  // If a playlist is selected, use playlist songs
+  if (selectedPlaylistId && playlistSongs.length > 0) {
+    return playlistSongs;
+  }
+
   if (!allSongs || allSongs.length === 0) return [];
 
   const normalize = (v) => String(v || "").toLowerCase().trim();
@@ -128,7 +157,7 @@ const filteredSongs = useMemo(() => {
     return true;
   });
 
-}, [allSongs, filters, selectedArtist]);
+}, [allSongs, filters, selectedArtist, selectedPlaylistId, playlistSongs]);
 
   // Fetch most played songs based on play_count
   const [mostPlayed, setMostPlayed] = useState([]);
@@ -477,6 +506,44 @@ const filteredSongs = useMemo(() => {
     console.log("Room status:", { roomId: room?.id, queueLength: queue?.length, room });
   }, [room, queue]);
 
+  // Handle playlist selection
+  const handlePlaylistSelect = async (playlist) => {
+    try {
+      // If clicking the same playlist, deselect it
+      if (selectedPlaylistId === playlist.id) {
+        setSelectedPlaylistId(null);
+        setPlaylistSongs([]);
+        return;
+      }
+
+      setSelectedPlaylistId(playlist.id);
+      
+      // Clear other filters when selecting a playlist
+      setSelectedArtist(null);
+      setFilters({
+        language: "all",
+        artist: "",
+        singer: "",
+        album: "",
+        songName: "",
+      });
+
+      // Fetch playlist songs
+      const res = await api(`/playlists/${playlist.id}/songs`);
+      const songs = res.data || res;
+      if (Array.isArray(songs)) {
+        setPlaylistSongs(songs);
+        console.log(`Loaded ${songs.length} songs from playlist:`, playlist.name);
+      } else {
+        setPlaylistSongs([]);
+      }
+    } catch (err) {
+      console.error("Failed to load playlist songs", err);
+      setPlaylistSongs([]);
+      alert("Failed to load playlist songs. Please try again.");
+    }
+  };
+
   return (
     <div 
       className="h-screen text-white py-6 relative flex flex-col"
@@ -498,9 +565,14 @@ const filteredSongs = useMemo(() => {
         <SearchBar 
           filters={filters} 
           onFilterChange={(key, val) => {
-            // When user types in search bar, clear selectedArtist
+            // When user types in search bar, clear selectedArtist and playlist
             if (key === "artist") {
               setSelectedArtist(null);
+            }
+            // Clear playlist selection when any filter is changed
+            if (selectedPlaylistId) {
+              setSelectedPlaylistId(null);
+              setPlaylistSongs([]);
             }
             setFilters(p => ({ ...p, [key]: val }));
           }}
@@ -516,6 +588,41 @@ const filteredSongs = useMemo(() => {
         <div className="grid grid-cols-12 gap-6 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT */}
           <div className="col-span-8 space-y-6" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+            {/* Playlists section - above results */}
+            <Playlists 
+              playlists={playlists} 
+              onPlaylistSelect={handlePlaylistSelect}
+              selectedPlaylistId={selectedPlaylistId}
+            />
+            
+            {/* Show selected playlist indicator */}
+            {selectedPlaylistId && (
+              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "1rem 1rem", minHeight: "2rem" }}>
+                <div className="flex items-center gap-2">
+                  <span className="text-cyan-400">📋</span>
+                  <span className="text-white font-semibold">
+                    Showing playlist: <span className="text-cyan-300">
+                      {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
+                    </span>
+                    {playlistSongs.length > 0 && (
+                      <span className="text-slate-400 text-sm ml-2">
+                        ({playlistSongs.length} {playlistSongs.length === 1 ? 'song' : 'songs'})
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    setSelectedPlaylistId(null);
+                    setPlaylistSongs([]);
+                  }}
+                  className="text-gray-400 hover:text-white text-sm underline"
+                >
+                  Clear
+                </button>
+              </div>
+            )}
+
             {/* Show search results when filters are active, otherwise show Most Played */}
             <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
               {hasActiveFilters ? (
