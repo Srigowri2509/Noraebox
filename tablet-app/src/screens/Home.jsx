@@ -352,6 +352,110 @@ const filteredSongs = useMemo(() => {
     }
   };
 
+  const handleMoveQueueItem = async (fromIndex, toIndex) => {
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId || currentRoomId === "") {
+      console.warn("Cannot reorder queue: No room ID");
+      return;
+    }
+    
+    if (fromIndex < 0 || fromIndex >= queue.length || toIndex < 0 || toIndex >= queue.length) {
+      console.warn("Invalid indices for queue reorder:", fromIndex, toIndex);
+      return;
+    }
+    
+    // Only handle adjacent swaps (up/down one position)
+    if (Math.abs(fromIndex - toIndex) !== 1) {
+      console.warn("Can only swap adjacent items");
+      return;
+    }
+    
+    // Update local state immediately for instant feedback
+    const newQueue = [...queue];
+    const [movedItem] = newQueue.splice(fromIndex, 1);
+    newQueue.splice(toIndex, 0, movedItem);
+    setQueue(newQueue);
+    
+    // Update backend - swap the two adjacent items
+    try {
+      const item1 = queue[fromIndex];
+      const item2 = queue[toIndex];
+      const pos1 = item1?.position ?? (fromIndex + 1);
+      const pos2 = item2?.position ?? (toIndex + 1);
+      
+      // Remove both items
+      await api(`/rooms/${currentRoomId}/queue/remove`, {
+        method: "POST",
+        body: JSON.stringify({ position: pos1 })
+      });
+      
+      // Remove item2 (position may have shifted)
+      const item2NewPos = fromIndex < toIndex ? pos2 - 1 : pos2;
+      await api(`/rooms/${currentRoomId}/queue/remove`, {
+        method: "POST",
+        body: JSON.stringify({ position: item2NewPos })
+      });
+      
+      // Re-add in swapped order
+      if (fromIndex < toIndex) {
+        // Moving down: add item2 first, then item1
+        await api(`/rooms/${currentRoomId}/queue/add`, {
+          method: "POST",
+          body: JSON.stringify({
+            song_id: item2.id || item2.song_id,
+            added_by: item2.added_by || "tablet"
+          })
+        });
+        await api(`/rooms/${currentRoomId}/queue/add`, {
+          method: "POST",
+          body: JSON.stringify({
+            song_id: item1.id || item1.song_id,
+            added_by: item1.added_by || "tablet"
+          })
+        });
+      } else {
+        // Moving up: add item1 first, then item2
+        await api(`/rooms/${currentRoomId}/queue/add`, {
+          method: "POST",
+          body: JSON.stringify({
+            song_id: item1.id || item1.song_id,
+            added_by: item1.added_by || "tablet"
+          })
+        });
+        await api(`/rooms/${currentRoomId}/queue/add`, {
+          method: "POST",
+          body: JSON.stringify({
+            song_id: item2.id || item2.song_id,
+            added_by: item2.added_by || "tablet"
+          })
+        });
+      }
+      
+      // Refresh queue from backend to get correct positions
+      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+      setQueue(queueRes || []);
+      
+      console.log(`✅ Swapped songs at positions ${pos1} and ${pos2}`);
+    } catch (error) {
+      console.error("Error reordering queue:", error);
+      // Revert local state if backend call fails
+      setQueue(queue);
+      console.error("Failed to reorder queue. Please try again.");
+    }
+  };
+
+  const handleMoveUp = (index) => {
+    if (index > 0) {
+      handleMoveQueueItem(index, index - 1);
+    }
+  };
+
+  const handleMoveDown = (index) => {
+    if (index < queue.length - 1) {
+      handleMoveQueueItem(index, index + 1);
+    }
+  };
+
   const handlePlaySong = async (song) => {
     const currentRoomId = roomId || room?.id;
     if (!currentRoomId || currentRoomId === "") {
@@ -584,11 +688,11 @@ const filteredSongs = useMemo(() => {
       console.error("Error refreshing queue:", err);
     }
 
-    // Show result message
+    // Log result (no alert)
     if (addedCount > 0) {
-      alert(`Added ${addedCount} song${addedCount === 1 ? '' : 's'} to queue${skippedCount > 0 ? ` (${skippedCount} already in queue)` : ''}.`);
+      console.log(`✅ Added ${addedCount} song${addedCount === 1 ? '' : 's'} to queue${skippedCount > 0 ? ` (${skippedCount} already in queue)` : ''}`);
     } else {
-      alert(`All songs are already in the queue.`);
+      console.log(`ℹ️ All songs are already in the queue.`);
     }
   };
 
@@ -747,6 +851,8 @@ const filteredSongs = useMemo(() => {
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
               />
             </div>
           </div>

@@ -1,6 +1,31 @@
-import React from "react";
+import React, { useRef, useEffect } from "react";
 
-export default function QueueList({ queue = [], onRemove }) {
+export default function QueueList({ queue = [], onRemove, onMoveUp, onMoveDown }) {
+  const scrollContainerRef = useRef(null);
+
+  // Hide scrollbar styles
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .queue-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .queue-scroll {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  // Auto-scroll to bottom when queue updates
+  useEffect(() => {
+    if (scrollContainerRef.current && queue.length > 0) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [queue.length]);
+
   return (
     <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       <div className="flex items-center gap-2 mb-6">
@@ -14,12 +39,42 @@ export default function QueueList({ queue = [], onRemove }) {
           <div className="text-slate-500 text-xs">Add songs to get started</div>
         </div>
       ) : (
-        <div className="space-y-3" style={{ flex: 1, overflowY: "auto" }}>
+        <div 
+          ref={scrollContainerRef}
+          className="space-y-3 queue-scroll" 
+          style={{ flex: 1, overflowY: "auto", scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        >
           {queue.map((s, i) => (
             <div
               key={i}
-              className="flex items-center gap-4 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group"
+              className="flex items-center gap-2 p-4 rounded-lg bg-slate-800/60 border border-slate-700 hover:bg-slate-700/60 transition-all group queue-scroll"
             >
+              {/* Reorder buttons */}
+              <div className="flex flex-col gap-1 shrink-0">
+                <button
+                  onClick={() => onMoveUp?.(i)}
+                  disabled={i === 0}
+                  className={`text-slate-400 hover:text-cyan-400 transition-colors text-xs px-1 py-0.5 ${
+                    i === 0 ? 'opacity-30 cursor-not-allowed' : ''
+                  }`}
+                  aria-label="Move up"
+                  title="Move up"
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => onMoveDown?.(i)}
+                  disabled={i === queue.length - 1}
+                  className={`text-slate-400 hover:text-cyan-400 transition-colors text-xs px-1 py-0.5 ${
+                    i === queue.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
+                  }`}
+                  aria-label="Move down"
+                  title="Move down"
+                >
+                  ▼
+                </button>
+              </div>
+              
               <div className="w-14 h-14 rounded-lg bg-slate-700/70 flex items-center justify-center shrink-0">
                 <span className="text-2xl">🎵</span>
               </div>
@@ -31,7 +86,6 @@ export default function QueueList({ queue = [], onRemove }) {
               <button
                 onClick={() => onRemove?.(i)}
                 className="text-slate-400 hover:text-red-400 transition-colors px-2 py-2 text-xl font-bold flex-shrink-0"
-                style={{ marginRight: '16px' }}
                 aria-label="Remove from queue"
               >
                 ✕
