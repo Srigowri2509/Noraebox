@@ -528,6 +528,70 @@ const filteredSongs = useMemo(() => {
     console.log("Room status:", { roomId: room?.id, queueLength: queue?.length, room });
   }, [room, queue]);
 
+  // Handle adding entire playlist to queue
+  const handleAddPlaylistToQueue = async (songs) => {
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId || currentRoomId === "") {
+      alert("No room selected. Please select a room first.");
+      return;
+    }
+
+    if (!songs || songs.length === 0) {
+      alert("No songs to add.");
+      return;
+    }
+
+    let addedCount = 0;
+    let skippedCount = 0;
+
+    for (const song of songs) {
+      if (!song || !song.id) {
+        skippedCount++;
+        continue;
+      }
+
+      // Check if already in queue
+      if (isSongInQueue(song, queue)) {
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        const response = await api(`/rooms/${currentRoomId}/queue/add`, {
+          method: "POST",
+          body: JSON.stringify({
+            song_id: song.id,
+            added_by: "tablet"
+          })
+        });
+
+        if (response.status === "added") {
+          addedCount++;
+        } else if (response.status === "already_exists") {
+          skippedCount++;
+        }
+      } catch (error) {
+        console.error(`Error adding song ${song.id} to queue:`, error);
+        skippedCount++;
+      }
+    }
+
+    // Refresh queue from backend
+    try {
+      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+      setQueue(queueRes || []);
+    } catch (err) {
+      console.error("Error refreshing queue:", err);
+    }
+
+    // Show result message
+    if (addedCount > 0) {
+      alert(`Added ${addedCount} song${addedCount === 1 ? '' : 's'} to queue${skippedCount > 0 ? ` (${skippedCount} already in queue)` : ''}.`);
+    } else {
+      alert(`All songs are already in the queue.`);
+    }
+  };
+
   // Handle playlist selection
   const handlePlaylistSelect = async (playlist) => {
     try {
@@ -619,29 +683,38 @@ const filteredSongs = useMemo(() => {
             
             {/* Show selected playlist indicator */}
             {selectedPlaylistId && (
-              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "1rem 1rem", minHeight: "2rem" }}>
+              <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "1rem 1rem", minHeight: "2rem", marginTop: "1rem", marginBottom: "1rem" }}>
                 <div className="flex items-center gap-2">
                   <span className="text-cyan-400">📋</span>
                   <span className="text-white font-semibold">
                     Showing playlist: <span className="text-cyan-300">
                       {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
                     </span>
-                    {playlistSongs.length > 0 && (
-                      <span className="text-slate-400 text-sm ml-2">
-                        ({playlistSongs.length} {playlistSongs.length === 1 ? 'song' : 'songs'})
-                      </span>
-                    )}
                   </span>
                 </div>
-                <button
-                  onClick={() => {
-                    setSelectedPlaylistId(null);
-                    setPlaylistSongs([]);
-                  }}
-                  className="text-gray-400 hover:text-white text-sm underline"
-                >
-                  Clear
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={async () => {
+                      if (playlistSongs.length === 0) {
+                        alert("No songs in this playlist to add.");
+                        return;
+                      }
+                      await handleAddPlaylistToQueue(playlistSongs);
+                    }}
+                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Add All to Queue
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectedPlaylistId(null);
+                      setPlaylistSongs([]);
+                    }}
+                    className="text-gray-400 hover:text-white text-sm underline"
+                  >
+                    Clear
+                  </button>
+                </div>
               </div>
             )}
 

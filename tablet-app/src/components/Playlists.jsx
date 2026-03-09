@@ -31,7 +31,7 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
   }
 
   return (
-    <section>
+    <section style={{ marginTop: '1.5rem', marginBottom: '1.5rem' }}>
       <div className="flex items-center gap-2 mb-6">
         <span className="text-sky-300 text-xl">🎵</span>
         <h3 className="text-white font-semibold text-lg">Playlists</h3>
@@ -64,14 +64,9 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
                   <span className="text-4xl text-slate-300">📋</span>
                 )}
               </div>
-              <div className="text-white font-bold text-sm truncate text-center mb-1">
+              <div className="text-white font-bold text-sm truncate text-center">
                 {playlist.name}
               </div>
-              {playlist.song_count !== undefined && (
-                <div className="text-slate-400 text-xs text-center">
-                  {playlist.song_count} {playlist.song_count === 1 ? 'song' : 'songs'}
-                </div>
-              )}
             </div>
           );
         })}
