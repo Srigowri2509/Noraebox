@@ -7,7 +7,7 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
   - forwards `play`, `pause` if needed
   - Handles autoplay restrictions by starting muted
 */
-const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
+const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
   const vref = useRef();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -173,6 +173,8 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       console.log("VideoPlayer: loadeddata - video data loaded");
     };
 
+    let hasNotifiedError = false;
+
     const handleError = (e) => {
       console.error("VideoPlayer: Video error (simple):", e);
       console.error("VideoPlayer: simple error details:", {
@@ -198,6 +200,16 @@ const VideoPlayer = forwardRef(({ song, onEnded }, ref) => {
       
       setError("Failed to load video");
       setLoading(false);
+
+      if (!hasNotifiedError && onError) {
+        hasNotifiedError = true;
+        onError({
+          title: song.title,
+          videoUrl: song.videoUrl,
+          code: video.error?.code,
+          message: video.error?.message,
+        });
+      }
     };
 
     video.addEventListener("canplay", handleCanPlay);

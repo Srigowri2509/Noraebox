@@ -341,6 +341,11 @@ export default function Display({ roomId }) {
     }
   };
 
+  const handleVideoError = async (videoError) => {
+    console.error("❌ Video failed to load, skipping song:", videoError);
+    await handleVideoEnded();
+  };
+
   // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"
   const fmt = (ms) => {
     if (ms == null || ms <= 0) return "--:--:--";
@@ -375,6 +380,7 @@ export default function Display({ roomId }) {
               ref={videoRef}
               song={currentSong}
               onEnded={handleVideoEnded}
+              onError={handleVideoError}
             />
           ) : (
             <div className="logo-fallback-wrapper" style={{
