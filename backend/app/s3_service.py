@@ -111,6 +111,13 @@ def get_file_url(s3_key: str, language: str = None):
         # No prefix available, use key as-is
         full_key = s3_key.lstrip('/')
         print(f"⚠️ No prefix available (language={language}, S3_KEY_PREFIX={S3_KEY_PREFIX}), using key as-is: '{full_key}'")
+
+    # Some DB rows are missing the file extension even though the S3 object is an MP4.
+    # Normalize those keys here so playback URLs point to the actual object.
+    _, key_ext = os.path.splitext(full_key.rsplit('/', 1)[-1])
+    if not key_ext:
+        full_key = f"{full_key}.mp4"
+        print(f"🔧 Added missing .mp4 extension to key: '{full_key}'")
     
     # For public buckets, return simple URL
     if S3_PUBLIC_BUCKET:
