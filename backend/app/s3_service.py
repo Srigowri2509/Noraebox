@@ -2,6 +2,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 import os
+from urllib.parse import quote, unquote, urlparse
 
 # Environment variables
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-2")
@@ -50,10 +51,26 @@ def get_file_url(s3_key: str, language: str = None):
     if not s3_key:
         return None
     
-    # If s3_key is already a full URL (starts with http:// or https://), return it as-is
+    # Some older rows store a full S3 URL instead of the object key.
+    # Normalize those URLs back into a key so we can build a fresh playback URL.
     if s3_key.startswith('http://') or s3_key.startswith('https://'):
-        print(f"⚠️ s3_key is already a full URL, returning as-is: {s3_key}")
-        return s3_key
+        parsed = urlparse(s3_key)
+        host = (parsed.netloc or "").lower()
+        path = unquote((parsed.path or "").lstrip("/"))
+
+        is_s3_url = (
+            S3_BUCKET_NAME.lower() in host
+            or "amazonaws.com" in host
+        )
+
+        if is_s3_url and path:
+            if path.startswith(f"{S3_BUCKET_NAME}/"):
+                path = path[len(S3_BUCKET_NAME) + 1 :]
+            s3_key = path
+            print(f"🔄 Normalized full S3 URL to key: '{s3_key}'")
+        else:
+            print(f"⚠️ s3_key is a non-S3 URL, returning as-is: {s3_key}")
+            return s3_key
     
     # Determine prefix: use language if provided, otherwise fall back to S3_KEY_PREFIX
     prefix = None
@@ -110,7 +127,6 @@ def get_file_url(s3_key: str, language: str = None):
         # If we encode '+' as '%2B', it won't match your actual object key
         # and S3 will return 404, which is exactly what was causing
         # "Failed to load video" for keys like 'Telugu/Some+Song.mp4'.
-        from urllib.parse import quote
         # Encode each segment separately to preserve forward slashes
         # Allow typical safe characters used in S3 keys
         SAFE_CHARS = "-_.~+"
