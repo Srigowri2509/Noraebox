@@ -124,7 +124,11 @@ const filteredSongs = useMemo(() => {
 
   if (!allSongs || allSongs.length === 0) return [];
 
-  const normalize = (v) => String(v || "").toLowerCase().trim();
+  const normalize = (value) =>
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
   const splitTerms = (value) => normalize(value).split(/\s+/).filter(Boolean);
   const matchesArtistSearch = (candidate, query) => {
     const candidateTerms = splitTerms(candidate);
@@ -135,6 +139,22 @@ const filteredSongs = useMemo(() => {
 
     return queryTerms.every((queryTerm) =>
       candidateTerms.some((candidateTerm) => candidateTerm.startsWith(queryTerm))
+    );
+  };
+  const matchesTextSearch = (candidate, query) => {
+    const normalizedCandidate = normalize(candidate);
+    const normalizedQuery = normalize(query);
+
+    if (!normalizedQuery) return true;
+    if (!normalizedCandidate) return false;
+
+    return (
+      normalizedCandidate.includes(normalizedQuery) ||
+      splitTerms(normalizedQuery).every((queryTerm) =>
+        splitTerms(normalizedCandidate).some((candidateTerm) =>
+          candidateTerm.startsWith(queryTerm)
+        )
+      )
     );
   };
 
@@ -166,14 +186,14 @@ const filteredSongs = useMemo(() => {
 
     /* ALBUM */
     if (filters.album) {
-      if (!normalize(song.album).includes(normalize(filters.album))) {
+      if (!matchesTextSearch(song.album, filters.album)) {
         return false;
       }
     }
 
     /* SONG TITLE */
     if (filters.songName) {
-      if (!normalize(song.title).includes(normalize(filters.songName))) {
+      if (!matchesTextSearch(song.title, filters.songName)) {
         return false;
       }
     }
@@ -655,10 +675,8 @@ const filteredSongs = useMemo(() => {
         <SearchBar 
           filters={filters} 
           onFilterChange={(key, val) => {
-            // When user types in search bar, clear selectedArtist and playlist
-            if (key === "artist") {
-              setSelectedArtist(null);
-            }
+            // Manual typing should override any previously selected artist chip state.
+            setSelectedArtist(null);
             // Clear playlist selection when any filter is changed
             if (selectedPlaylistId) {
               setSelectedPlaylistId(null);
@@ -675,9 +693,9 @@ const filteredSongs = useMemo(() => {
           <div className="text-cyan-400 text-xl">Loading songs...</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-5 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
+        <div className="grid grid-cols-12 gap-3 flex-1 overflow-hidden" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT COLUMN */}
-          <div className="xl:col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+          <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* TOP ROW: Playlist title + square cards */}
             <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
               <div className="flex items-center gap-2 mb-3" style={{ flexShrink: 0 }}>
@@ -747,7 +765,7 @@ const filteredSongs = useMemo(() => {
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="xl:col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+          <div className="col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* TOP ROW: Ready to Sing aligned with playlist card row */}
             <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
               <div style={{ height: '1.6rem', flexShrink: 0 }} />

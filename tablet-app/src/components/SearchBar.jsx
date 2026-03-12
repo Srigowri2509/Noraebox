@@ -124,7 +124,7 @@ function SongNameFilter({ value = "", onChange }) {
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-1 sm:mt-2">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-start">
+      <div className="grid grid-cols-4 gap-2.5 sm:gap-3 items-start">
         <div className="min-w-0">
           <LanguageFilter
             value={filters.language || "all"}
@@ -144,7 +144,7 @@ export default function SearchBar({ filters = {}, onFilterChange, languages = []
             onChange={(val) => onFilterChange?.("album", val)}
           />
         </div>
-        <div className="min-w-0 col-span-2 lg:col-span-1">
+        <div className="min-w-0">
           <SongNameFilter
             value={filters.songName || ""}
             onChange={(val) => onFilterChange?.("songName", val)}
