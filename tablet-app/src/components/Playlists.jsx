@@ -47,11 +47,11 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
             <div
               key={playlist.id}
               onClick={() => onPlaylistSelect?.(playlist)}
-              className={`flex-shrink-0 flex flex-col rounded-lg border bg-slate-800/80 border-slate-600 p-3 cursor-pointer hover:-translate-y-1 transition-transform shadow-md w-[170px] aspect-square ${
+              className={`flex-shrink-0 flex flex-col rounded-lg border bg-slate-800/80 border-slate-600 p-2.5 cursor-pointer hover:-translate-y-1 transition-transform shadow-md w-[132px] sm:w-[144px] aspect-square ${
                 isSelected ? "border-sky-400 shadow-sky-400/20" : ""
               }`}
             >
-              <div className="w-full flex-1 min-h-0 rounded-lg bg-slate-700/70 flex items-center justify-center mb-2 overflow-hidden object-contain relative">
+              <div className="w-full flex-1 min-h-0 rounded-lg bg-slate-700/70 flex items-center justify-center mb-1.5 overflow-hidden object-contain relative">
                 {hasImage ? (
                   <img
                     src={imageSrc}
@@ -64,10 +64,10 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
                   />
                 ) : null}
                 {!hasImage && (
-                  <span className="text-4xl text-slate-300">📋</span>
+                  <span className="text-3xl text-slate-300">📋</span>
                 )}
               </div>
-              <div className="text-white font-bold text-sm truncate text-center">
+              <div className="text-white font-bold text-xs sm:text-sm truncate text-center">
                 {playlist.name}
               </div>
             </div>

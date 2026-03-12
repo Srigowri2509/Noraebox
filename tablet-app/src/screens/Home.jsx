@@ -633,16 +633,16 @@ const filteredSongs = useMemo(() => {
 
   return (
     <div 
-      className="h-screen text-white relative flex flex-col overflow-hidden"
+      className="min-h-screen text-white relative flex flex-col overflow-y-auto overflow-x-hidden"
       style={{
         backgroundImage: "url('/background.jpg')",
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center",
-        paddingLeft: "5%",
-        paddingRight: "5%",
-        paddingTop: "1.5rem",
-        paddingBottom: "1.5rem"
+        paddingLeft: "4%",
+        paddingRight: "4%",
+        paddingTop: "0.75rem",
+        paddingBottom: "1rem"
       }}
     >
       {/* Semi-transparent overlay for readability */}
@@ -650,7 +650,7 @@ const filteredSongs = useMemo(() => {
       
       <Header />
 
-      <div style={{ marginTop: "2rem", marginBottom: "1rem", flexShrink: 0 }}>
+      <div style={{ marginTop: "0.75rem", marginBottom: "0.75rem", flexShrink: 0 }}>
         <SearchBar 
           filters={filters} 
           onFilterChange={(key, val) => {
@@ -674,16 +674,16 @@ const filteredSongs = useMemo(() => {
           <div className="text-cyan-400 text-xl">Loading songs...</div>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-6 flex-1 overflow-hidden" style={{ alignItems: "stretch", minHeight: 0 }}>
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 lg:gap-5 flex-1" style={{ alignItems: "stretch", minHeight: 0 }}>
           {/* LEFT COLUMN */}
-          <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+          <div className="xl:col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* TOP ROW: Playlist title + square cards */}
             <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div className="flex items-center gap-2 mb-4" style={{ flexShrink: 0 }}>
-                <span className="text-sky-300 text-xl">🎵</span>
-                <h3 className="text-white font-semibold text-lg">Playlists</h3>
+              <div className="flex items-center gap-2 mb-3" style={{ flexShrink: 0 }}>
+                <span className="text-sky-300 text-lg">🎵</span>
+                <h3 className="text-white font-semibold text-base sm:text-lg">Playlists</h3>
               </div>
-              <div style={{ height: '170px', flexShrink: 0, overflow: "hidden" }}>
+              <div style={{ height: '145px', flexShrink: 0, overflow: "hidden" }}>
                 <Playlists 
                   playlists={playlists} 
                   onPlaylistSelect={handlePlaylistSelect}
@@ -693,14 +693,14 @@ const filteredSongs = useMemo(() => {
             </div>
 
             {/* BOTTOM ROW: Show search results when filters are active, otherwise show Most Played */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", marginTop: "1.5rem" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", marginTop: "1rem" }}>
               {hasActiveFilters ? (
-                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface p-4 sm:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   {selectedPlaylistId && (
-                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between" style={{ padding: "0.75rem 1rem", marginBottom: "1rem", flexShrink: 0 }}>
+                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between gap-3" style={{ padding: "0.625rem 0.875rem", marginBottom: "0.875rem", flexShrink: 0 }}>
                       <div className="flex items-center gap-2">
                         <span className="text-cyan-400">📋</span>
-                        <span className="text-white font-semibold text-sm">
+                        <span className="text-white font-semibold text-xs sm:text-sm">
                           Showing playlist: <span className="text-cyan-300">
                             {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
                           </span>
@@ -715,7 +715,7 @@ const filteredSongs = useMemo(() => {
                             }
                             await handleAddPlaylistToQueue(playlistSongs);
                           }}
-                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-xs font-medium transition-colors"
+                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-[11px] sm:text-xs font-medium transition-colors"
                         >
                           Add All to Queue
                         </button>
@@ -724,7 +724,7 @@ const filteredSongs = useMemo(() => {
                             setSelectedPlaylistId(null);
                             setPlaylistSongs([]);
                           }}
-                          className="text-gray-400 hover:text-white text-xs underline"
+                          className="text-gray-400 hover:text-white text-[11px] sm:text-xs underline"
                         >
                           Clear
                         </button>
@@ -738,7 +738,7 @@ const filteredSongs = useMemo(() => {
                   />
                 </div>
               ) : (
-                <div className="card-surface p-6" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface p-4 sm:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   <MostPlayed songs={mostPlayed} onSongSelect={handleAddToQueue} />
                 </div>
               )}
@@ -746,11 +746,11 @@ const filteredSongs = useMemo(() => {
           </div>
 
           {/* RIGHT COLUMN */}
-          <div className="col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+          <div className="xl:col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
             {/* TOP ROW: Ready to Sing aligned with playlist card row */}
             <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
-              <div style={{ height: '2rem', flexShrink: 0 }} />
-              <div style={{ height: '170px', flexShrink: 0 }}>
+              <div style={{ height: '1.6rem', flexShrink: 0 }} />
+              <div style={{ height: '145px', flexShrink: 0 }}>
                 <ReadyToSing 
                   onPlay={handleReadyToSing}
                   onSkip={handleSkip}
@@ -760,7 +760,7 @@ const filteredSongs = useMemo(() => {
             </div>
             
             {/* BOTTOM ROW: Queue - same height as Results */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "1.5rem", minHeight: 0, overflow: "hidden" }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "1rem", minHeight: 0, overflow: "hidden" }}>
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}

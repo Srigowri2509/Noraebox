@@ -32,39 +32,40 @@ export default function Header() {
 
   return (
     <header className="relative z-20">
-      <div className="w-full max-w-[1800px] mx-auto pt-3">
+      <div className="w-full max-w-[1800px] mx-auto pt-1 sm:pt-2">
         {/* Logo and Title */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-800 shadow-lg relative" style={{ boxShadow: "0 0 15px rgba(59, 130, 246, 0.3), 0 0 30px rgba(236, 72, 153, 0.2)" }}>
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-lg overflow-hidden border border-slate-800 shadow-lg relative shrink-0" style={{ boxShadow: "0 0 15px rgba(59, 130, 246, 0.3), 0 0 30px rgba(236, 72, 153, 0.2)" }}>
               <img
                 src="/logo_norebox.jpg"
                 alt="Noreabox logo"
                 className="w-full h-full object-cover"
               />
             </div>
-            <div>
-              <h1 className="text-2xl font-extrabold text-white leading-none mb-0.5">
+            <div className="min-w-0">
+              <h1 className="text-lg sm:text-xl font-extrabold text-white leading-none mb-0">
                 Noraebox
               </h1>
-              <p className="text-slate-300 text-xs">Your stage awaits</p>
+              <p className="text-slate-300 text-[10px] sm:text-xs leading-tight">Your stage awaits</p>
             </div>
           </div>
           
           {/* Room Indicator */}
           <div style={{ 
-            fontSize: "0.875rem",
+            fontSize: "0.75rem",
             color: "#60a5fa",
             backgroundColor: "rgba(96, 165, 250, 0.1)",
-            padding: "0.5rem 1rem",
+            padding: "0.375rem 0.75rem",
             borderRadius: "0.5rem",
             border: "1px solid rgba(96, 165, 250, 0.3)",
             display: "flex",
             alignItems: "center",
-            gap: "0.5rem"
-          }}>
-            <span style={{ opacity: 0.7 }}>Room:</span>
-            <span style={{ fontWeight: "600" }}>{displayText}</span>
+            gap: "0.4rem",
+            maxWidth: "50%"
+          }} className="shrink min-w-0">
+            <span style={{ opacity: 0.7 }} className="shrink-0">Room:</span>
+            <span style={{ fontWeight: "600" }} className="truncate">{displayText}</span>
           </div>
         </div>
       </div>
