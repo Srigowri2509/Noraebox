@@ -12,6 +12,59 @@ Or use the script:
 .\scripts\build-apk.bat
 ```
 
+## Recommended Long-Term Release Model
+
+Use a hybrid setup:
+
+1. Build and install the tablet APK once as a stable native shell.
+2. Serve the tablet UI from the backend at `/web-assets/tablet-app/`.
+3. For normal React/UI changes, update the hosted web assets instead of rebuilding the APK.
+4. Only rebuild the APK when you change native Android/Capacitor behavior.
+
+### One-Time Shell APK Setup
+
+The Capacitor shell is configured to load the hosted tablet UI from:
+
+```text
+http://16.112.20.5:8000/web-assets/tablet-app/index.html
+```
+
+After changing the Capacitor configuration, do one full rebuild/install:
+
+```bash
+npm run apk
+```
+
+Install that APK on the tablet. After this, most future UI changes can be shipped without reinstalling the APK.
+
+### Publish UI Updates Without Rebuilding APK
+
+When you change React code, publish the new web assets to the backend:
+
+```powershell
+.\scripts\update-web-assets.ps1 -AppName tablet-app
+```
+
+This will:
+
+1. Build `tablet-app`
+2. Copy `dist/` to `backend/web-assets/tablet-app`
+3. Make tablets load the new UI automatically on next app launch/reload
+
+### When You Still Need A New APK
+
+Rebuild the APK only when you change:
+
+- Capacitor plugins
+- Android permissions
+- Native Android code/resources
+- App signing/versioning
+- `capacitor.config.json`
+
+### Optional APK Release Flow
+
+The app still includes an APK update checker. Keep using GitHub Releases for native-shell updates, but use hosted web assets for day-to-day UI changes.
+
 ### Linux/Mac
 ```bash
 npm run apk
@@ -83,16 +136,7 @@ android/app/build/outputs/apk/release/app-release.apk
 
 ## Configuration Notes
 
-The APK is configured to use **bundled assets** (local files in the APK). The server URL has been removed from `capacitor.config.json` for standalone builds.
-
-If you need to switch back to server-based loading for development, add this to `capacitor.config.json`:
-```json
-"server": {
-  "url": "http://YOUR_SERVER_URL",
-  "cleartext": true,
-  "androidScheme": "https"
-}
-```
+The tablet APK is now configured to load hosted web assets from the backend. Vite is also configured with a relative asset base so the same build works when copied into `backend/web-assets/tablet-app`.
 
 ## Next Steps
 

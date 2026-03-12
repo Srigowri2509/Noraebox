@@ -43,12 +43,12 @@ web_assets_path.mkdir(exist_ok=True)
 # Serve tablet-app web assets
 tablet_app_path = web_assets_path / "tablet-app"
 tablet_app_path.mkdir(exist_ok=True)
-app.mount("/web-assets/tablet-app", StaticFiles(directory=str(tablet_app_path)), name="tablet-app")
+app.mount("/web-assets/tablet-app", StaticFiles(directory=str(tablet_app_path), html=True), name="tablet-app")
 
 # Serve display-app web assets
 display_app_path = web_assets_path / "display-app"
 display_app_path.mkdir(exist_ok=True)
-app.mount("/web-assets/display-app", StaticFiles(directory=str(display_app_path)), name="display-app")
+app.mount("/web-assets/display-app", StaticFiles(directory=str(display_app_path), html=True), name="display-app")
 
 # Config endpoint for runtime configuration
 @app.get("/config/app-config.json")

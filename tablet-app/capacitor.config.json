@@ -2,6 +2,11 @@
   "appId": "com.norebox.tablet",
   "appName": "Norebox Tablet",
   "webDir": "dist",
+  "server": {
+    "url": "http://16.112.20.5:8000/web-assets/tablet-app/index.html",
+    "cleartext": true,
+    "androidScheme": "http"
+  },
   "android": {
     "allowMixedContent": true
   }
