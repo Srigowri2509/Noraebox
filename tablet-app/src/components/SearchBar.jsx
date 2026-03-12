@@ -120,40 +120,11 @@ function SongNameFilter({ value = "", onChange }) {
   );
 }
 
-// Singer Filter Component
-function SingerFilter({ value = "", onChange }) {
-  return (
-    <div>
-      <label className="block text-white text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Singer</label>
-      <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-2.5 sm:p-3">
-        <div className="relative">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none z-10"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange?.(e.target.value)}
-            placeholder="Search singer..."
-            className="w-full h-9 sm:h-10 bg-slate-800/70 border border-slate-700 rounded-lg pl-9 pr-3 text-white text-sm sm:text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            style={{ paddingLeft: '2.25rem' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Main SearchBar Component
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-1 sm:mt-2">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 items-start">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 items-start">
         <div className="min-w-0">
           <LanguageFilter
             value={filters.language || "all"}
@@ -165,12 +136,6 @@ export default function SearchBar({ filters = {}, onFilterChange, languages = []
           <ArtistFilter
             value={filters.artist || ""}
             onChange={(val) => onFilterChange?.("artist", val)}
-          />
-        </div>
-        <div className="min-w-0">
-          <SingerFilter
-            value={filters.singer || ""}
-            onChange={(val) => onFilterChange?.("singer", val)}
           />
         </div>
         <div className="min-w-0">

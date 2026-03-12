@@ -14,7 +14,6 @@ export default function Home() {
   const [filters, setFilters] = useState({
     language: "all",
     artist: "",
-    singer: "",
     album: "",
     songName: "",
   });
@@ -115,7 +114,7 @@ export default function Home() {
   }, []);
 
   // Check if there are active filters (including selectedArtist or playlist)
-  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.singer || filters.album || filters.songName || selectedArtist || selectedPlaylistId;
+  const hasActiveFilters = filters.language !== "all" || filters.artist || filters.album || filters.songName || selectedArtist || selectedPlaylistId;
 
 const filteredSongs = useMemo(() => {
   // If a playlist is selected, use playlist songs
@@ -126,6 +125,18 @@ const filteredSongs = useMemo(() => {
   if (!allSongs || allSongs.length === 0) return [];
 
   const normalize = (v) => String(v || "").toLowerCase().trim();
+  const splitTerms = (value) => normalize(value).split(/\s+/).filter(Boolean);
+  const matchesArtistSearch = (candidate, query) => {
+    const candidateTerms = splitTerms(candidate);
+    const queryTerms = splitTerms(query);
+
+    if (queryTerms.length === 0) return true;
+    if (candidateTerms.length === 0) return false;
+
+    return queryTerms.every((queryTerm) =>
+      candidateTerms.some((candidateTerm) => candidateTerm.startsWith(queryTerm))
+    );
+  };
 
   return allSongs.filter(song => {
 
@@ -136,28 +147,19 @@ const filteredSongs = useMemo(() => {
       }
     }
 
-    /* ARTIST = COMPOSER */
+    /* ARTIST = composer or singer */
     if (filters.artist || selectedArtist) {
       const search = normalize(selectedArtist || filters.artist);
+      const artistNames = [
+        ...(song.artists || []).map((artist) => artist?.name),
+        song.artist_name,
+        song.artist,
+      ]
+        .filter(Boolean)
+        .map(normalize)
+        .filter((name, index, arr) => arr.indexOf(name) === index);
 
-      const composers = (song.artists || [])
-        .filter(a => a.role === "composer")
-        .map(a => normalize(a.name));
-
-      if (!composers.some(name => name.includes(search))) {
-        return false;
-      }
-    }
-
-    /* SINGER */
-    if (filters.singer) {
-      const search = normalize(filters.singer);
-
-      const singers = (song.artists || [])
-        .filter(a => a.role === "singer")
-        .map(a => normalize(a.name));
-
-      if (!singers.some(name => name.includes(search))) {
+      if (!artistNames.some((name) => matchesArtistSearch(name, search))) {
         return false;
       }
     }
@@ -610,7 +612,6 @@ const filteredSongs = useMemo(() => {
       setFilters({
         language: "all",
         artist: "",
-        singer: "",
         album: "",
         songName: "",
       });
