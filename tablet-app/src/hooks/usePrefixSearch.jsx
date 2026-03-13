@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { api } from "../api";
 
 /**
@@ -9,9 +9,17 @@ import { api } from "../api";
  * `fallbackSongs`.  This means the app never shows an error to the user —
  * it just degrades to local search until the endpoint is deployed.
  */
-export default function usePrefixSearch(query, field = "title", enabled = false, fallbackSongs = []) {
-  const [results, setResults] = useState([]);
+
+const EMPTY = []; // stable empty array to avoid re-render loops
+
+export default function usePrefixSearch(query, field = "title", enabled = false, fallbackSongs = EMPTY) {
+  const [results, setResults] = useState(EMPTY);
   const [loading, setLoading] = useState(false);
+
+  // Store fallbackSongs in a ref so it never triggers effect re-runs
+  const fallbackRef = useRef(fallbackSongs);
+  fallbackRef.current = fallbackSongs;
+
   // Track whether the backend endpoint is available
   const endpointOk = useRef(true);
 
@@ -19,14 +27,15 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
     const trimmedQuery = (query || "").trim();
 
     if (!enabled || !trimmedQuery) {
-      setResults([]);
+      // Use stable EMPTY reference so React skips the re-render when already empty
+      setResults(prev => (prev.length === 0 ? prev : EMPTY));
       setLoading(false);
       return undefined;
     }
 
     let active = true;
     const timer = setTimeout(async () => {
-      setLoading(true);
+      if (active) setLoading(true);
 
       // ── Try backend first ──
       if (endpointOk.current) {
@@ -35,7 +44,7 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
             `/songs/search?q=${encodeURIComponent(trimmedQuery)}&field=${encodeURIComponent(field)}&limit=50`
           );
           if (active) {
-            setResults(Array.isArray(res) ? res : []);
+            setResults(Array.isArray(res) ? res : EMPTY);
             setLoading(false);
           }
           return; // success — done
@@ -45,9 +54,9 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
         }
       }
 
-      // ── Fallback: filter locally ──
-      if (active && fallbackSongs && fallbackSongs.length > 0) {
-        const lq = trimmedQuery.toLowerCase();
+      // ── Fallback: filter locally using ref (no dependency) ──
+      const songs = fallbackRef.current;
+      if (active && songs && songs.length > 0) {
         const normalize = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
         const words = (v) => normalize(v).split(/\s+/).filter(Boolean);
         const prefixMatch = (candidate, q) => {
@@ -58,9 +67,9 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
           return qw.every(qt => cw.some(ct => ct.startsWith(qt)));
         };
 
-        const filtered = fallbackSongs.filter(song => {
-          if (field === "title") return prefixMatch(song.title, lq);
-          if (field === "album") return prefixMatch(song.album, lq);
+        const filtered = songs.filter(song => {
+          if (field === "title") return prefixMatch(song.title, trimmedQuery);
+          if (field === "album") return prefixMatch(song.album, trimmedQuery);
           if (field === "artist") {
             const names = [];
             if (Array.isArray(song.artists)) {
@@ -68,13 +77,13 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
             }
             if (song.artist_name) names.push(song.artist_name);
             if (song.artist) names.push(song.artist);
-            return names.some(n => prefixMatch(n, lq));
+            return names.some(n => prefixMatch(n, trimmedQuery));
           }
           return false;
         });
         setResults(filtered.slice(0, 50));
       } else {
-        setResults([]);
+        setResults(EMPTY);
       }
 
       if (active) setLoading(false);
@@ -84,7 +93,7 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
       active = false;
       clearTimeout(timer);
     };
-  }, [enabled, fallbackSongs, field, query]);
+  }, [enabled, field, query]); // NO fallbackSongs — accessed via ref
 
   return { results, loading };
 }
