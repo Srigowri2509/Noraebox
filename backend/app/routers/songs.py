@@ -191,23 +191,27 @@ def list_songs(
 @router.get("/search", response_model=List[SongResponse])
 def search_songs(
     q: str = Query(..., min_length=1, description="Prefix query"),
-    field: str = Query("title", description="Search field: title or artist"),
+    field: str = Query("title", description="Search field: title, artist or album"),
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
-    """Prefix autocomplete search for titles or artists."""
+    """Prefix autocomplete search for titles, artists or albums."""
     try:
         query = q.strip()
         if not query:
             return []
 
-        if field not in {"title", "artist"}:
-            raise HTTPException(status_code=400, detail="field must be 'title' or 'artist'")
+        if field not in {"title", "artist", "album"}:
+            raise HTTPException(status_code=400, detail="field must be 'title', 'artist' or 'album'")
 
         broad_pattern = f"%{query}%"
         if field == "artist":
             where_clause = """
                 WHERE LOWER(a.name) LIKE LOWER(:search_pattern)
+            """
+        elif field == "album":
+            where_clause = """
+                WHERE LOWER(s.album) LIKE LOWER(:search_pattern)
             """
         else:
             where_clause = """
@@ -261,6 +265,8 @@ def search_songs(
 
             if field == "artist":
                 candidates = [artist.get("name") for artist in artists_list if isinstance(artist, dict)]
+            elif field == "album":
+                candidates = [row.album] if row.album else []
             else:
                 candidates = [row.title]
 
