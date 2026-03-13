@@ -7,6 +7,7 @@ import QueueList from "../components/QueueList.jsx";
 import ReadyToSing from "../components/ReadyToSing.jsx";
 import Playlists from "../components/Playlists.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
+import usePrefixSearch from "../hooks/usePrefixSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
 import { api, API_BASE } from "../api";
 
@@ -28,6 +29,23 @@ export default function Home() {
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
+
+  // --- Prefix search hooks (hit backend /songs/search) ---
+  // Enable when user has typed ≥1 char in the respective field
+  const songNameQuery = filters.songName || "";
+  const artistQuery = selectedArtist || filters.artist || "";
+  const usingSongNameSearch = songNameQuery.trim().length >= 1;
+  const usingArtistSearch = artistQuery.trim().length >= 1;
+
+  const {
+    results: songNameResults,
+    loading: songNameSearchLoading,
+  } = usePrefixSearch(songNameQuery, "title", usingSongNameSearch);
+
+  const {
+    results: artistResults,
+    loading: artistSearchLoading,
+  } = usePrefixSearch(artistQuery, "artist", usingArtistSearch);
 
   // Fail-fast check for songs
   useEffect(() => {
@@ -115,6 +133,7 @@ export default function Home() {
 
   // Check if there are active filters (including selectedArtist or playlist)
   const hasActiveFilters = filters.language !== "all" || filters.artist || filters.album || filters.songName || selectedArtist || selectedPlaylistId;
+  const isSearching = songNameSearchLoading || artistSearchLoading;
 
 const filteredSongs = useMemo(() => {
   // If a playlist is selected, use playlist songs
@@ -122,32 +141,17 @@ const filteredSongs = useMemo(() => {
     return playlistSongs;
   }
 
-  if (!allSongs || allSongs.length === 0) return [];
-
   const normalize = (value) =>
     String(value || "")
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
   const splitTerms = (value) => normalize(value).split(/\s+/).filter(Boolean);
-  const matchesArtistSearch = (candidate, query) => {
-    const candidateTerms = splitTerms(candidate);
-    const queryTerms = splitTerms(query);
-
-    if (queryTerms.length === 0) return true;
-    if (candidateTerms.length === 0) return false;
-
-    return queryTerms.every((queryTerm) =>
-      candidateTerms.some((candidateTerm) => candidateTerm.startsWith(queryTerm))
-    );
-  };
   const matchesTextSearch = (candidate, query) => {
     const normalizedCandidate = normalize(candidate);
     const normalizedQuery = normalize(query);
-
     if (!normalizedQuery) return true;
     if (!normalizedCandidate) return false;
-
     return (
       normalizedCandidate.includes(normalizedQuery) ||
       splitTerms(normalizedQuery).every((queryTerm) =>
@@ -158,28 +162,30 @@ const filteredSongs = useMemo(() => {
     );
   };
 
-  return allSongs.filter(song => {
+  // ── Decide starting pool ──
+  // If both song-name AND artist are being searched, intersect the two result sets.
+  // If only one is being searched, use that result set.
+  // Otherwise fall back to the full allSongs list.
+  let pool;
+  if (usingSongNameSearch && usingArtistSearch) {
+    // Intersect: keep songs that appear in BOTH result sets
+    const artistIds = new Set(artistResults.map(s => s.id));
+    pool = songNameResults.filter(s => artistIds.has(s.id));
+  } else if (usingSongNameSearch) {
+    pool = songNameResults;
+  } else if (usingArtistSearch) {
+    pool = artistResults;
+  } else {
+    pool = allSongs || [];
+  }
 
+  if (pool.length === 0) return [];
+
+  // ── Apply remaining LOCAL filters (language, album) ──
+  return pool.filter(song => {
     /* LANGUAGE */
     if (filters.language !== "all") {
       if (normalize(song.language) !== normalize(filters.language)) {
-        return false;
-      }
-    }
-
-    /* ARTIST = composer or singer */
-    if (filters.artist || selectedArtist) {
-      const search = normalize(selectedArtist || filters.artist);
-      const artistNames = [
-        ...(song.artists || []).map((artist) => artist?.name),
-        song.artist_name,
-        song.artist,
-      ]
-        .filter(Boolean)
-        .map(normalize)
-        .filter((name, index, arr) => arr.indexOf(name) === index);
-
-      if (!artistNames.some((name) => matchesArtistSearch(name, search))) {
         return false;
       }
     }
@@ -191,17 +197,11 @@ const filteredSongs = useMemo(() => {
       }
     }
 
-    /* SONG TITLE */
-    if (filters.songName) {
-      if (!matchesTextSearch(song.title, filters.songName)) {
-        return false;
-      }
-    }
-
     return true;
   });
 
-}, [allSongs, filters, selectedArtist, selectedPlaylistId, playlistSongs]);
+}, [allSongs, filters, selectedArtist, selectedPlaylistId, playlistSongs,
+    usingSongNameSearch, usingArtistSearch, songNameResults, artistResults]);
 
   // Fetch most played songs based on play_count
   const [mostPlayed, setMostPlayed] = useState([]);
@@ -753,7 +753,7 @@ const filteredSongs = useMemo(() => {
                   <SearchResults 
                     songs={filteredSongs} 
                     onAddToQueue={handleAddToQueue}
-                    loading={songsLoading}
+                    loading={songsLoading || isSearching}
                   />
                 </div>
               ) : (

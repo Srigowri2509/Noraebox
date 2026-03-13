@@ -3,12 +3,83 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import distinct, or_, text
 from typing import List
 import json
+import re
 from app.db import get_db
 from app.models import Song, SongArtist, Artist
 from app.schemas import SongResponse
 from app.s3_service import generate_signed_url
 
 router = APIRouter()
+
+
+def _parse_artists(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            return json.loads(value) if value else []
+        except Exception:
+            return []
+    return []
+
+
+def _normalize_words(value: str):
+    normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+    return normalized.split() if normalized else []
+
+
+def _word_prefix_match(candidate: str, query: str) -> bool:
+    candidate_words = _normalize_words(candidate)
+    query_words = _normalize_words(query)
+
+    if not query_words:
+        return True
+    if not candidate_words:
+        return False
+
+    return all(
+        any(word.startswith(query_word) for word in candidate_words)
+        for query_word in query_words
+    )
+
+
+def _build_song_response(row, signed_urls: bool = False):
+    artists_list = _parse_artists(row.artists)
+
+    s3_key_for_signing = row.file_url or ""
+    song_language = row.language or None
+
+    file_url_value = s3_key_for_signing
+    if signed_urls and row.file_url:
+        try:
+            print(f"Generating signed URL for song {row.id} (language: {song_language}): {s3_key_for_signing}")
+            file_url_value = generate_signed_url(s3_key_for_signing, language=song_language)
+            print(f"✅ Generated signed URL for song {row.id}: {file_url_value[:80]}...")
+        except Exception as e:
+            print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({s3_key_for_signing}): {e}")
+            import traceback
+            traceback.print_exc()
+            file_url_value = s3_key_for_signing
+
+    first_artist = artists_list[0] if artists_list else None
+    play_count_value = row.play_count if isinstance(row.play_count, int) and row.play_count is not None else int(row.play_count or 0)
+
+    return {
+        "id": row.id,
+        "title": row.title,
+        "album": row.album,
+        "language": row.language,
+        "file_url": file_url_value,
+        "s3_key": s3_key_for_signing,
+        "play_count": play_count_value,
+        "artists": artists_list,
+        "artist": first_artist["name"] if first_artist else None,
+        "artist_name": first_artist["name"] if first_artist else None,
+        "artist_id": int(first_artist["id"]) if (first_artist and "id" in first_artist and first_artist["id"] is not None) else None,
+        "artist_image": first_artist.get("image_url") if (isinstance(first_artist, dict) and "image_url" in first_artist) else None
+    }
 
 
 @router.get("/languages")
@@ -102,68 +173,9 @@ def list_songs(
         # Build result list
         songs = []
         for row in rows:
-            # Parse artists JSON (it's already a Python list from PostgreSQL)
-            # Always ensure artists is an array, never null/undefined
-            if row.artists is None:
-                artists_list = []
-            elif isinstance(row.artists, list):
-                artists_list = row.artists
-            elif isinstance(row.artists, str):
-                try:
-                    artists_list = json.loads(row.artists) if row.artists else []
-                except:
-                    artists_list = []
-            else:
-                artists_list = []
-            
-            # S3 key comes directly from songs.file_url.
-            # The file_url should be just the filename (e.g. 'song.mp4'), 
-            # and the language prefix will be automatically added based on row.language
-            s3_key_for_signing = row.file_url or ""
-            
-            # Use the song's language to determine the S3 prefix (e.g., "Telugu" -> "Telugu/")
-            song_language = row.language or None
-            
-            # Generate signed URL if requested (default now False for speed)
-            file_url_value = s3_key_for_signing
-            if signed_urls and row.file_url:
-                try:
-                    print(f"Generating signed URL for song {row.id} (language: {song_language}): {s3_key_for_signing}")
-                    file_url_value = generate_signed_url(s3_key_for_signing, language=song_language)
-                    print(f"✅ Generated signed URL for song {row.id}: {file_url_value[:80]}...")
-                except Exception as e:
-                    print(f"❌ ERROR: Failed to generate signed URL for song {row.id} ({s3_key_for_signing}): {e}")
-                    import traceback
-                    traceback.print_exc()
-                    # Fallback to S3 key
-                    file_url_value = s3_key_for_signing
-            else:
-                print(f"⚠️ Skipping signed URL for song {row.id} (signed_urls={signed_urls}, file_url={row.file_url}, s3_key={s3_key_for_signing})")
-            
-            # Get first artist for backward compatibility (artist, artist_id, artist_image fields)
-            first_artist = artists_list[0] if artists_list else None
-            
-            # Ensure play_count is an integer (fallback to 0 if NULL)
-            play_count_value = row.play_count if isinstance(row.play_count, int) and row.play_count is not None else int(row.play_count or 0)
-
-            song_data = {
-                "id": row.id,
-                "title": row.title,
-                "album": row.album,
-                "language": row.language,
-                "file_url": file_url_value,  # Signed URL if requested, otherwise S3 key
-                "s3_key": s3_key_for_signing,  # Actual S3 key from DB
-                "play_count": play_count_value,
-                "artists": artists_list,  # Full array of all artists
-                "artist": first_artist["name"] if first_artist else None,  # Backward compatibility
-                "artist_name": first_artist["name"] if first_artist else None,  # Explicit artist_name for frontend
-                # artist_id is an integer in your DB
-                "artist_id": int(first_artist["id"]) if (first_artist and "id" in first_artist and first_artist["id"] is not None) else None,
-                # Your artist table does not have an image_url column; keep this for future but it will be None
-                "artist_image": first_artist.get("image_url") if (isinstance(first_artist, dict) and "image_url" in first_artist) else None
-            }
-            
-            songs.append(song_data)
+            if not signed_urls:
+                print(f"⚠️ Skipping signed URL for song {row.id} (signed_urls={signed_urls}, file_url={row.file_url}, s3_key={row.file_url or ''})")
+            songs.append(_build_song_response(row, signed_urls=signed_urls))
         
         url_type = "signed URLs" if signed_urls else "S3 keys"
         print(f"Returning {len(songs)} songs with {url_type}")
@@ -171,6 +183,100 @@ def list_songs(
 
     except Exception as e:
         print(f"Error in list_songs: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search", response_model=List[SongResponse])
+def search_songs(
+    q: str = Query(..., min_length=1, description="Prefix query"),
+    field: str = Query("title", description="Search field: title or artist"),
+    limit: int = Query(50, ge=1, le=100),
+    db: Session = Depends(get_db)
+):
+    """Prefix autocomplete search for titles or artists."""
+    try:
+        query = q.strip()
+        if not query:
+            return []
+
+        if field not in {"title", "artist"}:
+            raise HTTPException(status_code=400, detail="field must be 'title' or 'artist'")
+
+        broad_pattern = f"%{query}%"
+        if field == "artist":
+            where_clause = """
+                WHERE LOWER(a.name) LIKE LOWER(:search_pattern)
+            """
+        else:
+            where_clause = """
+                WHERE LOWER(s.title) LIKE LOWER(:search_pattern)
+            """
+
+        query_sql = f"""
+            SELECT 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count,
+                COALESCE(
+                    json_agg(
+                        DISTINCT jsonb_build_object(
+                            'id', a.id,
+                            'name', a.name,
+                            'role', sa.role
+                        )
+                    ) FILTER (WHERE a.id IS NOT NULL),
+                    '[]'::json
+                ) AS artists
+            FROM songs s
+            LEFT JOIN song_artists sa ON s.id = sa.song_id
+            LEFT JOIN artist a ON sa.artist_id = a.id
+            {where_clause}
+            GROUP BY 
+                s.id,
+                s.title,
+                s.album,
+                s.language,
+                s.file_url,
+                s.play_count
+            ORDER BY s.title
+            LIMIT :candidate_limit
+        """
+
+        rows = db.execute(
+            text(query_sql),
+            {
+                "search_pattern": broad_pattern,
+                "candidate_limit": max(limit * 4, 80),
+            },
+        ).fetchall()
+
+        matched_songs = []
+        for row in rows:
+            artists_list = _parse_artists(row.artists)
+
+            if field == "artist":
+                candidates = [artist.get("name") for artist in artists_list if isinstance(artist, dict)]
+            else:
+                candidates = [row.title]
+
+            if not any(_word_prefix_match(candidate, query) for candidate in candidates if candidate):
+                continue
+
+            matched_songs.append(_build_song_response(row, signed_urls=False))
+            if len(matched_songs) >= limit:
+                break
+
+        return matched_songs
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error in search_songs: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
