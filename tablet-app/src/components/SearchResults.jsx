@@ -5,28 +5,34 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
   // Support both 'songs' and 'results' props for backward compatibility
   const songList = songs || results;
   const [visibleCount, setVisibleCount] = useState(60);
-  
-  if (loading) {
-    return <div className="text-slate-400 py-6 text-center">Loading...</div>;
-  }
-  
-  if (!songList || songList.length === 0) {
-    return <div className="text-slate-400 py-6 text-center">No results</div>;
-  }
 
-  const handleQueue = onAddToQueue || onQueue;
-  const visibleSongs = useMemo(() => songList.slice(0, visibleCount), [songList, visibleCount]);
+  // ALL hooks MUST come before any conditional returns (Rules of Hooks)
+  const visibleSongs = useMemo(
+    () => (songList ? songList.slice(0, visibleCount) : []),
+    [songList, visibleCount]
+  );
 
   useEffect(() => {
     setVisibleCount(60);
   }, [songList]);
 
+  const handleQueue = onAddToQueue || onQueue;
+
   const handleScroll = (event) => {
     const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
     if (scrollTop + clientHeight >= scrollHeight - 120) {
-      setVisibleCount((prev) => Math.min(prev + 40, songList.length));
+      setVisibleCount((prev) => Math.min(prev + 40, (songList ? songList.length : 0)));
     }
   };
+
+  // Conditional renders AFTER all hooks
+  if (loading) {
+    return <div className="text-slate-400 py-6 text-center">Loading...</div>;
+  }
+
+  if (!songList || songList.length === 0) {
+    return <div className="text-slate-400 py-6 text-center">No results</div>;
+  }
 
   return (
     <div
