@@ -333,27 +333,21 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
         if not song:
             raise HTTPException(status_code=404, detail="Song not found")
         
-        # Get or create active session
+        # Require an active session (admin must start it)
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
             RoomSession.status == 'active'
         ).first()
         
         if not session:
-            # Create a new active session
-            session = RoomSession(
-                room_id=room_id,
-                status='active',
-                session_created_at=datetime.now(timezone.utc),
-                session_start_time=datetime.now(timezone.utc),
-                current_song_id=current_song_id,
-                current_song_start_time=datetime.now(timezone.utc)
+            raise HTTPException(
+                status_code=400,
+                detail="No active session. Admin must start a session for this room first."
             )
-            db.add(session)
-        else:
-            # Update existing session
-            session.current_song_id = current_song_id
-            session.current_song_start_time = datetime.now(timezone.utc)
+        
+        # Update existing session
+        session.current_song_id = current_song_id
+        session.current_song_start_time = datetime.now(timezone.utc)
         
         db.commit()
         db.refresh(session)
