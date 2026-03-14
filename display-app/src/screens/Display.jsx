@@ -22,50 +22,17 @@ export default function Display({ roomId }) {
   const videoRef = useRef();
   const lastSongIdRef = useRef(null);
 
-  // Enable autoplay on any user interaction (click, touch, keypress)
-  // For display apps, enable autoplay immediately to allow automatic playback
+  // Autoplay unlock is handled inside VideoPlayer itself.
+  // Just mark user interaction once so all future videos autoplay with sound.
   useEffect(() => {
-    const enableAutoplay = () => {
-      sessionStorage.setItem('video_autoplay_enabled', 'true');
-      console.log("✅ Autoplay enabled via user interaction");
+    const unlock = () => {
+      sessionStorage.setItem("video_autoplay_enabled", "true");
     };
-    
-    // Check if already enabled
-    if (sessionStorage.getItem('video_autoplay_enabled') === 'true') {
-      console.log("✅ Autoplay already enabled from previous session");
-    } else {
-      // For display apps, enable autoplay immediately
-      // This allows videos to play automatically with audio
-      try {
-        // Try to unlock audio context immediately
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioContext.state === 'suspended') {
-          audioContext.resume().then(() => {
-            console.log("✅ Audio context resumed - enabling autoplay");
-            enableAutoplay();
-          }).catch(() => {
-            console.log("Note: Audio context resume failed, will wait for user interaction");
-          });
-        } else {
-          // Audio context is already active, enable autoplay
-          enableAutoplay();
-        }
-      } catch (e) {
-        console.log("Note: Audio context not available, will wait for user interaction");
-      }
-    }
-    
-    // Listen for any user interaction on the page
-    const events = ['click', 'touchstart', 'keydown', 'mousedown', 'pointerdown'];
-    events.forEach(event => {
-      document.addEventListener(event, enableAutoplay, { once: true, passive: true });
-    });
-    
-    return () => {
-      events.forEach(event => {
-        document.removeEventListener(event, enableAutoplay);
-      });
-    };
+    const events = ["click", "touchstart", "keydown", "pointerdown"];
+    events.forEach((e) =>
+      document.addEventListener(e, unlock, { once: true, passive: true })
+    );
+    return () => events.forEach((e) => document.removeEventListener(e, unlock));
   }, []);
 
   // Poll room session from backend
