@@ -30,19 +30,18 @@ def _normalize_words(value: str):
     return normalized.split() if normalized else []
 
 
-def _word_prefix_match(candidate: str, query: str) -> bool:
-    candidate_words = _normalize_words(candidate)
-    query_words = _normalize_words(query)
+def _starts_with_match(candidate: str, query: str) -> bool:
+    """Check if candidate starts with query (after normalization).
+    'tu' matches 'Tum Hi Ho' but NOT 'Agar Tum Saat Ho'."""
+    norm_candidate = re.sub(r"[^a-z0-9]+", " ", str(candidate or "").lower()).strip()
+    norm_query = re.sub(r"[^a-z0-9]+", " ", str(query or "").lower()).strip()
 
-    if not query_words:
+    if not norm_query:
         return True
-    if not candidate_words:
+    if not norm_candidate:
         return False
 
-    return all(
-        any(word.startswith(query_word) for word in candidate_words)
-        for query_word in query_words
-    )
+    return norm_candidate.startswith(norm_query)
 
 
 def _build_song_response(row, signed_urls: bool = False):
@@ -204,7 +203,8 @@ def search_songs(
         if field not in {"title", "artist", "album"}:
             raise HTTPException(status_code=400, detail="field must be 'title', 'artist' or 'album'")
 
-        broad_pattern = f"%{query}%"
+        # Use starts-with pattern for SQL pre-filter (query% not %query%)
+        starts_pattern = f"{query}%"
         if field == "artist":
             where_clause = """
                 WHERE LOWER(a.name) LIKE LOWER(:search_pattern)
@@ -254,7 +254,7 @@ def search_songs(
         rows = db.execute(
             text(query_sql),
             {
-                "search_pattern": broad_pattern,
+                "search_pattern": starts_pattern,
                 "candidate_limit": max(limit * 4, 80),
             },
         ).fetchall()
@@ -270,7 +270,7 @@ def search_songs(
             else:
                 candidates = [row.title]
 
-            if not any(_word_prefix_match(candidate, query) for candidate in candidates if candidate):
+            if not any(_starts_with_match(candidate, query) for candidate in candidates if candidate):
                 continue
 
             matched_songs.append(_build_song_response(row, signed_urls=False))

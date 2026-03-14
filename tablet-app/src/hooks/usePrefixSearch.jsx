@@ -58,18 +58,18 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
       const songs = fallbackRef.current;
       if (active && songs && songs.length > 0) {
         const normalize = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-        const words = (v) => normalize(v).split(/\s+/).filter(Boolean);
-        const prefixMatch = (candidate, q) => {
-          const cw = words(candidate);
-          const qw = words(q);
-          if (!qw.length) return true;
-          if (!cw.length) return false;
-          return qw.every(qt => cw.some(ct => ct.startsWith(qt)));
+        // Strict starts-with: "tu" matches "Tum Hi Ho" but NOT "Agar Tum Saat Ho"
+        const startsWithMatch = (candidate, q) => {
+          const nc = normalize(candidate);
+          const nq = normalize(q);
+          if (!nq) return true;
+          if (!nc) return false;
+          return nc.startsWith(nq);
         };
 
         const filtered = songs.filter(song => {
-          if (field === "title") return prefixMatch(song.title, trimmedQuery);
-          if (field === "album") return prefixMatch(song.album, trimmedQuery);
+          if (field === "title") return startsWithMatch(song.title, trimmedQuery);
+          if (field === "album") return startsWithMatch(song.album, trimmedQuery);
           if (field === "artist") {
             const names = [];
             if (Array.isArray(song.artists)) {
@@ -77,7 +77,7 @@ export default function usePrefixSearch(query, field = "title", enabled = false,
             }
             if (song.artist_name) names.push(song.artist_name);
             if (song.artist) names.push(song.artist);
-            return names.some(n => prefixMatch(n, trimmedQuery));
+            return names.some(n => startsWithMatch(n, trimmedQuery));
           }
           return false;
         });
