@@ -401,46 +401,43 @@ const filteredSongs = useMemo(() => {
       return;
     }
     
-    console.log("🎬 ========================================");
     console.log("🎬 READY TO SING BUTTON CLICKED!");
-    console.log("🎬 ========================================");
     console.log("📋 Room ID:", currentRoomId);
     console.log("📋 Queue length:", queue?.length || 0);
-    console.log("🔍 Filtered songs:", filteredSongs.length);
     
     try {
-      // First, ensure a session is started (60 minutes default)
+      // Check if admin has started a session for this room
+      let hasActiveSession = false;
       try {
-        console.log("🎬 Starting session for room:", currentRoomId);
-        const sessionResponse = await api(`/rooms/${currentRoomId}/start`, {
-          method: "POST",
-          body: JSON.stringify({
-            minutes: 60
-          })
-        });
-        console.log("✅ Session started:", sessionResponse);
-      } catch (sessionError) {
-        console.warn("⚠️ Session might already exist or error starting session:", sessionError);
-        // Continue anyway - session might already exist
+        const sessionData = await api(`/rooms/${currentRoomId}/session`);
+        const session = sessionData.session;
+        hasActiveSession = session && (session.status === "active" || session.status === "playing");
+      } catch (err) {
+        console.warn("Could not check session status:", err);
       }
-      
+
+      if (!hasActiveSession) {
+        alert("Session not started. Ask the admin to start a session for this room.");
+        return;
+      }
+
       if (queue?.length > 0) {
         console.log("▶️ Playing queue with", queue.length, "songs");
-        console.log("🎵 First song in queue:", queue[0]?.title);
         
-        // Start next song from queue - this will immediately start playback on display app
+        // Start next song from queue
         const response = await api(`/rooms/${currentRoomId}/playback/start_next`, {
           method: "POST"
         });
         
-        console.log("✅ Play command sent to backend, response:", response);
-        // Display app will automatically detect the new current_song_id and start playing
-      } else if (filteredSongs.length > 0) {
-        console.log("▶️ Playing first filtered song:", filteredSongs[0].title);
+        if (response.status === "no_session") {
+          alert("Session not started. Ask the admin to start a session for this room.");
+          return;
+        }
         
+        console.log("✅ Play command sent to backend, response:", response);
+      } else if (filteredSongs.length > 0) {
         // Add to queue first, then start playing
         try {
-          // Add song to queue
           await api(`/rooms/${currentRoomId}/queue/add`, {
             method: "POST",
             body: JSON.stringify({
@@ -449,24 +446,25 @@ const filteredSongs = useMemo(() => {
             })
           });
           
-          // Then start playing from queue
           const response = await api(`/rooms/${currentRoomId}/playback/start_next`, {
             method: "POST"
           });
           
+          if (response.status === "no_session") {
+            alert("Session not started. Ask the admin to start a session for this room.");
+            return;
+          }
+          
           console.log("✅ Song added to queue and started, response:", response);
         } catch (err) {
           console.error("Error adding/playing song:", err);
-          // Fallback: try direct play
-        await handlePlaySong(filteredSongs[0]);
         }
       } else {
         alert("No songs available to play. Please add songs to queue or filter songs.");
       }
     } catch (error) {
       console.error("❌ Error playing song:", error);
-      console.error("❌ Error details:", error.message, error.stack);
-      alert(`Failed to play song: ${error.message}. Check console for details.`);
+      alert(`Failed to play song: ${error.message}`);
     }
   };
 
@@ -477,7 +475,6 @@ const filteredSongs = useMemo(() => {
       return;
     }
     
-    // Check if there are songs in queue
     if (!queue || queue.length === 0) {
       alert("No songs in queue to skip to.");
       return;
@@ -491,11 +488,12 @@ const filteredSongs = useMemo(() => {
       
       console.log("✅ Skip response:", response);
       
-      if (response.status === "no_songs") {
+      if (response.status === "no_session") {
+        alert("Session not started. Ask the admin to start a session for this room.");
+      } else if (response.status === "no_songs") {
         alert("No more songs in queue.");
       } else if (response.status === "playing") {
         console.log("✅ Successfully skipped to next song:", response.song_title);
-        // Refresh queue to update the list
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
           setQueue(queueRes || []);

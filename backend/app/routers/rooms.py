@@ -386,7 +386,7 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             print(f"POST /rooms/{room_id}/playback/start_next: No songs in queue")
             return {"status": "no_songs", "message": "Queue is empty"}
         
-        # Get or create active session
+        # Require an active session (must be started by admin)
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
             RoomSession.status == 'active'
@@ -395,24 +395,12 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
         now = datetime.now(timezone.utc)
         
         if not session:
-            # Create a new active session with default minutes
-            # Timer starts NOW (first song is being played)
-            session_minutes = DEFAULT_SESSION_MINUTES
-            session_end_time = now + timedelta(minutes=session_minutes)
-            session = RoomSession(
-                room_id=room_id,
-                status='active',
-                total_minutes=session_minutes,
-                session_created_at=now,
-                session_start_time=now,  # Timer starts when first song plays
-                session_end_time=session_end_time,
-                current_song_id=next_item.song_id,
-                current_song_start_time=now
-            )
-            db.add(session)
-            # Update room status
-            room.status = 'active'
-            print(f"POST /rooms/{room_id}/playback/start_next: Creating new session with {session_minutes} minutes, timer starts now")
+            # No active session — admin must start one first
+            print(f"POST /rooms/{room_id}/playback/start_next: No active session — admin must start session first")
+            return {
+                "status": "no_session",
+                "message": "No active session. Admin must start a session for this room first."
+            }
         else:
             # If admin already created a session but timer hasn't started yet, start it now
             if not session.session_start_time:
@@ -492,26 +480,13 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
         ).order_by(QueueItem.position).first()
         
         if next_item:
-            # Auto-start next song
+            # Auto-start next song (only if session exists — admin must have started it)
             now = datetime.now(timezone.utc)
             
             if not session:
-                # Create a new active session with default minutes
-                # Timer starts NOW (first song is being played)
-                session_minutes = DEFAULT_SESSION_MINUTES
-                session_end_time = now + timedelta(minutes=session_minutes)
-                session = RoomSession(
-                    room_id=room_id,
-                    status='active',
-                    total_minutes=session_minutes,
-                    session_created_at=now,
-                    session_start_time=now,  # Timer starts when first song plays
-                    session_end_time=session_end_time,
-                    current_song_id=next_item.song_id,
-                    current_song_start_time=now
-                )
-                db.add(session)
-                print(f"POST /rooms/{room_id}/playback/ended: Creating new session with {session_minutes} minutes, timer starts now")
+                # No active session — cannot auto-play next song
+                print(f"POST /rooms/{room_id}/playback/ended: No active session, cannot auto-play next song")
+                return {"status": "no_session", "message": "No active session. Admin must start a session for this room first."}
             else:
                 # If admin already created a session but timer hasn't started yet, start it now
                 if not session.session_start_time:
