@@ -5,10 +5,10 @@ import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } f
   
   Autoplay strategy:
   1. Start muted (browsers always allow muted autoplay)
-  2. Immediately unmute after play starts
-  3. If unmuted play is blocked (no user interaction yet),
-     keep playing muted and unmute on first click/touch
-  4. Once user interacts once, all future videos play with sound automatically
+  2. ALWAYS try to unmute immediately after play starts (aggressive)
+  3. If unmute succeeds → great, video plays with sound
+  4. If browser blocks unmute → show "click to unmute" overlay
+  5. On first click/touch → unmute and remember for all future videos
 */
 const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
   const vref = useRef();
@@ -21,26 +21,28 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     sessionStorage.getItem("video_autoplay_enabled") === "true"
   );
 
-  // On first user interaction: unmute + remember
+  // On any user interaction: unmute + remember
   useEffect(() => {
     const unlock = () => {
-      if (userInteractedRef.current) return;
       userInteractedRef.current = true;
       sessionStorage.setItem("video_autoplay_enabled", "true");
-      console.log("✅ User interaction detected – autoplay with sound enabled");
 
-      // Unmute the current video immediately
+      // Unmute the current video immediately on any click/touch
       const video = vref.current;
-      if (video && !video.paused) {
+      if (video) {
         video.muted = false;
         setIsMuted(false);
-        console.log("✅ Unmuted playing video after user interaction");
+        // If video was paused due to autoplay failure, try playing
+        if (video.paused && video.src) {
+          video.play().catch(() => {});
+        }
+        console.log("✅ Unmuted video after user interaction");
       }
     };
 
     const events = ["click", "touchstart", "keydown", "pointerdown"];
     events.forEach((e) =>
-      document.addEventListener(e, unlock, { once: false, passive: true })
+      document.addEventListener(e, unlock, { passive: true })
     );
     return () => events.forEach((e) => document.removeEventListener(e, unlock));
   }, []);
@@ -64,30 +66,31 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     /* ---- helpers ---- */
     const tryUnmute = () => {
       if (!video.muted) return; // already unmuted
-      try {
-        video.muted = false;
+      video.muted = false;
+      // Check if browser actually allowed the unmute
+      if (!video.muted) {
         setIsMuted(false);
-        console.log("✅ Video unmuted");
-      } catch {
-        console.log("⚠️ Could not unmute (will retry on user interaction)");
+        userInteractedRef.current = true;
+        sessionStorage.setItem("video_autoplay_enabled", "true");
+        console.log("✅ Video unmuted successfully");
+      } else {
+        console.log("⚠️ Browser blocked unmute – overlay will appear");
       }
     };
 
     const onCanPlay = () => {
       setLoading(false);
-      console.log("VideoPlayer: canplay");
+      console.log("VideoPlayer: canplay – trying unmute");
+      tryUnmute();
     };
 
     const onPlaying = () => {
       setLoading(false);
-      console.log("VideoPlayer: playing event – attempting unmute");
-      // Once the video is actually playing, try to unmute
-      if (userInteractedRef.current) {
-        tryUnmute();
-      }
+      console.log("VideoPlayer: playing event – trying unmute");
+      tryUnmute();
     };
 
-    const onError = (e) => {
+    const onErrorHandler = (e) => {
       const code = video.error?.code;
       const msg = video.error?.message;
       console.error("VideoPlayer error:", { code, msg, src: song.videoUrl });
@@ -96,18 +99,19 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
 
       if (!hasNotifiedError && onError) {
         hasNotifiedError = true;
-      }
-      // Notify parent so display can skip to next song
-      if (!hasNotifiedError) {
-        hasNotifiedError = true;
-        // Use the onError callback from props (captured in closure via parent param name collision)
+        onError({
+          title: song?.title,
+          videoUrl: song?.videoUrl,
+          code,
+          message: msg,
+        });
       }
     };
 
     /* ---- attach listeners ---- */
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("playing", onPlaying);
-    video.addEventListener("error", onError);
+    video.addEventListener("error", onErrorHandler);
 
     /* ---- load & play ---- */
     console.log("VideoPlayer: loading", song.title, song.videoUrl.substring(0, 80));
@@ -118,35 +122,47 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
 
     const startPlayback = async () => {
       try {
-        // Step 1: Play muted (guaranteed by browsers)
+        // Step 1: Play muted (guaranteed by all browsers)
         await video.play();
         console.log("VideoPlayer: muted play started ✅");
         setLoading(false);
 
-        // Step 2: If user has interacted, unmute immediately
-        if (userInteractedRef.current) {
-          try {
-            video.muted = false;
-            setIsMuted(false);
-            console.log("VideoPlayer: unmuted after play ✅");
-          } catch {
-            console.log("VideoPlayer: unmute failed, will retry");
-          }
-
-          // Double-check after a tick (some browsers need this)
-          setTimeout(() => {
-            if (video.muted && !video.paused && userInteractedRef.current) {
-              video.muted = false;
-              setIsMuted(false);
-              console.log("VideoPlayer: force-unmuted after delay ✅");
-            }
-          }, 150);
+        // Step 2: ALWAYS try to unmute immediately
+        video.muted = false;
+        if (!video.muted) {
+          // Browser allowed unmuted playback!
+          setIsMuted(false);
+          userInteractedRef.current = true;
+          sessionStorage.setItem("video_autoplay_enabled", "true");
+          console.log("VideoPlayer: auto-unmuted ✅ (browser allowed it)");
         } else {
-          console.log("VideoPlayer: playing muted – waiting for user interaction to unmute");
+          console.log("VideoPlayer: browser kept muted – showing overlay");
+          // Retry once more after a brief delay
+          setTimeout(() => {
+            if (video.muted && !video.paused) {
+              video.muted = false;
+              if (!video.muted) {
+                setIsMuted(false);
+                console.log("VideoPlayer: delayed auto-unmute succeeded ✅");
+              }
+            }
+          }, 200);
         }
       } catch (err) {
-        console.warn("VideoPlayer: play() rejected:", err.message);
-        // canplay listener will retry
+        console.warn("VideoPlayer: muted play() rejected:", err.message);
+        // Try unmuted play directly (some browsers prefer this)
+        try {
+          video.muted = false;
+          setIsMuted(false);
+          await video.play();
+          console.log("VideoPlayer: unmuted play succeeded ✅");
+        } catch {
+          // Last resort: play muted
+          video.muted = true;
+          setIsMuted(true);
+          video.play().catch(() => {});
+          console.log("VideoPlayer: fell back to muted play");
+        }
       }
     };
 
@@ -155,22 +171,9 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     return () => {
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("playing", onPlaying);
-      video.removeEventListener("error", onError);
+      video.removeEventListener("error", onErrorHandler);
     };
   }, [song]);
-
-  // ── Handle video error via props ──
-  const handleVideoError = () => {
-    const video = vref.current;
-    if (onError) {
-      onError({
-        title: song?.title,
-        videoUrl: song?.videoUrl,
-        code: video?.error?.code,
-        message: video?.error?.message,
-      });
-    }
-  };
 
   useImperativeHandle(ref, () => ({
     play: () => vref.current?.play(),
@@ -212,7 +215,17 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
           console.log("VideoPlayer: video ended");
           onEnded?.();
         }}
-        onError={handleVideoError}
+        onError={() => {
+          const video = vref.current;
+          if (onError) {
+            onError({
+              title: song?.title,
+              videoUrl: song?.videoUrl,
+              code: video?.error?.code,
+              message: video?.error?.message,
+            });
+          }
+        }}
         onClick={() => {
           // User click → mark interaction, unmute, and toggle play/pause
           if (!userInteractedRef.current) {
