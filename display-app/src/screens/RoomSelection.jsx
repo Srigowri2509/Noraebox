@@ -6,12 +6,42 @@ export default function RoomSelection({ onRoomSelect }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [manualRoomId, setManualRoomId] = useState("");
+  const [assigning, setAssigning] = useState(null); // room id being assigned
 
-  const handleSelect = (roomId) => {
+  const handleSelect = async (roomId) => {
     if (!roomId) return;
-    localStorage.setItem("roomId", roomId);
-    localStorage.setItem("room_id", roomId);
-    onRoomSelect(roomId);
+    setAssigning(roomId);
+
+    try {
+      // Try to assign via backend (with locking)
+      const deviceUuid = localStorage.getItem("device_uuid");
+      if (deviceUuid) {
+        await api("/devices/assign-room", {
+          method: "POST",
+          body: JSON.stringify({
+            device_uuid: deviceUuid,
+            room_id: roomId,
+          }),
+        });
+      }
+      localStorage.setItem("roomId", roomId);
+      localStorage.setItem("room_id", roomId);
+      onRoomSelect(roomId);
+    } catch (err) {
+      const msg = err.message || "Unknown error";
+      if (msg.includes("already taken")) {
+        alert(msg);
+        // Refresh rooms to show updated status
+        fetchRooms();
+      } else {
+        // Fallback: still assign locally
+        localStorage.setItem("roomId", roomId);
+        localStorage.setItem("room_id", roomId);
+        onRoomSelect(roomId);
+      }
+    } finally {
+      setAssigning(null);
+    }
   };
 
   const handleManualAssign = () => {
@@ -20,21 +50,34 @@ export default function RoomSelection({ onRoomSelect }) {
     }
   };
 
-  useEffect(() => {
-    async function fetchRooms() {
+  async function fetchRooms() {
+    try {
+      const deviceUuid = localStorage.getItem("device_uuid");
+      const url = deviceUuid
+        ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
+        : "/rooms/available";
+
+      const data = await api(url);
+      const roomsData = Array.isArray(data) ? data : (data.data || []);
+      setRooms(roomsData);
+      setError(null);
+    } catch (err) {
+      console.warn("Could not fetch /rooms/available, falling back to /rooms:", err.message);
       try {
-        const res = await api('/rooms');
+        const res = await api("/rooms");
         const roomsData = res.data || res;
         setRooms(Array.isArray(roomsData) ? roomsData : []);
         setError(null);
-        setLoading(false);
-      } catch (error) {
-        console.error('Error fetching rooms:', error);
-        setError(error.message || 'Failed to connect to backend');
-        setLoading(false);
+      } catch (error2) {
+        console.error("Error fetching rooms:", error2);
+        setError(error2.message || "Failed to connect to backend");
       }
+    } finally {
+      setLoading(false);
     }
+  }
 
+  useEffect(() => {
     fetchRooms();
   }, []);
 
@@ -61,7 +104,7 @@ export default function RoomSelection({ onRoomSelect }) {
               Cannot load rooms. Please ensure the backend server is running at {API_BASE}
             </p>
             <p className="text-sm mb-4">
-              If you have a room ID, enter it below or set it in the browser console:
+              If you have a room ID, enter it below:
             </p>
             <input
               type="text"
@@ -75,9 +118,6 @@ export default function RoomSelection({ onRoomSelect }) {
                 }
               }}
             />
-            <code className="text-xs block mt-3 bg-black/50 p-2 rounded font-mono">
-              localStorage.setItem("room_id", "your-room-id")
-            </code>
             <button
               onClick={handleManualAssign}
               disabled={!manualRoomId.trim()}
@@ -90,18 +130,43 @@ export default function RoomSelection({ onRoomSelect }) {
         
         {rooms.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {rooms.map((room) => (
-              <button
-                key={room.id}
-                onClick={() => handleSelect(room.id)}
-                className="bg-gray-900 hover:bg-gray-800 border-2 border-purple-500/30 hover:border-purple-500 rounded-xl p-8 text-center transition-all"
-              >
-                <div className="text-3xl font-bold text-purple-400 mb-2">
-                  {room.name || `Room ${room.id.slice(0, 8)}`}
-                </div>
-                <div className="text-gray-400 text-sm">ID: {room.id.slice(0, 8)}...</div>
-              </button>
-            ))}
+            {rooms.map((room) => {
+              const roomName = room.name || `Room ${String(room.id).slice(0, 8)}`;
+              const takenByDisplay = room.has_display && !room.my_room;
+              const isAssigning = assigning === room.id || assigning === String(room.id);
+
+              return (
+                <button
+                  key={room.id}
+                  onClick={() => !takenByDisplay && handleSelect(room.id)}
+                  disabled={takenByDisplay || isAssigning}
+                  className={`rounded-xl p-8 text-center transition-all border-2 ${
+                    takenByDisplay
+                      ? "bg-gray-900/50 border-gray-700 opacity-50 cursor-not-allowed"
+                      : room.my_room
+                      ? "bg-gray-900 border-green-500 hover:border-green-400"
+                      : "bg-gray-900 hover:bg-gray-800 border-purple-500/30 hover:border-purple-500"
+                  }`}
+                >
+                  <div className={`text-3xl font-bold mb-2 ${
+                    takenByDisplay ? "text-gray-500" : room.my_room ? "text-green-400" : "text-purple-400"
+                  }`}>
+                    {roomName}
+                  </div>
+                  {takenByDisplay && (
+                    <div className="text-red-400 text-sm font-medium">Taken</div>
+                  )}
+                  {room.my_room && (
+                    <div className="text-green-400 text-sm font-medium">Current</div>
+                  )}
+                  {!takenByDisplay && !room.my_room && (
+                    <div className="text-gray-500 text-sm">
+                      {isAssigning ? "Assigning..." : "Available"}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -114,4 +179,3 @@ export default function RoomSelection({ onRoomSelect }) {
     </div>
   );
 }
-

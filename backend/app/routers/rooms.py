@@ -4,7 +4,7 @@ from sqlalchemy import func
 from typing import List
 from datetime import datetime, timezone, timedelta
 from app.db import get_db
-from app.models import Room, RoomSession, QueueItem, Song, SongArtist, Artist
+from app.models import Room, RoomSession, QueueItem, Song, SongArtist, Artist, Device
 from app.schemas import RoomResponse
 
 router = APIRouter()
@@ -24,6 +24,48 @@ def list_rooms(db: Session = Depends(get_db)):
     except Exception as e:
         error_str = str(e)
         print(f"Error listing rooms: {error_str}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/available")
+def list_rooms_with_availability(device_uuid: str = None, db: Session = Depends(get_db)):
+    """List all rooms with device assignment info (which rooms are taken)"""
+    try:
+        rooms = db.query(Room).order_by(Room.name).all()
+        devices = db.query(Device).filter(Device.room_id.isnot(None)).all()
+
+        # Build lookup: room_id → list of device_types assigned
+        room_devices = {}
+        for d in devices:
+            rid = str(d.room_id)
+            if rid not in room_devices:
+                room_devices[rid] = []
+            room_devices[rid].append({
+                "device_uuid": d.device_uuid,
+                "device_type": d.device_type,
+            })
+
+        result = []
+        for room in rooms:
+            rid = str(room.id)
+            assigned = room_devices.get(rid, [])
+            has_tablet = any(d["device_type"] == "tablet" for d in assigned)
+            has_display = any(d["device_type"] == "display" for d in assigned)
+            # A room is "taken by me" if the requesting device is one of the assigned ones
+            my_room = any(d["device_uuid"] == device_uuid for d in assigned) if device_uuid else False
+
+            result.append({
+                "id": rid,
+                "name": room.name,
+                "has_tablet": has_tablet,
+                "has_display": has_display,
+                "my_room": my_room,
+                "devices": assigned,
+            })
+
+        return result
+    except Exception as e:
+        print(f"Error listing rooms with availability: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

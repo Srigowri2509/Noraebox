@@ -1,9 +1,29 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { api, getApiBase } from "../api";
 
-export default function RoomSelectModal({ rooms = [], device, onSelect, onClose }) {
+export default function RoomSelectModal({ rooms: initialRooms = [], device, onSelect, onClose }) {
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [loading, setLoading] = useState(false);
+  const [rooms, setRooms] = useState(initialRooms);
+
+  // Fetch rooms with availability info
+  useEffect(() => {
+    (async () => {
+      try {
+        const deviceUuid = localStorage.getItem("device_uuid");
+        const url = deviceUuid
+          ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
+          : "/rooms/available";
+        const data = await api(url);
+        if (Array.isArray(data)) {
+          setRooms(data);
+        }
+      } catch (err) {
+        console.warn("Could not fetch room availability, using initial list:", err.message);
+        // Keep initialRooms as fallback
+      }
+    })();
+  }, []);
 
   const handleAssign = async () => {
     if (!selectedRoomId) {
@@ -13,7 +33,6 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
     
     setLoading(true);
     try {
-      // Use POST /devices/assign-room endpoint
       const deviceUuid = localStorage.getItem("device_uuid");
       if (!deviceUuid) {
         alert("Device UUID not found. Please refresh the page.");
@@ -31,17 +50,24 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
       
       console.log("✅ Device assigned to room in backend");
       
-      // Set room_id locally
       localStorage.setItem("room_id", selectedRoomId);
       localStorage.setItem("roomId", selectedRoomId);
       
-      // Call onSelect to update parent
       onSelect(selectedRoomId);
     } catch (error) {
       console.error("Error assigning room:", error);
       const errorMsg = error.message || "Unknown error";
-      if (errorMsg.includes("already has a")) {
-        alert(`Room assignment failed: ${errorMsg}. Please select a different room.`);
+      if (errorMsg.includes("already taken")) {
+        alert(errorMsg);
+        // Refresh room list to show updated availability
+        try {
+          const deviceUuid = localStorage.getItem("device_uuid");
+          const url = deviceUuid
+            ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
+            : "/rooms/available";
+          const data = await api(url);
+          if (Array.isArray(data)) setRooms(data);
+        } catch {}
       } else {
         alert(`Failed to assign room: ${errorMsg}`);
       }
@@ -74,11 +100,16 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
                 className="w-full bg-slate-700 text-white px-4 py-3 rounded border-2 border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
               >
                 <option value="">-- Select a room --</option>
-                {rooms.map((room, index) => {
-                  const roomNum = index + 1;
+                {rooms.map((room) => {
+                  const roomName = room.name || `Room ${String(room.id).slice(0, 8)}`;
+                  const takenByTablet = room.has_tablet && !room.my_room;
                   return (
-                    <option key={room.id} value={room.id}>
-                      Room {roomNum}
+                    <option
+                      key={room.id}
+                      value={room.id}
+                      disabled={takenByTablet}
+                    >
+                      {roomName}{takenByTablet ? " (taken)" : ""}{room.my_room ? " (current)" : ""}
                     </option>
                   );
                 })}
@@ -112,4 +143,3 @@ export default function RoomSelectModal({ rooms = [], device, onSelect, onClose 
     </div>
   );
 }
-

@@ -117,6 +117,20 @@ def assign_room_to_device(
         
         print(f"Found room: {room.id} ({room.name})")
         
+        # Check if room is already taken by another device of the same type
+        existing_device = db.query(Device).filter(
+            Device.room_id == room_uuid,
+            Device.device_type == device.device_type,
+            Device.device_uuid != device_uuid  # not the same device
+        ).first()
+        
+        if existing_device:
+            room_display = room.name or f"Room {room_id[:8]}"
+            raise HTTPException(
+                status_code=409,
+                detail=f"{room_display} is already taken by another {device.device_type} device. Please select a different room."
+            )
+        
         # Assign room to device
         device.room_id = room_uuid
         db.commit()
