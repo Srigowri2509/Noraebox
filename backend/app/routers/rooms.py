@@ -314,6 +314,59 @@ def remove_from_queue(room_id: str, payload: dict = Body(...), db: Session = Dep
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{room_id}/queue/reorder")
+def reorder_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Reorder the queue – move a song from one position to another"""
+    try:
+        from_position = payload.get("from_position")
+        to_position = payload.get("to_position")
+
+        if from_position is None or to_position is None:
+            raise HTTPException(status_code=400, detail="from_position and to_position are required")
+
+        if from_position == to_position:
+            return {"status": "no_change"}
+
+        # Verify room exists
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        # Get all queue items ordered by position
+        items = db.query(QueueItem).filter(
+            QueueItem.room_id == room_id
+        ).order_by(QueueItem.position).all()
+
+        if not items:
+            raise HTTPException(status_code=404, detail="Queue is empty")
+
+        # Convert 1-based positions to 0-based indices for list manipulation
+        from_idx = from_position - 1
+        to_idx = to_position - 1
+
+        if from_idx < 0 or from_idx >= len(items) or to_idx < 0 or to_idx >= len(items):
+            raise HTTPException(status_code=400, detail="Invalid positions")
+
+        # Remove item from old position and insert at new position
+        moved_item = items.pop(from_idx)
+        items.insert(to_idx, moved_item)
+
+        # Reassign all positions (1-based)
+        for idx, item in enumerate(items):
+            item.position = idx + 1
+
+        db.commit()
+
+        print(f"POST /rooms/{room_id}/queue/reorder: Moved position {from_position} → {to_position}")
+        return {"status": "reordered"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error reordering queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/{room_id}/current")
 def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
     """Set the current song for a room"""

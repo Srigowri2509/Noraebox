@@ -373,6 +373,37 @@ const filteredSongs = useMemo(() => {
   };
 
 
+  const handleReorderQueue = async (fromIndex, toIndex) => {
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      console.warn("Cannot reorder: No room ID");
+      return;
+    }
+    if (fromIndex === toIndex) return;
+
+    // Optimistic local reorder
+    const newQueue = [...queue];
+    const [moved] = newQueue.splice(fromIndex, 1);
+    newQueue.splice(toIndex, 0, moved);
+    setQueue(newQueue);
+
+    // Persist to backend (1-based positions)
+    try {
+      await api(`/rooms/${currentRoomId}/queue/reorder`, {
+        method: "POST",
+        body: JSON.stringify({
+          from_position: fromIndex + 1,
+          to_position: toIndex + 1,
+        }),
+      });
+      console.log(`✅ Queue reordered: ${fromIndex + 1} → ${toIndex + 1}`);
+    } catch (error) {
+      console.error("Error reordering queue:", error);
+      // Revert on failure
+      setQueue(queue);
+    }
+  };
+
   const handlePlaySong = async (song) => {
     const currentRoomId = roomId || room?.id;
     if (!currentRoomId || currentRoomId === "") {
@@ -779,6 +810,7 @@ const filteredSongs = useMemo(() => {
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
+                onReorder={handleReorderQueue}
               />
             </div>
           </div>
