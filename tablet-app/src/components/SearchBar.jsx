@@ -124,7 +124,7 @@ function SongNameFilter({ value = "", onChange }) {
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-1 sm:mt-2">
-      <div className="grid grid-cols-4 gap-2.5 sm:gap-3 items-start">
+      <div className="grid grid-cols-2 landscape:grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 items-start">
         <div className="min-w-0">
           <LanguageFilter
             value={filters.language || "all"}

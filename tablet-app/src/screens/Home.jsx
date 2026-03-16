@@ -4,7 +4,6 @@ import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
 import MostPlayed from "../components/MostPlayed.jsx";
 import QueueList from "../components/QueueList.jsx";
-import ReadyToSing from "../components/ReadyToSing.jsx";
 import Playlists from "../components/Playlists.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch from "../hooks/usePrefixSearch.jsx";
@@ -687,10 +686,10 @@ const filteredSongs = useMemo(() => {
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center",
-        paddingLeft: "4%",
-        paddingRight: "4%",
-        paddingTop: "0.75rem",
-        paddingBottom: "1rem"
+        paddingLeft: "3%",
+        paddingRight: "3%",
+        paddingTop: "0.5rem",
+        paddingBottom: "0.75rem"
       }}
     >
       {/* Semi-transparent overlay for readability */}
@@ -720,16 +719,16 @@ const filteredSongs = useMemo(() => {
           <div className="text-cyan-400 text-xl">Loading songs...</div>
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-3 flex-1 overflow-hidden" style={{ alignItems: "stretch", minHeight: 0 }}>
-          {/* LEFT COLUMN */}
-          <div className="col-span-8" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-            {/* TOP ROW: Playlist title + square cards */}
-            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div className="flex items-center gap-2 mb-3" style={{ flexShrink: 0 }}>
+        <div className="main-content-area">
+          {/* ═══ ROW 1: Playlists + Buttons/Quote ═══ */}
+          <div className="row-1-grid">
+            {/* Playlists */}
+            <div className="row-1-left" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div className="flex items-center gap-2 mb-2 sm:mb-3" style={{ flexShrink: 0 }}>
                 <span className="text-sky-300 text-lg">🎵</span>
                 <h3 className="text-white font-semibold text-base sm:text-lg">Playlists</h3>
               </div>
-              <div style={{ height: '145px', flexShrink: 0, overflow: "hidden" }}>
+              <div className="playlist-cards-container" style={{ flexShrink: 0, overflow: "hidden" }}>
                 <Playlists 
                   playlists={playlists} 
                   onPlaylistSelect={handlePlaylistSelect}
@@ -738,12 +737,64 @@ const filteredSongs = useMemo(() => {
               </div>
             </div>
 
-            {/* BOTTOM ROW: Show search results when filters are active, otherwise show Most Played */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden", marginTop: "1rem" }}>
+            {/* Buttons + music quote */}
+            <div className="row-1-right">
+              <div className="card-surface" style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1rem", borderRadius: "0.75rem" }}>
+                <div className="flex flex-row items-center justify-center gap-4 sm:gap-6" style={{ marginBottom: "0.5rem" }}>
+                  <button
+                    onClick={handleReadyToSing}
+                    disabled={!queue || queue.length === 0}
+                    className={`flex flex-row items-center justify-center gap-2 transition-all shrink-0
+                      ${(!queue || queue.length === 0)
+                        ? "cursor-not-allowed opacity-40"
+                        : "hover:scale-105 shadow-[0_0_16px_rgba(236,72,153,0.6),0_0_32px_rgba(236,72,153,0.35)]"}
+                    `}
+                    style={{
+                      height: '44px',
+                      paddingLeft: '14px',
+                      paddingRight: '18px',
+                      backgroundColor: (!queue || queue.length === 0) ? '#475569' : '#ec4899',
+                      borderRadius: '22px',
+                    }}
+                  >
+                    <span className="text-white text-lg sm:text-xl leading-none">▶</span>
+                    <span className="text-white text-xs sm:text-sm font-semibold leading-none">Play</span>
+                  </button>
+                  <button
+                    onClick={handleSkip}
+                    disabled={!queue || queue.length === 0}
+                    className={`flex flex-row items-center justify-center gap-2 transition-all shrink-0
+                      ${(!queue || queue.length === 0)
+                        ? "cursor-not-allowed opacity-40"
+                        : "hover:scale-105 shadow-[0_0_16px_rgba(6,182,212,0.6),0_0_32px_rgba(6,182,212,0.35)]"}
+                    `}
+                    style={{
+                      height: '44px',
+                      paddingLeft: '14px',
+                      paddingRight: '18px',
+                      backgroundColor: (!queue || queue.length === 0) ? '#475569' : '#06b6d4',
+                      borderRadius: '22px',
+                    }}
+                  >
+                    <span className="text-white text-lg sm:text-xl leading-none">⏭</span>
+                    <span className="text-white text-xs sm:text-sm font-semibold leading-none">Skip to Next</span>
+                  </button>
+                </div>
+                <p className="text-slate-400 text-xs sm:text-sm italic text-center leading-relaxed">
+                  "Where words fail, music speaks." — Hans Christian Andersen
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ═══ ROW 2: Most Played / Results + Queue ═══ */}
+          <div className="row-2-grid">
+            {/* Most Played / Search Results */}
+            <div className="row-2-left" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
               {hasActiveFilters ? (
-                <div className="card-surface p-4 sm:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface p-3 sm:p-4 md:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   {selectedPlaylistId && (
-                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between gap-3" style={{ padding: "0.625rem 0.875rem", marginBottom: "0.875rem", flexShrink: 0 }}>
+                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between gap-3" style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", flexShrink: 0 }}>
                       <div className="flex items-center gap-2">
                         <span className="text-cyan-400">📋</span>
                         <span className="text-white font-semibold text-xs sm:text-sm">
@@ -784,29 +835,14 @@ const filteredSongs = useMemo(() => {
                   />
                 </div>
               ) : (
-                <div className="card-surface p-4 sm:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface p-3 sm:p-4 md:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
                   <MostPlayed songs={mostPlayed} onSongSelect={handleAddToQueue} />
                 </div>
               )}
             </div>
-          </div>
 
-          {/* RIGHT COLUMN */}
-          <div className="col-span-4" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-            {/* TOP ROW: Ready to Sing aligned with playlist card row */}
-            <div style={{ flexShrink: 0, display: "flex", flexDirection: "column" }}>
-              <div style={{ height: '1.6rem', flexShrink: 0 }} />
-              <div style={{ height: '145px', flexShrink: 0 }}>
-                <ReadyToSing 
-                  onPlay={handleReadyToSing}
-                  onSkip={handleSkip}
-                  queueLength={queue?.length || 0}
-                />
-              </div>
-            </div>
-            
-            {/* BOTTOM ROW: Queue - same height as Results */}
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", marginTop: "1rem", minHeight: 0, overflow: "hidden" }}>
+            {/* Queue */}
+            <div className="row-2-right" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}

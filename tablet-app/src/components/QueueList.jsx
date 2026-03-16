@@ -181,13 +181,15 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
       className="card-surface p-4 sm:p-5"
       style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}
     >
-      <div className="flex items-center gap-2 mb-4">
+      {/* ── Queue header ── */}
+      <div className="flex items-center gap-2 mb-3 flex-shrink-0">
         <span className="text-sky-300 text-lg">🎵</span>
         <h4 className="text-white font-semibold text-base sm:text-lg">Queue</h4>
         {queue.length > 1 && (
           <span className="text-slate-500 text-xs ml-auto">Long press to reorder</span>
         )}
       </div>
+
       {queue.length === 0 ? (
         <div className="flex flex-col items-center justify-center" style={{ flex: 2 }}>
           <div className="text-6xl mb-4 text-purple-400">🎵</div>

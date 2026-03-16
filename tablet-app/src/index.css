@@ -84,3 +84,96 @@ body {
   color: #fff;
   padding: 12px 14px;
 }
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE LAYOUT — Portrait vs Landscape
+   ══════════════════════════════════════════════════════ */
+
+/* ── Main content area ── */
+.main-content-area {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Playlist cards height ── */
+.playlist-cards-container {
+  height: 120px;
+}
+
+/* ═══ LANDSCAPE (horizontal) ═══ */
+@media (orientation: landscape) {
+  .playlist-cards-container {
+    height: 145px;
+  }
+
+  /* Row 1: Playlists (left 8/12) + Buttons (right 4/12) */
+  .row-1-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+  .row-1-left { }
+  .row-1-right { }
+
+  /* Row 2: Results (left 8/12) + Queue (right 4/12) */
+  .row-2-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 0.75rem;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    margin-top: 0.75rem;
+  }
+  .row-2-left { }
+  .row-2-right {
+    padding-left: 0;
+  }
+
+  /* Tailwind landscape variant for search bar */
+  .landscape\:grid-cols-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/* ═══ PORTRAIT (vertical) ═══ */
+@media (orientation: portrait) {
+  .main-content-area {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  /* Row 1: Stack playlists then buttons */
+  .row-1-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+  .row-1-left {
+    width: 100%;
+  }
+  .row-1-right {
+    width: 100%;
+  }
+
+  /* Row 2: Stack results then queue */
+  .row-2-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+    flex-shrink: 0;
+    min-height: 0;
+  }
+  .row-2-left {
+    min-height: 300px;
+  }
+  .row-2-right {
+    min-height: 250px;
+  }
+}
