@@ -73,18 +73,6 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
-      {/* Results count + current page info */}
-      <div className="flex items-center justify-between px-1 mb-1">
-        <span className="text-slate-500 text-xs">
-          {songList.length} song{songList.length !== 1 ? "s" : ""}
-        </span>
-        {totalPages > 1 && (
-          <span className="text-slate-500 text-xs">
-            Page {currentPage} of {totalPages}
-          </span>
-        )}
-      </div>
-
       {/* Scrollable song list */}
       <div
         ref={scrollRef}
@@ -110,55 +98,65 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
         ))}
       </div>
 
-      {/* Pagination bar */}
+      {/* Pagination bar — always inside the container */}
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1 pt-2 pb-1 flex-shrink-0">
-          {/* Previous */}
-          <button
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage === 1}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium transition-all ${
-              currentPage === 1
-                ? "text-slate-600 cursor-not-allowed"
-                : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
-            }`}
-          >
-            ‹
-          </button>
+        <div className="flex items-center justify-between pt-2 pb-1 flex-shrink-0" style={{ minHeight: 36 }}>
+          {/* Song count */}
+          <span className="text-slate-500 text-xs whitespace-nowrap">
+            {songList.length} songs
+          </span>
 
-          {/* Page numbers */}
-          {getPageNumbers().map((page, idx) =>
-            page === "..." ? (
-              <span key={`ellipsis-${idx}`} className="w-6 text-center text-slate-500 text-xs">
-                …
-              </span>
-            ) : (
-              <button
-                key={page}
-                onClick={() => goToPage(page)}
-                className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium transition-all ${
-                  page === currentPage
-                    ? "bg-purple-600 text-white shadow-md shadow-purple-500/30"
-                    : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
-                }`}
-              >
-                {page}
-              </button>
-            )
-          )}
+          {/* Page buttons */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => goToPage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium ${
+                currentPage === 1
+                  ? "text-slate-600 cursor-not-allowed"
+                  : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+              }`}
+            >
+              ‹
+            </button>
 
-          {/* Next */}
-          <button
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-medium transition-all ${
-              currentPage === totalPages
-                ? "text-slate-600 cursor-not-allowed"
-                : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
-            }`}
-          >
-            ›
-          </button>
+            {getPageNumbers().map((page, idx) =>
+              page === "..." ? (
+                <span key={`e-${idx}`} className="w-5 text-center text-slate-500 text-xs">
+                  …
+                </span>
+              ) : (
+                <button
+                  key={page}
+                  onClick={() => goToPage(page)}
+                  className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium ${
+                    page === currentPage
+                      ? "bg-purple-600 text-white"
+                      : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+                  }`}
+                >
+                  {page}
+                </button>
+              )
+            )}
+
+            <button
+              onClick={() => goToPage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className={`w-7 h-7 rounded-md flex items-center justify-center text-xs font-medium ${
+                currentPage === totalPages
+                  ? "text-slate-600 cursor-not-allowed"
+                  : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+              }`}
+            >
+              ›
+            </button>
+          </div>
+
+          {/* Page info */}
+          <span className="text-slate-500 text-xs whitespace-nowrap">
+            {currentPage}/{totalPages}
+          </span>
         </div>
       )}
     </div>

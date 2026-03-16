@@ -250,11 +250,6 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
                   </svg>
                 </div>
 
-                {/* Position number */}
-                <div className="w-6 text-center text-slate-500 text-sm font-mono shrink-0">
-                  {displayIdx + 1}
-                </div>
-
                 {/* Song icon */}
                 <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-lg bg-slate-700/70 flex items-center justify-center shrink-0">
                   <span className="text-xl">🎵</span>
