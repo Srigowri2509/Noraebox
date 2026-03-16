@@ -105,17 +105,6 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
     handlePressStart(index, touch.clientY);
   };
 
-  const onTouchMove = (e) => {
-    const touch = e.touches[0];
-    handlePressMove(touch.clientY);
-    handleMoveWhileDragging(touch.clientY);
-
-    // Prevent scroll while dragging
-    if (isDragging.current) {
-      e.preventDefault();
-    }
-  };
-
   const onTouchEnd = () => {
     handlePressEnd();
   };
@@ -124,6 +113,41 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
   const onMouseDown = (index, e) => {
     handlePressStart(index, e.clientY);
   };
+
+  // Use native (non-passive) touchmove on document to reliably preventDefault
+  // React synthetic touch events are passive and can't block scrolling
+  useEffect(() => {
+    const handleTouchMove = (e) => {
+      if (!isDragging.current) {
+        // Not dragging yet — just check if we should cancel the long-press timer
+        if (e.touches.length > 0) {
+          handlePressMove(e.touches[0].clientY);
+        }
+        return;
+      }
+      // Dragging — block ALL scrolling on the page
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.touches.length > 0) {
+        handleMoveWhileDragging(e.touches[0].clientY);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      handlePressEnd();
+    };
+
+    // { passive: false } is required to allow preventDefault() on touchmove
+    document.addEventListener("touchmove", handleTouchMove, { passive: false });
+    document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("touchcancel", handleTouchEnd);
+
+    return () => {
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchEnd);
+    };
+  }, [dragIndex, overIndex, queue]);
 
   useEffect(() => {
     const onMouseMove = (e) => {
@@ -174,8 +198,6 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
         <div
           ref={scrollContainerRef}
           className="space-y-3 queue-scroll"
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
           style={{
             flex: 1,
             minHeight: 0,
