@@ -71,9 +71,11 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Rename APK
+        shell: bash
         run: |
           mkdir -p release
-          cp tablet-app/android/app/build/outputs/apk/release/app-release.apk release/tablet-app-v${{ steps.get_version.outputs.version }}.apk
+          APK_PATH=$(ls -1 tablet-app/android/app/build/outputs/apk/release/*.apk | head -n 1)
+          cp "$APK_PATH" release/tablet-app-v${{ steps.get_version.outputs.version }}.apk
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
