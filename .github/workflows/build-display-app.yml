@@ -41,7 +41,12 @@ jobs:
 
       - name: Setup Capacitor
         working-directory: ./display-app
-        run: npx cap sync android
+        shell: bash
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+          npx cap sync android
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
