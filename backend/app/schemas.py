@@ -110,3 +110,24 @@ class TopArtistResponse(BaseModel):
     name: str
     image_url: Optional[str]
     play_count: int
+
+
+# Song Suggestion Schemas
+class SongSuggestionCreate(BaseModel):
+    title: str
+    artist: Optional[str] = None
+    language: Optional[str] = None
+    room_id: Optional[str] = None
+
+
+class SongSuggestionResponse(BaseModel):
+    id: UUID
+    title: str
+    artist: Optional[str]
+    language: Optional[str]
+    room_id: Optional[UUID]
+    status: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

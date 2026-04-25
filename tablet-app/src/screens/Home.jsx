@@ -5,6 +5,7 @@ import SearchResults from "../components/SearchResults.jsx";
 import MostPlayed from "../components/MostPlayed.jsx";
 import QueueList from "../components/QueueList.jsx";
 import Playlists from "../components/Playlists.jsx";
+import SuggestSongModal from "../components/SuggestSongModal.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch from "../hooks/usePrefixSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
@@ -25,6 +26,8 @@ export default function Home() {
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [playlistSongs, setPlaylistSongs] = useState([]);
+
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
@@ -832,6 +835,7 @@ const filteredSongs = useMemo(() => {
                     songs={filteredSongs} 
                     onAddToQueue={handleAddToQueue}
                     loading={songsLoading || isSearching}
+                    onSuggestSong={() => setShowSuggestModal(true)}
                   />
                 </div>
               ) : (
@@ -852,6 +856,15 @@ const filteredSongs = useMemo(() => {
           </div>
         </div>
       )}
+
+      <SuggestSongModal
+        isOpen={showSuggestModal}
+        onClose={() => setShowSuggestModal(false)}
+        prefillTitle={filters.songName}
+        prefillArtist={filters.artist}
+        prefillLanguage={filters.language !== "all" ? filters.language : ""}
+        roomId={roomId || room?.id}
+      />
     </div>
   );
 }

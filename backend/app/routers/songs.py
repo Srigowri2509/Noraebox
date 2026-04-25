@@ -5,8 +5,8 @@ from typing import List
 import json
 import re
 from app.db import get_db
-from app.models import Song, SongArtist, Artist
-from app.schemas import SongResponse
+from app.models import Song, SongArtist, Artist, SongSuggestion
+from app.schemas import SongResponse, SongSuggestionCreate, SongSuggestionResponse
 from app.s3_service import generate_signed_url
 
 router = APIRouter()
@@ -285,6 +285,70 @@ def search_songs(
         print(f"Error in search_songs: {e}")
         import traceback
         traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/suggestions", response_model=SongSuggestionResponse)
+def create_song_suggestion(body: SongSuggestionCreate, db: Session = Depends(get_db)):
+    """Submit a song suggestion when a user can't find a song."""
+    try:
+        suggestion = SongSuggestion(
+            title=body.title.strip(),
+            artist=body.artist.strip() if body.artist else None,
+            language=body.language.strip() if body.language else None,
+            room_id=body.room_id if body.room_id else None,
+        )
+        db.add(suggestion)
+        db.commit()
+        db.refresh(suggestion)
+        print(f"✅ New song suggestion: '{suggestion.title}' by '{suggestion.artist}' (id={suggestion.id})")
+        return suggestion
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error creating song suggestion: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/suggestions", response_model=List[SongSuggestionResponse])
+def list_song_suggestions(
+    status: str = Query(None, description="Filter by status: pending, approved, rejected"),
+    db: Session = Depends(get_db),
+):
+    """List all song suggestions (for admin review)."""
+    try:
+        q = db.query(SongSuggestion).order_by(SongSuggestion.created_at.desc())
+        if status:
+            q = q.filter(SongSuggestion.status == status)
+        return q.all()
+    except Exception as e:
+        print(f"❌ Error listing song suggestions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/suggestions/{suggestion_id}")
+def update_suggestion_status(
+    suggestion_id: str,
+    status: str = Query(..., description="New status: pending, approved, rejected"),
+    db: Session = Depends(get_db),
+):
+    """Update a song suggestion's status (admin action)."""
+    try:
+        import uuid as _uuid
+        suggestion = db.query(SongSuggestion).filter(
+            SongSuggestion.id == _uuid.UUID(suggestion_id)
+        ).first()
+        if not suggestion:
+            raise HTTPException(status_code=404, detail="Suggestion not found")
+        if status not in ("pending", "approved", "rejected"):
+            raise HTTPException(status_code=400, detail="Status must be pending, approved, or rejected")
+        suggestion.status = status
+        db.commit()
+        return {"id": str(suggestion.id), "status": suggestion.status}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error updating suggestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

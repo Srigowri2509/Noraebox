@@ -137,3 +137,15 @@ class PlaylistSong(Base):
     # Relationships
     playlist = relationship("Playlist", back_populates="playlist_songs")
     song = relationship("Song")
+
+
+class SongSuggestion(Base):
+    __tablename__ = "song_suggestions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String, nullable=False)
+    artist = Column(String, nullable=True)
+    language = Column(String, nullable=True)
+    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
+    status = Column(String, default="pending")  # "pending", "approved", "rejected"
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

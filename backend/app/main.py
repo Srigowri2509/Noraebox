@@ -8,7 +8,7 @@ import traceback
 import json
 
 # Temporary: auto-create database tables on startup (Option 2)
-from app.models import Device, Room, RoomSession, Song, Artist, SongArtist, QueueItem, PlaybackEvent, Playlist, PlaylistSong
+from app.models import Device, Room, RoomSession, Song, Artist, SongArtist, QueueItem, PlaybackEvent, Playlist, PlaylistSong, SongSuggestion
 from app.db import Base, engine
 
 app = FastAPI()

@@ -3,7 +3,7 @@ import SongCard from "./SongCard";
 
 const PAGE_SIZE = 20; // songs per page
 
-export default function SearchResults({ songs = [], results = [], onAddToQueue, onQueue, loading }) {
+export default function SearchResults({ songs = [], results = [], onAddToQueue, onQueue, loading, onSuggestSong }) {
   const songList = songs || results;
   const [currentPage, setCurrentPage] = useState(1);
   const scrollRef = useRef(null);
@@ -68,7 +68,28 @@ export default function SearchResults({ songs = [], results = [], onAddToQueue, 
   }
 
   if (!songList || songList.length === 0) {
-    return <div className="text-slate-400 py-6 text-center">No results</div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-4">
+        <p className="text-slate-400 text-center">No results</p>
+        {onSuggestSong && (
+          <button
+            onClick={onSuggestSong}
+            className="flex flex-row items-center justify-center gap-2 transition-all shrink-0 hover:scale-105"
+            style={{
+              height: '44px',
+              paddingLeft: '14px',
+              paddingRight: '18px',
+              backgroundColor: '#7c3aed',
+              borderRadius: '22px',
+              boxShadow: '0 0 16px rgba(124,58,237,0.6), 0 0 32px rgba(124,58,237,0.35)',
+            }}
+          >
+            <span className="text-white text-lg sm:text-xl leading-none">💡</span>
+            <span className="text-white text-xs sm:text-sm font-semibold leading-none">Suggest this Song</span>
+          </button>
+        )}
+      </div>
+    );
   }
 
   return (

@@ -74,6 +74,20 @@ jobs:
           mkdir -p release
           cp tablet-app/android/app/build/outputs/apk/release/app-release.apk release/tablet-app-v${{ steps.get_version.outputs.version }}.apk
 
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Upload APK and version to S3
+        run: |
+          aws s3 cp release/tablet-app-v${{ steps.get_version.outputs.version }}.apk \
+            s3://noraebox-audio-storage/updates/tablet-app/app.apk
+          echo "${{ github.run_number }}" > version.txt
+          aws s3 cp version.txt s3://noraebox-audio-storage/updates/tablet-app/version.txt
+
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
