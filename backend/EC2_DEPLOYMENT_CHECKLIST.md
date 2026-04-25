@@ -53,12 +53,12 @@ nano .env.production
 **Paste this (replace YOUR_RDS_ENDPOINT):**
 
 ```
-DATABASE_URL=postgresql://postgres:Noraebox1111@YOUR_RDS_ENDPOINT:5432/noraebox
+DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@YOUR_RDS_ENDPOINT:5432/noraebox
 ```
 
 **Example (replace with your actual endpoint):**
 ```
-DATABASE_URL=postgresql://postgres:Noraebox1111@noraebox-postgrss.xxxxxx.ap-south-2.rds.amazonaws.com:5432/noraebox
+DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@noraebox-postgrss.xxxxxx.ap-south-2.rds.amazonaws.com:5432/noraebox
 ```
 
 **Save:**
@@ -251,7 +251,7 @@ sudo apt-get install postgresql-client -y  # Ubuntu
 
 # Test connection
 psql -h <RDS_ENDPOINT> -U postgres -d noraebox
-# Password: Noraebox1111
+# Password: <YOUR_PASSWORD>
 ```
 
 **If connection fails:**
@@ -277,7 +277,7 @@ psql -h <RDS_ENDPOINT> -U postgres -d noraebox
 ## 📝 Notes
 
 - **RDS Endpoint Format:** `noraebox-postgrss.xxxxxx.ap-south-2.rds.amazonaws.com`
-- **Password:** `Noraebox1111`
+- **Password:** `<YOUR_PASSWORD>`
 - **Database Name:** `noraebox`
 - **Port:** `5432` (PostgreSQL default)
 

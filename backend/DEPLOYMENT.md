@@ -19,7 +19,7 @@ nano .env.production
 Add the following (replace `<RDS_ENDPOINT>` with your actual RDS endpoint):
 
 ```
-DATABASE_URL=postgresql://postgres:Noraebox1111@<RDS_ENDPOINT>:5432/noraebox
+DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@<RDS_ENDPOINT>:5432/noraebox
 ```
 
 **Important:** Replace `<RDS_ENDPOINT>` with your actual RDS endpoint (e.g., `noraebox-db.xxxxx.us-east-1.rds.amazonaws.com`)

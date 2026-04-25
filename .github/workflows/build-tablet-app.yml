@@ -85,7 +85,7 @@ jobs:
         run: |
           aws s3 cp release/tablet-app-v${{ steps.get_version.outputs.version }}.apk \
             s3://noraebox-audio-storage/updates/tablet-app/app.apk
-          echo "${{ github.run_number }}" > version.txt
+          echo "${{ steps.get_version.outputs.version }}" > version.txt
           aws s3 cp version.txt s3://noraebox-audio-storage/updates/tablet-app/version.txt
 
       - name: Create Release

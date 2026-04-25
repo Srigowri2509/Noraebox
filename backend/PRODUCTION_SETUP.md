@@ -5,7 +5,7 @@
 ### 1. Production Environment File
 - **Template created:** `.env.production.template`
 - **Location:** `/home/ec2-user/backend/.env.production`
-- **Format:** `DATABASE_URL=postgresql://postgres:Noraebox1111@<RDS_ENDPOINT>:5432/noraebox`
+- **Format:** `DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@<RDS_ENDPOINT>:5432/noraebox`
 - **Action Required:** Copy template and replace `<RDS_ENDPOINT>` with actual RDS endpoint
 
 ### 2. Database Configuration
@@ -52,7 +52,7 @@ scp -r backend ec2-user@<EC2_IP>:/home/ec2-user/
 ssh ec2-user@<EC2_IP>
 cd /home/ec2-user/backend
 nano .env.production
-# Paste: DATABASE_URL=postgresql://postgres:Noraebox1111@<RDS_ENDPOINT>:5432/noraebox
+# Paste: DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@<RDS_ENDPOINT>:5432/noraebox
 # Replace <RDS_ENDPOINT> with actual endpoint
 ```
 
@@ -170,7 +170,7 @@ backend/
 
 3. **Security:** For production, restrict port 8000 access in security group to specific IPs or use a load balancer with HTTPS.
 
-4. **Password:** The password `Noraebox1111` is in the template. Ensure RDS master password matches.
+4. **Password:** Set a strong secret in place of `<YOUR_PASSWORD>` and ensure the RDS master password matches.
 
 ## ✅ Confirmation
 
