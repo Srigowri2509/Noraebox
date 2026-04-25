@@ -1,4 +1,4 @@
-name: Build and Release Admin App
+name: Build and Release Admin App (Web)
 
 on:
   push:
@@ -15,10 +15,7 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -49,36 +46,19 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Build Electron app
-        shell: bash
-        working-directory: ./admin-app
-        run: |
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            npm run electron:build:linux
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            npm run electron:build:win
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            npm run electron:build:mac
-          fi
-
-      - name: Prepare release files
+      - name: Package Web Build
         shell: bash
         run: |
           mkdir -p release
-          if [ "${{ runner.os }}" == "Linux" ]; then
-            cp admin-app/dist-electron/*.AppImage release/ 2>/dev/null || true
-            cp admin-app/dist-electron/*.deb release/ 2>/dev/null || true
-          elif [ "${{ runner.os }}" == "Windows" ]; then
-            cp admin-app/dist-electron/*.exe release/ 2>/dev/null || true
-          elif [ "${{ runner.os }}" == "macOS" ]; then
-            cp admin-app/dist-electron/*.dmg release/ 2>/dev/null || true
-          fi
+          cp -r admin-app/dist release/admin-app
+          cd release
+          zip -r admin-app-v${{ steps.get_version.outputs.version }}.zip admin-app
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*
+          files: release/*.zip
           tag_name: admin-app-v${{ steps.get_version.outputs.version }}
           name: Admin App v${{ steps.get_version.outputs.version }}
           draft: false
@@ -86,10 +66,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload artifacts
+      - name: Upload Web artifact
         uses: actions/upload-artifact@v4
         with:
-          name: admin-app-${{ runner.os }}
-          path: release/*
+          name: admin-app-web
+          path: admin-app/dist
           retention-days: 30
 
