@@ -1,4 +1,4 @@
-name: Build and Release Display App (Web)
+name: Build and Release Display App APK
 
 on:
   push:
@@ -25,6 +25,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         working-directory: ./display-app
         run: npm ci
@@ -32,6 +38,19 @@ jobs:
       - name: Build web assets
         working-directory: ./display-app
         run: npm run build
+
+      - name: Setup Capacitor
+        working-directory: ./display-app
+        run: npx cap sync android
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK
+        working-directory: ./display-app/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       - name: Get version
         id: get_version
@@ -46,19 +65,30 @@ jobs:
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Package Web Build
-        shell: bash
+      - name: Rename APK
         run: |
           mkdir -p release
-          cp -r display-app/dist release/display-app
-          cd release
-          zip -r display-app-v${{ steps.get_version.outputs.version }}.zip display-app
+          cp display-app/android/app/build/outputs/apk/release/app-release.apk release/display-app-v${{ steps.get_version.outputs.version }}.apk
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Upload APK and version to S3
+        run: |
+          aws s3 cp release/display-app-v${{ steps.get_version.outputs.version }}.apk \
+            s3://noraebox-audio-storage/updates/display-app/app.apk
+          echo "${{ steps.get_version.outputs.version }}" > version.txt
+          aws s3 cp version.txt s3://noraebox-audio-storage/updates/display-app/version.txt
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*.zip
+          files: release/*.apk
           tag_name: display-app-v${{ steps.get_version.outputs.version }}
           name: Display App v${{ steps.get_version.outputs.version }}
           draft: false
@@ -66,10 +96,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Web artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: display-app-web
-          path: display-app/dist
+          name: display-app-apk
+          path: release/*.apk
           retention-days: 30
 
