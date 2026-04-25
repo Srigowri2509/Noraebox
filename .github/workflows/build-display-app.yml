@@ -16,7 +16,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -24,9 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: display-app/package-lock.json
+          node-version: '20'
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -44,8 +41,7 @@ jobs:
 
       - name: Setup Capacitor
         working-directory: ./display-app
-        run: |
-          npx cap sync android
+        run: npx cap sync android
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -58,6 +54,7 @@ jobs:
 
       - name: Get version
         id: get_version
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
@@ -67,7 +64,6 @@ jobs:
             VERSION=$(node -p "require('./display-app/package.json').version || '1.0.0'")
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
 
       - name: Rename APK
         run: |
@@ -81,19 +77,6 @@ jobs:
           files: release/*.apk
           tag_name: display-app-v${{ steps.get_version.outputs.version }}
           name: Display App v${{ steps.get_version.outputs.version }}
-          body: |
-            ## Display App Release v${{ steps.get_version.outputs.version }}
-            
-            ### Download
-            - [display-app-v${{ steps.get_version.outputs.version }}.apk](https://github.com/${{ github.repository }}/releases/download/display-app-v${{ steps.get_version.outputs.version }}/display-app-v${{ steps.get_version.outputs.version }}.apk)
-            
-            ### Installation
-            1. Download the APK file
-            2. Enable "Install from Unknown Sources" on your Android device
-            3. Install the APK
-            
-            ### Auto-Update
-            The app will automatically check for updates from GitHub Releases.
           draft: false
           prerelease: false
         env:

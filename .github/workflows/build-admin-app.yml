@@ -19,7 +19,6 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,9 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: admin-app/package-lock.json
+          node-version: '20'
 
       - name: Install dependencies
         working-directory: ./admin-app
@@ -41,6 +38,7 @@ jobs:
 
       - name: Get version
         id: get_version
+        shell: bash
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             VERSION="${{ github.event.inputs.version }}"
@@ -50,9 +48,9 @@ jobs:
             VERSION=$(node -p "require('./admin-app/package.json').version || '1.0.0'")
           fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
 
       - name: Build Electron app
+        shell: bash
         working-directory: ./admin-app
         run: |
           if [ "${{ runner.os }}" == "Linux" ]; then
@@ -64,18 +62,16 @@ jobs:
           fi
 
       - name: Prepare release files
+        shell: bash
         run: |
           mkdir -p release
           if [ "${{ runner.os }}" == "Linux" ]; then
             cp admin-app/dist-electron/*.AppImage release/ 2>/dev/null || true
             cp admin-app/dist-electron/*.deb release/ 2>/dev/null || true
-            cp admin-app/dist-electron/*.rpm release/ 2>/dev/null || true
           elif [ "${{ runner.os }}" == "Windows" ]; then
             cp admin-app/dist-electron/*.exe release/ 2>/dev/null || true
-            cp admin-app/dist-electron/*.nsis.zip release/ 2>/dev/null || true
           elif [ "${{ runner.os }}" == "macOS" ]; then
             cp admin-app/dist-electron/*.dmg release/ 2>/dev/null || true
-            cp admin-app/dist-electron/*.zip release/ 2>/dev/null || true
           fi
 
       - name: Create Release
@@ -85,17 +81,6 @@ jobs:
           files: release/*
           tag_name: admin-app-v${{ steps.get_version.outputs.version }}
           name: Admin App v${{ steps.get_version.outputs.version }}
-          body: |
-            ## Admin App Release v${{ steps.get_version.outputs.version }}
-            
-            ### Downloads
-            Check the assets below for your platform:
-            - Windows: `.exe` or `.nsis.zip`
-            - macOS: `.dmg` or `.zip`
-            - Linux: `.AppImage`, `.deb`, or `.rpm`
-            
-            ### Installation
-            Download and install the appropriate file for your operating system.
           draft: false
           prerelease: false
         env:
