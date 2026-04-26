@@ -2,6 +2,17 @@
 <html lang="en" style="margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden; position: fixed; top: 0; left: 0;">
   <head>
     <meta charset="UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/es6-shim/es6-shim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/es7-shim/es7-shim.min.js"></script>
+    <script>
+      window.onerror = function (msg, src, line, col, err) {
+        document.body.style.background = "red";
+        document.body.innerHTML =
+          '<pre style="color:white;font-size:20px;padding:20px;">' +
+          msg + "\n" + src + "\nLine: " + line + "</pre>";
+        return false;
+      };
+    </script>
     <link rel="icon" type="image/svg+xml" href="./vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>display-app</title>
