@@ -8,12 +8,25 @@ export default defineConfig({
     legacy({
       targets: ['chrome >= 61', 'android >= 5'],
       additionalLegacyPolyfills: ['regenerator-runtime/runtime'],
+      renderModernChunks: false,
     }),
   ],
   base: "./",
   build: {
     target: "es2015",
     cssTarget: "chrome61",
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "es2015",
+      supported: {
+        "optional-chaining": false,
+        "nullish-coalescing": false,
+      },
+    },
   },
   server: {
     port: 5176,
