@@ -5,8 +5,8 @@ export default defineConfig({
   plugins: [react()],
   base: "./",
   build: {
-    target: "es2019",
-    cssTarget: "chrome80",
+    target: "es2015",
+    cssTarget: "chrome61",
   },
   server: {
     port: 5176,
