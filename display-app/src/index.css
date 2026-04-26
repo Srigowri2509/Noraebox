@@ -370,3 +370,81 @@ video[controls][paused]::-webkit-media-controls-play-button {
   background: rgba(148, 163, 184, 0.22);
   border: 1px solid rgba(148, 163, 184, 0.45);
 }
+
+/* STARTUP STATES */
+.startup-loading-screen,
+.startup-error-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #05060b;
+  color: #fff;
+}
+
+.startup-loading-card,
+.startup-error-card {
+  width: min(900px, 95vw);
+  border-radius: 16px;
+  padding: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: linear-gradient(170deg, rgba(25, 28, 42, 0.98), rgba(10, 12, 20, 0.98));
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.5);
+}
+
+.startup-loading-title {
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.startup-loading-subtitle {
+  color: #9ca3af;
+  font-size: 1rem;
+}
+
+.startup-error-title {
+  font-size: clamp(1.5rem, 2vw, 2rem);
+  font-weight: 800;
+  margin-bottom: 10px;
+  color: #fda4af;
+}
+
+.startup-error-message {
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.startup-error-meta {
+  font-size: 0.95rem;
+  color: #cbd5e1;
+  margin-bottom: 12px;
+}
+
+.startup-error-details {
+  margin: 0 0 16px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  color: #e5e7eb;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.startup-error-retry {
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: #fff;
+  padding: 10px 18px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}

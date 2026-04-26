@@ -2,8 +2,10 @@ import React, { useState, useEffect } from "react";
 import Display from "./screens/Display";
 import RoomSelectModal from "./components/RoomSelectModal";
 import { ensureDeviceRegistered } from "./init/registerDevice";
-import { api } from "./api";
+import { api, API_BASE } from "./api";
 import updateService from "./services/updateService";
+
+const STARTUP_TIMEOUT_MS = 20000;
 
 export default function App() {
   const [roomId, setRoomId] = useState(null); // Start with null - backend is source of truth
@@ -11,6 +13,37 @@ export default function App() {
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [showRoomSelect, setShowRoomSelect] = useState(false);
+  const [startupError, setStartupError] = useState("");
+  const [startupDetails, setStartupDetails] = useState("");
+
+  const handleStartupFailure = (message, details = "") => {
+    console.error("Display App startup failure:", message, details);
+    setStartupError(message);
+    setStartupDetails(details);
+    setIsRegistering(false);
+  };
+
+  useEffect(() => {
+    const onError = (event) => {
+      const details = event?.error?.stack || event?.message || "Unknown runtime error";
+      handleStartupFailure("Runtime error while loading display app.", String(details));
+    };
+
+    const onUnhandledRejection = (event) => {
+      const reason = event?.reason;
+      const details =
+        reason?.stack || reason?.message || (typeof reason === "string" ? reason : JSON.stringify(reason));
+      handleStartupFailure("Unhandled startup promise rejection.", String(details));
+    };
+
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onUnhandledRejection);
+
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onUnhandledRejection);
+    };
+  }, []);
 
   // Initialize update service
   useEffect(() => {
@@ -27,6 +60,15 @@ export default function App() {
 
   // Register device on mount
   useEffect(() => {
+    let isMounted = true;
+    const timeoutId = window.setTimeout(() => {
+      if (!isMounted) return;
+      handleStartupFailure(
+        "Startup timed out.",
+        `Could not finish initialization in ${STARTUP_TIMEOUT_MS / 1000}s. Check backend reachability at ${API_BASE}.`
+      );
+    }, STARTUP_TIMEOUT_MS);
+
     (async () => {
       // Clear any stale room data from localStorage first
       localStorage.removeItem("room_id");
@@ -35,6 +77,13 @@ export default function App() {
       try {
         const result = await ensureDeviceRegistered();
         console.log("Display App: Registration result:", result);
+        if (!isMounted) return;
+
+        if (result?.error) {
+          handleStartupFailure("Device registration failed.", result.error);
+          return;
+        }
+
         setDeviceInfo(result.device);
         
         // Fetch rooms list
@@ -64,15 +113,28 @@ export default function App() {
         }
       } catch (error) {
         console.error("Error in device registration:", error);
+        if (!isMounted) return;
         // Backend is down - show room selection and clear stale data
         localStorage.removeItem("room_id");
         localStorage.removeItem("roomId");
         setShowRoomSelect(true);
         setRoomId(null);
+        handleStartupFailure(
+          "Cannot connect during startup.",
+          error?.message || "Unknown startup registration error."
+        );
       } finally {
-        setIsRegistering(false);
+        if (isMounted) {
+          window.clearTimeout(timeoutId);
+          setIsRegistering(false);
+        }
       }
     })();
+
+    return () => {
+      isMounted = false;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const handleRoomSelect = async (selectedRoomId) => {
@@ -114,13 +176,29 @@ export default function App() {
   };
 
 
+  if (startupError) {
+    return (
+      <div className="startup-error-screen">
+        <div className="startup-error-card">
+          <h1 className="startup-error-title">Display App Startup Error</h1>
+          <p className="startup-error-message">{startupError}</p>
+          <p className="startup-error-meta">API endpoint: {API_BASE}</p>
+          {startupDetails && <pre className="startup-error-details">{startupDetails}</pre>}
+          <button className="startup-error-retry" onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // Show loading while registering
   if (isRegistering) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-black text-white">
-        <div className="text-center">
-          <div className="text-xl mb-2">Registering display device...</div>
-          <div className="text-sm text-gray-400">Connecting to backend...</div>
+      <div className="startup-loading-screen">
+        <div className="startup-loading-card">
+          <div className="startup-loading-title">Registering display device...</div>
+          <div className="startup-loading-subtitle">Connecting to backend...</div>
         </div>
       </div>
     );
