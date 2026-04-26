@@ -55,7 +55,7 @@ jobs:
         working-directory: ./display-app/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease
+          ./gradlew assembleDebug
 
       - name: Get version
         id: get_version
@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p release
-          APK_PATH=$(ls -1 display-app/android/app/build/outputs/apk/release/*.apk | head -n 1)
+          APK_PATH=$(ls -1 display-app/android/app/build/outputs/apk/debug/*.apk | head -n 1)
           cp "$APK_PATH" release/display-app-v${{ steps.get_version.outputs.version }}.apk
 
       - name: Configure AWS credentials
