@@ -76,26 +76,29 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-      <div className="bg-slate-800 rounded-lg p-8 max-w-md w-full mx-4 border border-slate-700">
-        <h2 className="text-2xl font-bold text-white mb-4">Select Room</h2>
-        <p className="text-slate-400 mb-6">
+    <div className="room-modal-overlay">
+      <div className="room-modal-card">
+        <h2 className="room-modal-title">Select Room</h2>
+        <p className="room-modal-subtitle">
           Please select a room for this device to continue.
         </p>
+        {device?.name && <p className="room-modal-device">Device: {device.name}</p>}
         
         {rooms.length === 0 ? (
-          <div className="mb-6 p-4 bg-yellow-900/30 border border-yellow-700 rounded text-yellow-200">
-            <p className="font-semibold mb-2">⚠️ Backend Connection Issue</p>
-            <p className="text-sm">Cannot load rooms. Please ensure the backend server is running at {API_BASE}</p>
+          <div className="room-modal-warning">
+            <p className="room-modal-warning-title">Backend Connection Issue</p>
+            <p className="room-modal-warning-text">
+              Cannot load rooms. Please ensure the backend server is running at {API_BASE}
+            </p>
           </div>
         ) : (
           <>
-            <div className="mb-6">
-              <label className="block text-white mb-2 font-semibold">Select Room:</label>
+            <div className="room-modal-field">
+              <label className="room-modal-label">Select Room</label>
               <select
                 value={selectedRoomId}
                 onChange={(e) => setSelectedRoomId(e.target.value)}
-                className="w-full bg-slate-700 text-white px-4 py-3 rounded border-2 border-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-lg"
+                className="room-modal-select"
               >
                 <option value="">-- Select a room --</option>
                 {rooms.map((room) => {
@@ -113,25 +116,28 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
                 })}
               </select>
             </div>
-            <div className="mb-4 p-3 bg-blue-900/30 border border-blue-700 rounded text-blue-200 text-sm">
-              <p className="font-semibold mb-1">💡 Tip:</p>
-              <p>Select the same room in both Tablet App and Display App to connect them. When you play a song in Tablet App, it will play in Display App for the same room.</p>
+            <div className="room-modal-tip">
+              <p className="room-modal-tip-title">Tip</p>
+              <p className="room-modal-tip-text">
+                Select the same room in both Tablet App and Display App to connect them.
+                When you play a song in Tablet App, it will play in Display App for the same room.
+              </p>
             </div>
           </>
         )}
 
-        <div className="flex gap-4">
+        <div className="room-modal-actions">
           <button
             onClick={handleAssign}
             disabled={!selectedRoomId || loading}
-            className="flex-1 bg-cyan-500 hover:bg-cyan-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold py-2 px-4 rounded transition-colors"
+            className="room-modal-btn room-modal-btn-primary"
           >
             {loading ? "Assigning..." : "Assign Room"}
           </button>
           {onClose && (
             <button
               onClick={onClose}
-              className="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded transition-colors"
+              className="room-modal-btn room-modal-btn-secondary"
             >
               Cancel
             </button>
