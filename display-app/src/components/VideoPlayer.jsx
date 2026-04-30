@@ -1,5 +1,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 
+const KNOWN_GOOD_TEST_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
+
 /*
   Video player for display-app (karaoke TV screen).
   
@@ -15,6 +17,8 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isMuted, setIsMuted] = useState(true); // React-controlled muted state
+  const [activeVideoUrl, setActiveVideoUrl] = useState("");
+  const [usedCodecFallback, setUsedCodecFallback] = useState(false);
 
   // Track user interaction (once true, stays true for the session)
   const userInteractedRef = useRef(
@@ -47,9 +51,63 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     return () => events.forEach((e) => document.removeEventListener(e, unlock));
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      const video = vref.current;
+      if (!video) return;
+
+      const code = event.code || event.key || "";
+      const keyCode = event.keyCode;
+      const isToggle =
+        code === "MediaPlayPause" ||
+        code === "Space" ||
+        code === "Enter" ||
+        keyCode === 415 ||
+        keyCode === 19 ||
+        keyCode === 179;
+
+      const isPause = code === "MediaPause" || keyCode === 413;
+      const isPlay = code === "MediaPlay" || keyCode === 415;
+
+      if (!(isToggle || isPause || isPlay)) return;
+      event.preventDefault();
+
+      userInteractedRef.current = true;
+      sessionStorage.setItem("video_autoplay_enabled", "true");
+      video.muted = false;
+      setIsMuted(false);
+
+      if (isPause) {
+        video.pause();
+        return;
+      }
+      if (isPlay) {
+        video.play().catch(() => {});
+        return;
+      }
+      if (video.paused) video.play().catch(() => {});
+      else video.pause();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (song && song.videoUrl) {
+      setActiveVideoUrl(song.videoUrl);
+      setUsedCodecFallback(false);
+      setError(null);
+    } else {
+      setActiveVideoUrl("");
+      setUsedCodecFallback(false);
+      setError(null);
+    }
+  }, [song]);
+
   // ── Main playback effect ──
   useEffect(() => {
-    if (!song?.videoUrl) {
+    if (!activeVideoUrl) {
       setError(null);
       setLoading(false);
       return;
@@ -91,17 +149,25 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     };
 
     const onErrorHandler = (e) => {
-      const code = video.error?.code;
-      const msg = video.error?.message;
-      console.error("VideoPlayer error:", { code, msg, src: song.videoUrl });
-      setError("Failed to load video");
+      const code = video && video.error && video.error.code;
+      const msg = video && video.error && video.error.message;
+      console.error("VideoPlayer error:", { code, msg, src: activeVideoUrl });
       setLoading(false);
 
+      if (!usedCodecFallback && activeVideoUrl !== KNOWN_GOOD_TEST_URL) {
+        console.warn("VideoPlayer: primary URL failed, trying codec test URL");
+        setUsedCodecFallback(true);
+        setError("Primary video failed. Testing fallback video...");
+        setActiveVideoUrl(KNOWN_GOOD_TEST_URL);
+        return;
+      }
+
+      setError("Failed to load video");
       if (!hasNotifiedError && onError) {
         hasNotifiedError = true;
         onError({
-          title: song?.title,
-          videoUrl: song?.videoUrl,
+          title: song && song.title,
+          videoUrl: song && song.videoUrl,
           code,
           message: msg,
         });
@@ -114,8 +180,8 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
     video.addEventListener("error", onErrorHandler);
 
     /* ---- load & play ---- */
-    console.log("VideoPlayer: loading", song.title, song.videoUrl.substring(0, 80));
-    video.src = song.videoUrl;
+    console.log("VideoPlayer: loading", song.title, activeVideoUrl.substring(0, 80));
+    video.src = activeVideoUrl;
     video.muted = true; // start muted so autoplay always works
     setIsMuted(true);
     video.load();
@@ -173,31 +239,69 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("error", onErrorHandler);
     };
-  }, [song]);
+  }, [song, activeVideoUrl, usedCodecFallback]);
 
   useImperativeHandle(ref, () => ({
-    play: () => vref.current?.play(),
-    pause: () => vref.current?.pause(),
+    play: () => {
+      if (vref.current) vref.current.play();
+    },
+    pause: () => {
+      if (vref.current) vref.current.pause();
+    },
   }));
 
   /* ---- Render states ---- */
   if (!song || !song.videoUrl) {
     return (
       <div className="video-placeholder">
-        <div className="poster-text">Waiting for song...</div>
+        <img
+          src="/logo_norebox.jpg"
+          alt="Norebox logo"
+          className="logo-fallback"
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="video-placeholder">
-        <div className="poster-text" style={{ color: "#ff6b6b" }}>
+      <div
+        className="video-placeholder"
+        style={{
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#000",
+        }}
+      >
+        <img
+          src="/logo_norebox.jpg"
+          alt="Norebox logo"
+          className="logo-fallback"
+          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+        />
+        <div
+          className="poster-text"
+          style={{
+            position: "absolute",
+            top: 80,
+            left: 20,
+            color: "#ff6b6b",
+            background: "rgba(0,0,0,0.5)",
+            padding: "8px 12px",
+            borderRadius: 8,
+          }}
+        >
           {error}
-          <br />
-          <small style={{ fontSize: "14px", marginTop: "8px", display: "block" }}>
-            URL: {song.videoUrl.substring(0, 50)}...
-          </small>
+          {usedCodecFallback && (
+            <small style={{ fontSize: "13px", marginLeft: 8, color: "#fcd34d" }}>
+              (Fallback URL: mov_bbb.mp4)
+            </small>
+          )}
         </div>
       </div>
     );
@@ -213,16 +317,16 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
         className="video-element"
         onEnded={() => {
           console.log("VideoPlayer: video ended");
-          onEnded?.();
+          if (onEnded) onEnded();
         }}
         onError={() => {
           const video = vref.current;
           if (onError) {
             onError({
-              title: song?.title,
-              videoUrl: song?.videoUrl,
-              code: video?.error?.code,
-              message: video?.error?.message,
+              title: song && song.title,
+              videoUrl: song && song.videoUrl,
+              code: video && video.error && video.error.code,
+              message: video && video.error && video.error.message,
             });
           }
         }}
@@ -245,7 +349,6 @@ const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
         autoPlay
         muted={isMuted}
         preload="auto"
-        crossOrigin="anonymous"
         style={{
           width: "100%",
           height: "100%",

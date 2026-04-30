@@ -25,14 +25,35 @@ export default function App() {
 
   useEffect(() => {
     const onError = (event) => {
-      const details = event?.error?.stack || event?.message || "Unknown runtime error";
+      let details = "Unknown runtime error";
+
+      if (event && event.error && event.error.stack) {
+        details = event.error.stack;
+      } else if (event && event.message) {
+        details = event.message;
+      }
+
       handleStartupFailure("Runtime error while loading display app.", String(details));
     };
 
     const onUnhandledRejection = (event) => {
-      const reason = event?.reason;
-      const details =
-        reason?.stack || reason?.message || (typeof reason === "string" ? reason : JSON.stringify(reason));
+      const reason = event && event.reason;
+      let details = "Unknown error";
+
+      if (reason && reason.stack) {
+        details = reason.stack;
+      } else if (reason && reason.message) {
+        details = reason.message;
+      } else if (typeof reason === "string") {
+        details = reason;
+      } else {
+        try {
+          details = JSON.stringify(reason);
+        } catch (e) {
+          details = "Unknown error";
+        }
+      }
+
       handleStartupFailure("Unhandled startup promise rejection.", String(details));
     };
 
@@ -79,7 +100,7 @@ export default function App() {
         console.log("Display App: Registration result:", result);
         if (!isMounted) return;
 
-        if (result?.error) {
+        if (result && result.error) {
           handleStartupFailure("Device registration failed.", result.error);
           return;
         }
@@ -121,7 +142,7 @@ export default function App() {
         setRoomId(null);
         handleStartupFailure(
           "Cannot connect during startup.",
-          error?.message || "Unknown startup registration error."
+          (error && error.message) || "Unknown startup registration error."
         );
       } finally {
         if (isMounted) {
@@ -192,20 +213,8 @@ export default function App() {
     );
   }
 
-  // Show loading while registering
-  if (isRegistering) {
-    return (
-      <div className="startup-loading-screen">
-        <div className="startup-loading-card">
-          <div className="startup-loading-title">Registering display device...</div>
-          <div className="startup-loading-subtitle">Connecting to backend...</div>
-        </div>
-      </div>
-    );
-  }
-
   // Block everything until room is assigned (same as tablet-app)
-  if (showRoomSelect || !roomId) {
+  if (!isRegistering && (showRoomSelect || !roomId)) {
     return (
       <RoomSelectModal
         rooms={rooms}

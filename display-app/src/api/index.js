@@ -19,7 +19,13 @@ export async function api(path, options = {}) {
     const text = await res.text();
     try {
       const data = text ? JSON.parse(text) : null;
-      if (!res.ok) throw new Error(data?.detail || data?.message || `API error: ${res.status}`);
+      if (!res.ok) {
+        throw new Error(
+          (data && data.detail) ||
+          (data && data.message) ||
+          `API error: ${res.status}`
+        );
+      }
       return data;
     } catch (e) {
       if (res.ok) return text;

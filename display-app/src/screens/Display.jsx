@@ -10,11 +10,11 @@ import { api } from "../api";
   - Gets current_song_id and fetches song details
   - Calculates timer from started_at + total_minutes
   - Shows video when current_song_id is set
-  - Shows default background when session ends or no active session
+  - Shows logo (no loop video) when idle, between songs, or session ends
 */
 
 export default function Display({ roomId }) {
-  const [currentSong, setCurrentSong] = useState(null); // song object with videoUrl
+  const [currentSong, setCurrentSong] = useState(null); // null = show logo (no idle loop video)
   const [nextSong, setNextSong] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null); // milliseconds remaining
   const [isActive, setIsActive] = useState(false);
@@ -103,7 +103,7 @@ export default function Display({ roomId }) {
             // Check if session ended
             if (remainingSeconds === 0 || session.status === "finished" || session.status === "ended") {
               setSessionEnded(true);
-              setCurrentSong(null); // Clear song when session ends
+              setCurrentSong(null);
               setTimeLeft(null);
               setNextSong(null);
               lastSongIdRef.current = null;
@@ -151,9 +151,10 @@ export default function Display({ roomId }) {
               console.error("❌ Display: Song has no file_url!", songData);
               setCurrentSong(null);
             } else {
+              localStorage.setItem("lastVideo", videoUrl);
               setCurrentSong({
                 ...songData,
-                videoUrl: videoUrl
+                videoUrl: videoUrl,
               });
               console.log("✅ Display: New song loaded:", songData.title, "Language:", songData.language, "Video URL:", videoUrl.substring(0, 100) + '...');
             }
@@ -162,7 +163,7 @@ export default function Display({ roomId }) {
             setCurrentSong(null);
           }
         } else if (!currentSongId) {
-          // No current song - clear if session is ended or if we had a song before
+          // No current song - gap between songs or idle → logo only
           if (lastSongIdRef.current) {
             console.log("Display: Song ended, clearing current song");
             setCurrentSong(null);
@@ -182,8 +183,13 @@ export default function Display({ roomId }) {
             const nextSongData = queue[0];
             console.log("Display: Next song data:", nextSongData);
             setNextSong({
-              title: nextSongData.title || nextSongData.song?.title || "Unknown",
-              artist: nextSongData.artist || nextSongData.artist_name || nextSongData.song?.artist || nextSongData.song?.artist_name || ""
+              title: nextSongData.title || (nextSongData.song && nextSongData.song.title) || "Unknown",
+              artist:
+                nextSongData.artist ||
+                nextSongData.artist_name ||
+                (nextSongData.song && nextSongData.song.artist) ||
+                (nextSongData.song && nextSongData.song.artist_name) ||
+                ""
             });
           } else {
             console.log("Display: Queue is empty, no next song");
@@ -248,8 +254,9 @@ export default function Display({ roomId }) {
             
             setCurrentSong({
               ...response.song,
-              videoUrl: finalVideoUrl
+              videoUrl: finalVideoUrl,
             });
+            localStorage.setItem("lastVideo", finalVideoUrl);
             console.log("✅ Next song loaded immediately from response:", response.song.title);
             return; // Successfully loaded next song
           } catch (urlErr) {
@@ -257,8 +264,9 @@ export default function Display({ roomId }) {
             // Fallback to file_url if signed URL fails
             setCurrentSong({
               ...response.song,
-              videoUrl: videoUrl
+              videoUrl: videoUrl,
             });
+            localStorage.setItem("lastVideo", videoUrl);
             console.log("✅ Next song loaded with file_url:", response.song.title);
             return;
           }
@@ -276,14 +284,16 @@ export default function Display({ roomId }) {
                 const finalVideoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
                 setCurrentSong({
                   ...songData,
-                  videoUrl: finalVideoUrl
+                  videoUrl: finalVideoUrl,
                 });
+                localStorage.setItem("lastVideo", finalVideoUrl);
               } catch (urlErr) {
                 // Use file_url if signed URL fails
                 setCurrentSong({
                   ...songData,
-                  videoUrl: videoUrl
+                  videoUrl: videoUrl,
                 });
+                localStorage.setItem("lastVideo", videoUrl);
               }
               console.log("✅ Next song loaded immediately:", songData.title);
               return; // Don't clear current song, we already set the new one
@@ -299,12 +309,12 @@ export default function Display({ roomId }) {
         console.log("ℹ️ No more songs in queue");
       }
       
-      // Clear current song if no next song or fetch failed
+      // No next song → show logo until poll delivers another song
       setCurrentSong(null);
       // Will be updated on next poll (2 seconds) if a new song is added
     } catch (error) {
       console.error("❌ Error notifying playback ended:", error);
-      // Don't clear current song on error - let it retry or wait for next poll
+      setCurrentSong(null);
     }
   };
 
@@ -342,7 +352,7 @@ export default function Display({ roomId }) {
           width: "100%",
           height: "100%"
         }}>
-          {currentSong && !sessionEnded ? (
+          {currentSong && currentSong.videoUrl ? (
             <VideoPlayer
               ref={videoRef}
               song={currentSong}
@@ -350,13 +360,17 @@ export default function Display({ roomId }) {
               onError={handleVideoError}
             />
           ) : (
-            <div className="logo-fallback-wrapper" style={{
-              width: "100%",
-              height: "100%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center"
-            }}>
+            <div
+              className="logo-fallback-wrapper"
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#000",
+              }}
+            >
               <img
                 src="/logo_norebox.jpg"
                 alt="Norebox logo"

@@ -1,11 +1,7 @@
 {
   "appId": "com.norebox.display",
   "appName": "Norebox Display",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "https",
-    "cleartext": true
-  },
+  "webDir": "dist-tv",
   "android": {
     "allowMixedContent": true,
     "tv": true

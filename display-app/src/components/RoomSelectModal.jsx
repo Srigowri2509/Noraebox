@@ -82,7 +82,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
         <p className="room-modal-subtitle">
           Please select a room for this device to continue.
         </p>
-        {device?.name && <p className="room-modal-device">Device: {device.name}</p>}
+        {device && device.name && <p className="room-modal-device">Device: {device.name}</p>}
         
         {rooms.length === 0 ? (
           <div className="room-modal-warning">
