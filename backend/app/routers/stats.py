@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from typing import List
 from app.db import get_db
 from app.models import Song, PlaybackEvent, SongArtist, Artist
@@ -22,11 +22,17 @@ def get_top_songs(limit: int = 10, db: Session = Depends(get_db)):
             artist_name = song.artist  # fallback
             artist_image = None
             
-            if song.song_artists and len(song.song_artists) > 0:
-                artist_rel = song.song_artists[0]
-                if artist_rel.artist:
-                    artist_name = artist_rel.artist.name
-                    artist_image = artist_rel.artist.image_url
+            artist_row = db.execute(
+                text("""
+                    SELECT a.name FROM song_artists sa
+                    JOIN artist a ON sa.artist_id = a.id
+                    WHERE sa.song_id = :song_id
+                    LIMIT 1
+                """),
+                {"song_id": song.id},
+            ).fetchone()
+            if artist_row:
+                artist_name = artist_row.name
             
             result.append({
                 "song_id": song.id,
@@ -51,24 +57,23 @@ def get_top_artists(limit: int = 10, db: Session = Depends(get_db)):
         top_artists = db.query(
             Artist.id,
             Artist.name,
-            Artist.image_url,
             func.sum(Song.play_count).label('play_count')
         ).join(
             SongArtist, Artist.id == SongArtist.artist_id
         ).join(
             Song, SongArtist.song_id == Song.id
         ).group_by(
-            Artist.id, Artist.name, Artist.image_url
+            Artist.id, Artist.name
         ).order_by(
             desc(func.sum(Song.play_count))
         ).limit(limit).all()
         
         result = []
-        for artist_id, name, image_url, play_count in top_artists:
+        for artist_id, name, play_count in top_artists:
             result.append({
                 "artist_id": artist_id,
                 "name": name,
-                "image_url": image_url,
+                "image_url": None,
                 "play_count": play_count or 0
             })
         

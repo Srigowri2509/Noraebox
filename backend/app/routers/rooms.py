@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 from typing import List
 from datetime import datetime, timezone, timedelta
 from app.db import get_db
@@ -232,18 +232,21 @@ def get_queue(room_id: str, db: Session = Depends(get_db)):
         song_ids = [song.id for _, song in queue_items if song]
         artists_by_song = defaultdict(list)
         if song_ids:
-            rows = (
-                db.query(SongArtist, Artist)
-                .join(Artist, SongArtist.artist_id == Artist.id)
-                .filter(SongArtist.song_id.in_(song_ids))
-                .all()
-            )
-            for sa, artist in rows:
-                artists_by_song[sa.song_id].append({
-                    "id": str(artist.id),
-                    "name": artist.name,
-                    "role": sa.role or "",
-                    "image_url": artist.image_url,
+            artist_rows = db.execute(
+                text("""
+                    SELECT sa.song_id, a.id, a.name, sa.role
+                    FROM song_artists sa
+                    JOIN artist a ON sa.artist_id = a.id
+                    WHERE sa.song_id = ANY(:song_ids)
+                """),
+                {"song_ids": song_ids},
+            ).fetchall()
+            for row in artist_rows:
+                artists_by_song[row.song_id].append({
+                    "id": str(row.id),
+                    "name": row.name,
+                    "role": row.role or "",
+                    "image_url": None,
                 })
 
         queue = []

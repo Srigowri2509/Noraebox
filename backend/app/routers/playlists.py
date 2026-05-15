@@ -52,25 +52,6 @@ def get_playlists(db: Session = Depends(get_db)):
                 if len(pl_song_ids[pl_id]) < 4:
                     pl_song_ids[pl_id].append(song_id)
 
-        all_song_ids = {sid for ids in pl_song_ids.values() for sid in ids}
-        song_image = {}
-        if all_song_ids:
-            rows = (
-                db.query(SongArtist.song_id, SongArtist.role, Artist.image_url)
-                .join(Artist, SongArtist.artist_id == Artist.id)
-                .filter(SongArtist.song_id.in_(all_song_ids))
-                .all()
-            )
-            by_song = defaultdict(list)
-            for song_id, role, url in rows:
-                if not url:
-                    continue
-                prio = 0 if (role or "").lower() == "singer" else 1
-                by_song[song_id].append((prio, url))
-            for song_id, pairs in by_song.items():
-                pairs.sort(key=lambda x: x[0])
-                song_image[song_id] = pairs[0][1]
-
         # Convert to list of dicts
         result = []
         for p in playlists:
@@ -83,7 +64,7 @@ def get_playlists(db: Session = Depends(get_db)):
                 for sid in pl_song_ids.get(p.id, []):
                     if len(preview_images) >= 4:
                         break
-                    url = song_image.get(sid) or p.image_url
+                    url = p.image_url
                     if not url:
                         continue
                     if url in seen_urls:
