@@ -25,3 +25,16 @@ body {
   from { transform: scale(0.95); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
 }
+
+/* Admin dashboard: 2 rows × 4 rooms (1–8 left-to-right, top then bottom) */
+.rooms-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, auto);
+  grid-auto-flow: row;
+  gap: 2rem 2.5rem;
+  width: 100%;
+  max-width: 1180px;
+  justify-items: center;
+  align-items: center;
+}

@@ -1,26 +1,35 @@
 import React from "react";
 
-// Language Filter Component
+const shell =
+  "rounded-3xl border border-white/[0.08] bg-[rgba(11,17,28,0.92)] p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:p-1";
+const labelCls =
+  "mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-slate-300 sm:text-xs md:text-sm";
+const innerRow =
+  "flex h-8 w-full min-w-0 items-stretch overflow-hidden rounded-2xl border border-white/[0.06] bg-slate-950/75 transition-[box-shadow,border-color] focus-within:border-sky-500/45 focus-within:shadow-[inset_0_0_0_1px_rgba(56,189,248,0.22)] md:h-9";
+const iconCol = "flex w-9 shrink-0 items-center justify-center text-slate-400 md:w-10";
+const inputRest =
+  "min-w-0 flex-1 border-0 bg-transparent py-1.5 pr-2.5 text-sm text-white outline-none ring-0 placeholder:text-slate-500 focus:ring-0 md:py-2 md:pr-3 md:text-[15px]";
+
 function LanguageFilter({ value = "all", onChange, languages = [] }) {
   return (
-    <div>
-      <label className="block text-white text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Language</label>
-      <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-2.5 sm:p-3">
-        <div className="relative">
+    <div className="min-w-0">
+      <label className={labelCls}>Language</label>
+      <div className={shell}>
+        <div className={`${innerRow} relative`}>
           <select
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
-            className="w-full h-9 sm:h-10 bg-slate-800/70 border border-slate-700 rounded-lg pl-3 pr-9 text-black text-sm sm:text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 appearance-none"
+            className={`h-full w-full cursor-pointer appearance-none rounded-2xl bg-transparent py-1.5 pl-3 pr-9 text-sm text-white md:py-2 md:pl-3.5 md:text-[15px]`}
           >
-            <option value="all" className="text-black">All Languages</option>
+            <option value="all">All Languages</option>
             {languages.map((lang) => (
-              <option key={lang} value={lang} className="text-black">
+              <option key={lang} value={lang}>
                 {lang}
               </option>
             ))}
           </select>
           <svg
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+            className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:right-2.5 md:h-[18px] md:w-[18px]"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -33,28 +42,28 @@ function LanguageFilter({ value = "all", onChange, languages = [] }) {
   );
 }
 
-// Artist Filter Component
-function ArtistFilter({ value = "", onChange }) {
+function SearchField({ label, placeholder, value, onChange }) {
   return (
-    <div>
-      <label className="block text-white text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Artist</label>
-      <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-2.5 sm:p-3">
-        <div className="relative">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none z-10"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
+    <div className="min-w-0">
+      <label className={labelCls}>{label}</label>
+      <div className={shell}>
+        <div className={innerRow}>
+          <div className={iconCol} aria-hidden>
+            <svg className="h-3.5 w-3.5 md:h-4 md:w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
           <input
             type="text"
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
-            placeholder="Search artist..."
-            className="w-full h-9 sm:h-10 bg-slate-800/70 border border-slate-700 rounded-lg pl-9 pr-3 text-white text-sm sm:text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            style={{ paddingLeft: '2.25rem' }}
+            placeholder={placeholder}
+            className={`${inputRest} border-l border-white/[0.06] pl-2 md:pl-2.5`}
           />
         </div>
       </div>
@@ -62,94 +71,33 @@ function ArtistFilter({ value = "", onChange }) {
   );
 }
 
-// Album Filter Component
-function AlbumFilter({ value = "", onChange }) {
-  return (
-    <div>
-      <label className="block text-white text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Album</label>
-      <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-2.5 sm:p-3">
-        <div className="relative">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none z-10"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange?.(e.target.value)}
-            placeholder="Search album..."
-            className="w-full h-9 sm:h-10 bg-slate-800/70 border border-slate-700 rounded-lg pl-9 pr-3 text-white text-sm sm:text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            style={{ paddingLeft: '2.25rem' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Song Name Filter Component
-function SongNameFilter({ value = "", onChange }) {
-  return (
-    <div>
-      <label className="block text-white text-xs sm:text-sm font-medium mb-1.5 sm:mb-2">Song Name</label>
-      <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-2.5 sm:p-3">
-        <div className="relative">
-          <svg
-            className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none z-10"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={value}
-            onChange={(e) => onChange?.(e.target.value)}
-            placeholder="Search song..."
-            className="w-full h-9 sm:h-10 bg-slate-800/70 border border-slate-700 rounded-lg pl-9 pr-3 text-white text-sm sm:text-base placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            style={{ paddingLeft: '2.25rem' }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Main SearchBar Component
 export default function SearchBar({ filters = {}, onFilterChange, languages = [] }) {
   return (
     <div className="mt-1 sm:mt-2">
-      <div className="grid grid-cols-2 landscape:grid-cols-4 gap-2 sm:gap-2.5 md:gap-3 items-start">
-        <div className="min-w-0">
-          <LanguageFilter
-            value={filters.language || "all"}
-            onChange={(val) => onFilterChange?.("language", val)}
-            languages={languages}
-          />
-        </div>
-        <div className="min-w-0">
-          <ArtistFilter
-            value={filters.artist || ""}
-            onChange={(val) => onFilterChange?.("artist", val)}
-          />
-        </div>
-        <div className="min-w-0">
-          <AlbumFilter
-            value={filters.album || ""}
-            onChange={(val) => onFilterChange?.("album", val)}
-          />
-        </div>
-        <div className="min-w-0">
-          <SongNameFilter
-            value={filters.songName || ""}
-            onChange={(val) => onFilterChange?.("songName", val)}
-          />
-        </div>
+      <div className="grid grid-cols-2 items-start gap-x-4 gap-y-3 md:grid-cols-4 md:gap-x-6 md:gap-y-3">
+        <LanguageFilter
+          value={filters.language || "all"}
+          onChange={(val) => onFilterChange?.("language", val)}
+          languages={languages}
+        />
+        <SearchField
+          label="Artist"
+          placeholder="Search artist..."
+          value={filters.artist || ""}
+          onChange={(val) => onFilterChange?.("artist", val)}
+        />
+        <SearchField
+          label="Album"
+          placeholder="Search album..."
+          value={filters.album || ""}
+          onChange={(val) => onFilterChange?.("album", val)}
+        />
+        <SearchField
+          label="Song Name"
+          placeholder="Search song..."
+          value={filters.songName || ""}
+          onChange={(val) => onFilterChange?.("songName", val)}
+        />
       </div>
     </div>
   );

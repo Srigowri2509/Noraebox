@@ -8,15 +8,18 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "build:android": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\" && gradlew.bat assembleRelease && cd ..",
-    "build:android:debug": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Eclipse Adoptium\\jdk-17.0.16.8-hotspot\" && gradlew.bat assembleDebug && cd ..",
+    "build:android": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && gradlew.bat assembleRelease && cd ..",
+    "build:android:debug": "npm run build && npx cap sync android && cd android && set \"JAVA_HOME=C:\\Program Files\\Android\\Android Studio\\jbr\" && gradlew.bat assembleDebug && cd ..",
     "apk": "npm run build:android"
   },
   "dependencies": {
+    "@capacitor-community/file-opener": "^8.0.0",
     "@capacitor/android": "^8.0.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
+    "@capacitor/file-transfer": "^2.0.4",
+    "@capacitor/filesystem": "^8.1.2",
     "@capacitor/ios": "^8.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import songs, rooms, sessions, devices, stats, queue, playlists
+from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates
 from pathlib import Path
 import traceback
 import json
@@ -29,6 +29,7 @@ app.include_router(queue.router, prefix="/queue")
 app.include_router(devices.router, prefix="/devices")
 app.include_router(stats.router, prefix="/stats")
 app.include_router(playlists.router, prefix="/playlists")
+app.include_router(updates.router, prefix="/updates")
 
 # Create all tables once at startup (can be removed after first successful run)
 @app.on_event("startup")
@@ -63,7 +64,9 @@ def get_app_config():
     return {
         "api_url": "http://16.112.20.5:8000",
         "update_check_url": "http://16.112.20.5:8000",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        # Public HTTPS URL of tablet-app-update-manifest.json (e.g. S3 or CloudFront). Empty = skip S3 checks.
+        "s3_update_manifest_url": "",
     }
 
 @app.get("/")

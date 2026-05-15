@@ -5,7 +5,6 @@ import SearchResults from "../components/SearchResults.jsx";
 import MostPlayed from "../components/MostPlayed.jsx";
 import QueueList from "../components/QueueList.jsx";
 import Playlists from "../components/Playlists.jsx";
-import SuggestSongModal from "../components/SuggestSongModal.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch from "../hooks/usePrefixSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
@@ -26,8 +25,6 @@ export default function Home() {
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [playlistSongs, setPlaylistSongs] = useState([]);
-
-  const [showSuggestModal, setShowSuggestModal] = useState(false);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
@@ -233,6 +230,7 @@ const filteredSongs = useMemo(() => {
   }, [room?.id]);
 
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
+  const [isClearingQueue, setIsClearingQueue] = useState(false);
   const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
   // Helper function to check if a song is already in the queue (by song_id only)
@@ -374,6 +372,34 @@ const filteredSongs = useMemo(() => {
     }
   };
 
+
+  const handleClearQueue = async () => {
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId) {
+      console.warn("Cannot clear queue: No room ID");
+      return;
+    }
+    if (!queue?.length) return;
+
+    if (!window.confirm("Clear all songs from the queue?")) return;
+
+    const previousQueue = queue;
+    setIsClearingQueue(true);
+    setQueue([]);
+
+    try {
+      await api(`/rooms/${currentRoomId}/queue/clear`, { method: "POST" });
+      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+      setQueue(Array.isArray(queueRes) ? queueRes : []);
+      console.log("✅ Queue cleared");
+    } catch (error) {
+      console.error("Error clearing queue:", error);
+      setQueue(previousQueue);
+      alert("Failed to clear queue. Please try again.");
+    } finally {
+      setIsClearingQueue(false);
+    }
+  };
 
   const handleReorderQueue = async (fromIndex, toIndex) => {
     const currentRoomId = roomId || room?.id;
@@ -682,25 +708,28 @@ const filteredSongs = useMemo(() => {
   };
 
   return (
-    <div 
-      className="min-h-screen text-white relative flex flex-col overflow-y-auto overflow-x-hidden"
+    <div
+      className="home-root text-white relative flex min-h-0 w-full max-w-[1920px] mx-auto flex-col"
       style={{
-        backgroundImage: "url('/background.jpg')",
+        backgroundImage: `url('${import.meta.env.BASE_URL}background.jpg')`,
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center",
-        paddingLeft: "3%",
-        paddingRight: "3%",
-        paddingTop: "0.5rem",
-        paddingBottom: "0.75rem"
+        paddingLeft:
+          "max(env(safe-area-inset-left, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
+        paddingRight:
+          "max(env(safe-area-inset-right, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
+        paddingTop: "var(--home-pad-y-top, max(0.5rem, env(safe-area-inset-top, 0px)))",
+        paddingBottom:
+          "var(--home-pad-y-bottom, max(0.75rem, env(safe-area-inset-bottom, 0px)))",
       }}
     >
-      {/* Semi-transparent overlay for readability */}
-      <div className="fixed inset-0 bg-[#0B0F17]/70 -z-10"></div>
-      
+      {/* Semi-transparent overlay for readability (stronger so UI stays legible on busy art) */}
+      <div className="fixed inset-0 bg-[#0B0F17]/78 -z-10" aria-hidden />
+
       <Header />
 
-      <div style={{ marginTop: "0.75rem", marginBottom: "0.75rem", flexShrink: 0 }}>
+      <div className="mt-3 mb-3 shrink-0 md:mt-4 md:mb-4">
         <SearchBar 
           filters={filters} 
           onFilterChange={(key, val) => {
@@ -717,97 +746,108 @@ const filteredSongs = useMemo(() => {
         />
       </div>
 
+      <div className="home-scroll-body">
       {songsLoading ? (
-        <div className="text-center py-20" style={{ flexShrink: 0 }}>
-          <div className="text-cyan-400 text-xl">Loading songs...</div>
+        <div className="main-content-area flex flex-1 items-center justify-center py-12">
+          <div className="text-cyan-400 text-xl md:text-2xl">Loading songs...</div>
         </div>
       ) : (
         <div className="main-content-area">
-          {/* ═══ ROW 1: Playlists + Buttons/Quote ═══ */}
-          <div className="row-1-grid">
-            {/* Playlists */}
-            <div className="row-1-left" style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div className="flex items-center gap-2 mb-2 sm:mb-3" style={{ flexShrink: 0 }}>
-                <span className="text-sky-300 text-lg">🎵</span>
-                <h3 className="text-white font-semibold text-base sm:text-lg">Playlists</h3>
-              </div>
-              <div className="playlist-cards-container" style={{ flexShrink: 0, overflow: "hidden" }}>
-                <Playlists 
-                  playlists={playlists} 
-                  onPlaylistSelect={handlePlaylistSelect}
-                  selectedPlaylistId={selectedPlaylistId}
-                />
-              </div>
+          {/* ═══ ROW 1: Playlists title, then rail (cards + playback same height) ═══ */}
+          <div className="row-1-wrap flex min-h-0 shrink-0 flex-col gap-2 sm:gap-2.5 md:gap-2">
+            <div className="flex shrink-0 items-center gap-2 md:gap-3">
+              <span className="text-xl text-sky-300 md:text-2xl">🎵</span>
+              <h3 className="text-lg font-semibold text-white md:text-xl lg:text-2xl">Playlists</h3>
             </div>
-
-            {/* Buttons + music quote */}
-            <div className="row-1-right">
-              <div className="card-surface" style={{ height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "1rem", borderRadius: "0.75rem" }}>
-                <div className="flex flex-row items-center justify-center gap-4 sm:gap-6" style={{ marginBottom: "0.5rem" }}>
-                  <button
-                    onClick={handleReadyToSing}
-                    disabled={!queue || queue.length === 0}
-                    className={`flex flex-row items-center justify-center gap-2 transition-all shrink-0
-                      ${(!queue || queue.length === 0)
-                        ? "cursor-not-allowed opacity-40"
-                        : "hover:scale-105 shadow-[0_0_16px_rgba(236,72,153,0.6),0_0_32px_rgba(236,72,153,0.35)]"}
-                    `}
-                    style={{
-                      height: '44px',
-                      paddingLeft: '14px',
-                      paddingRight: '18px',
-                      backgroundColor: (!queue || queue.length === 0) ? '#475569' : '#ec4899',
-                      borderRadius: '22px',
-                    }}
-                  >
-                    <span className="text-white text-lg sm:text-xl leading-none">▶</span>
-                    <span className="text-white text-xs sm:text-sm font-semibold leading-none">Play</span>
-                  </button>
-                  <button
-                    onClick={handleSkip}
-                    disabled={!queue || queue.length === 0}
-                    className={`flex flex-row items-center justify-center gap-2 transition-all shrink-0
-                      ${(!queue || queue.length === 0)
-                        ? "cursor-not-allowed opacity-40"
-                        : "hover:scale-105 shadow-[0_0_16px_rgba(6,182,212,0.6),0_0_32px_rgba(6,182,212,0.35)]"}
-                    `}
-                    style={{
-                      height: '44px',
-                      paddingLeft: '14px',
-                      paddingRight: '18px',
-                      backgroundColor: (!queue || queue.length === 0) ? '#475569' : '#06b6d4',
-                      borderRadius: '22px',
-                    }}
-                  >
-                    <span className="text-white text-lg sm:text-xl leading-none">⏭</span>
-                    <span className="text-white text-xs sm:text-sm font-semibold leading-none">Skip to Next</span>
-                  </button>
+            <div className="row-1-grid min-h-0">
+              <div
+                className="row-1-left min-h-0 min-w-0 overflow-hidden"
+                style={{ display: "flex", flexDirection: "column" }}
+              >
+                <div className="playlist-cards-container shrink-0 overflow-hidden" style={{ flexShrink: 0 }}>
+                  <Playlists
+                    playlists={playlists}
+                    onPlaylistSelect={handlePlaylistSelect}
+                    selectedPlaylistId={selectedPlaylistId}
+                  />
                 </div>
-                <p className="text-slate-400 text-xs sm:text-sm italic text-center leading-relaxed">
-                  "Where words fail, music speaks." — Hans Christian Andersen
-                </p>
+              </div>
+
+              <div className="row-1-right flex min-h-0 min-w-0 flex-col overflow-x-visible">
+                <div className="playback-rail-height flex w-full shrink-0 flex-col items-center justify-center gap-1 overflow-x-visible overflow-y-hidden rounded-2xl border border-white/[0.08] bg-slate-900/75 px-4 py-1.5 shadow-lg md:gap-1.5 md:px-5 md:py-2 lg:px-6">
+                  <div className="flex min-w-0 max-w-full shrink-0 flex-nowrap flex-row items-center justify-center gap-1 md:gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleReadyToSing}
+                      disabled={!queue || queue.length === 0}
+                      className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-5 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[6rem] md:min-h-[44px] md:min-w-[8rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[9rem] lg:px-9 lg:text-base
+                      ${(!queue || queue.length === 0)
+                        ? "cursor-not-allowed opacity-45"
+                        : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
+                    `}
+                      style={{
+                        backgroundColor: (!queue || queue.length === 0) ? "#475569" : "#ff4081",
+                        borderRadius: 9999,
+                        boxShadow:
+                          !queue || queue.length === 0
+                            ? "inset 0 1px 0 rgba(255,255,255,0.08)"
+                            : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(255,64,129,0.8), 0 0 48px rgba(255,64,129,0.38)",
+                      }}
+                    >
+                      <span className="text-lg leading-none drop-shadow-sm md:text-xl">▶</span>
+                      <span className="leading-none drop-shadow-sm">Play</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSkip}
+                      disabled={!queue || queue.length === 0}
+                      className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-4 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[7.75rem] md:min-h-[44px] md:min-w-[10rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[11.25rem] lg:px-9 lg:text-base
+                      ${(!queue || queue.length === 0)
+                        ? "cursor-not-allowed opacity-45"
+                        : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
+                    `}
+                      style={{
+                        backgroundColor: (!queue || queue.length === 0) ? "#475569" : "#00bcd4",
+                        borderRadius: 9999,
+                        boxShadow:
+                          !queue || queue.length === 0
+                            ? "inset 0 1px 0 rgba(255,255,255,0.08)"
+                            : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(0,229,255,0.7), 0 0 48px rgba(0,188,212,0.42)",
+                      }}
+                    >
+                      <span className="text-lg leading-none drop-shadow-sm md:text-xl">⏭</span>
+                      <span className="leading-none drop-shadow-sm">Skip to Next</span>
+                    </button>
+                  </div>
+                  <p className="line-clamp-2 max-w-[95%] shrink-0 px-0.5 text-center text-[10px] italic leading-snug text-slate-400 md:text-[11px] lg:text-xs">
+                    &ldquo;Where words fail, music speaks.&rdquo;{" "}
+                    <span className="whitespace-nowrap">&mdash; Hans Christian Andersen</span>
+                  </p>
+                </div>
               </div>
             </div>
           </div>
 
           {/* ═══ ROW 2: Most Played / Results + Queue ═══ */}
-          <div className="row-2-grid">
+          <div className="main-row-grow row-2-grid">
             {/* Most Played / Search Results */}
-            <div className="row-2-left" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            <div className="row-2-left">
               {hasActiveFilters ? (
-                <div className="card-surface p-3 sm:p-4 md:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface panel-fill p-3 sm:p-4 md:p-6 lg:p-7">
                   {selectedPlaylistId && (
-                    <div className="bg-cyan-500/20 border border-cyan-500/50 rounded-lg flex items-center justify-between gap-3" style={{ padding: "0.5rem 0.75rem", marginBottom: "0.75rem", flexShrink: 0 }}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-cyan-400">📋</span>
-                        <span className="text-white font-semibold text-xs sm:text-sm">
-                          Showing playlist: <span className="text-cyan-300">
-                            {playlists.find(p => p.id === selectedPlaylistId)?.name || "Playlist"}
+                    <div className="mb-0 flex min-h-[46px] shrink-0 flex-wrap items-center justify-start gap-4 rounded-xl border border-blue-500/40 bg-gradient-to-r from-slate-950/95 via-[#0f172a]/95 to-blue-950/70 py-2.5 pl-3.5 pr-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:min-h-[50px] md:gap-5 md:py-3 md:pl-4 md:pr-2.5 lg:min-h-[52px]">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0 text-base text-sky-300 md:text-lg">📋</span>
+                        <span className="min-w-0 text-[15px] font-semibold leading-snug text-white md:text-lg">
+                          Showing playlist:{" "}
+                          <span className="text-sky-200">
+                            {playlists.find((p) => p.id === selectedPlaylistId)?.name || "Playlist"}
                           </span>
                         </span>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 md:gap-2.5">
                         <button
+                          type="button"
                           onClick={async () => {
                             if (playlistSongs.length === 0) {
                               alert("No songs in this playlist to add.");
@@ -815,56 +855,63 @@ const filteredSongs = useMemo(() => {
                             }
                             await handleAddPlaylistToQueue(playlistSongs);
                           }}
-                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-[11px] sm:text-xs font-medium transition-colors"
+                          className="rounded-[1rem] bg-sky-500 px-3.5 py-2 text-[11px] font-semibold text-white transition-colors hover:bg-sky-400 md:rounded-[1.125rem] md:px-4 md:py-2 md:text-xs"
                         >
                           Add All to Queue
                         </button>
                         <button
+                          type="button"
                           onClick={() => {
                             setSelectedPlaylistId(null);
                             setPlaylistSongs([]);
                           }}
-                          className="text-gray-400 hover:text-white text-[11px] sm:text-xs underline"
+                          className="text-[11px] font-medium text-slate-400 underline-offset-2 hover:text-white md:text-xs"
                         >
                           Clear
                         </button>
                       </div>
                     </div>
                   )}
-                  <SearchResults 
-                    songs={filteredSongs} 
-                    onAddToQueue={handleAddToQueue}
-                    loading={songsLoading || isSearching}
-                    onSuggestSong={() => setShowSuggestModal(true)}
-                  />
+                  <div
+                    className={
+                      selectedPlaylistId
+                        ? "mt-5 flex min-h-0 flex-1 flex-col overflow-hidden md:mt-8"
+                        : "flex min-h-0 flex-1 flex-col overflow-hidden"
+                    }
+                  >
+                    <SearchResults
+                      songs={filteredSongs}
+                      onAddToQueue={handleAddToQueue}
+                      loading={songsLoading || isSearching}
+                      languageLabel={
+                        !selectedPlaylistId && filters.language !== "all"
+                          ? filters.language
+                          : null
+                      }
+                    />
+                  </div>
                 </div>
               ) : (
-                <div className="card-surface p-3 sm:p-4 md:p-5" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+                <div className="card-surface panel-fill p-3 sm:p-4 md:p-6 lg:p-7">
                   <MostPlayed songs={mostPlayed} onSongSelect={handleAddToQueue} />
                 </div>
               )}
             </div>
 
             {/* Queue */}
-            <div className="row-2-right" style={{ display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}>
+            <div className="row-2-right">
               <QueueList 
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
                 onReorder={handleReorderQueue}
+                onClear={handleClearQueue}
+                clearing={isClearingQueue}
               />
             </div>
           </div>
         </div>
       )}
-
-      <SuggestSongModal
-        isOpen={showSuggestModal}
-        onClose={() => setShowSuggestModal(false)}
-        prefillTitle={filters.songName}
-        prefillArtist={filters.artist}
-        prefillLanguage={filters.language !== "all" ? filters.language : ""}
-        roomId={roomId || room?.id}
-      />
+      </div>
     </div>
   );
 }

@@ -5,6 +5,9 @@
   "android": {
     "allowMixedContent": true,
     "tv": true
+  },
+  "server": {
+    "androidScheme": "https"
   }
 }
 

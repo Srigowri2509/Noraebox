@@ -1,6 +1,10 @@
-/* Basic resets */
+/* Basic resets — solid black base (no white flash / “HTML” chrome around video) */
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html,body,#root { height: 100%; }
+html, body, #root {
+  height: 100%;
+  background: #000 !important;
+  color: #fff;
+}
 
 /* Full app container */
 .display-root { 
@@ -86,8 +90,97 @@ html,body,#root { height: 100%; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  background: black;
+  background: #000 !important;
   display: block;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Hide any residual native video UI on TV/WebView */
+video.video-element::-webkit-media-controls,
+video.video-layer-main::-webkit-media-controls,
+video.video-layer-transition::-webkit-media-controls {
+  display: none !important;
+  opacity: 0 !important;
+}
+video.video-element::-webkit-media-controls-enclosure {
+  display: none !important;
+  opacity: 0 !important;
+}
+video.video-element::-webkit-media-controls-panel,
+video.video-element::-webkit-media-controls-overlay-enclosure,
+video.video-element::-webkit-media-controls-overlay-play-button,
+video.video-layer-main::-webkit-media-controls-overlay-play-button,
+video.video-layer-transition::-webkit-media-controls-overlay-play-button {
+  display: none !important;
+  opacity: 0 !important;
+  -webkit-appearance: none;
+}
+
+/* Dual main videos + optional transition (display-app TV) */
+.video-dual-stack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+.video-layer-main {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+
+.video-layer-main--visible {
+  opacity: 1;
+  z-index: 2;
+}
+
+.video-layer-main--hidden {
+  opacity: 0;
+  z-index: 1;
+}
+
+.video-layer-transition {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.video-layer-transition--visible {
+  opacity: 1;
+  z-index: 5;
+}
+
+.video-layer-transition--hidden {
+  opacity: 0;
+  z-index: 0;
+}
+
+/* Third upcoming clip — in-tree buffer (opacity 0, full-bleed; no visibility:hidden for TV) */
+.video-layer-preload-buddy {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ✔ FULLSCREEN SESSION-END IMAGE */
@@ -124,15 +217,11 @@ html,body,#root { height: 100%; }
   display: block;
 }
 
-/* Video placeholder */
+/* Video placeholder (idle / no song): same flat treatment as logo bg */
 .video-placeholder { 
-  background: linear-gradient(180deg,#0f1724,#0b0b11); 
-  border-radius: 10px; 
-  border: 1px solid rgba(255,255,255,0.02); 
-}
-.poster-text { 
-  color: #8c98a6; 
-  font-size: 20px; 
+  background: #000;
+  border-radius: 0;
+  border: none;
 }
 
 /* Hide play button from video controls - only show pause */

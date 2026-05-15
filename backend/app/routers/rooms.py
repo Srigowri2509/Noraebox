@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from fastapi import APIRouter, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -220,29 +222,46 @@ def get_queue(room_id: str, db: Session = Depends(get_db)):
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
         
-        # Get queue items with song data (no artist joins - queue is song_id based only)
+        # Get queue items with song data + artist credits (for tablet subtitle parity with search)
         queue_items = db.query(QueueItem, Song).outerjoin(
             Song, Song.id == QueueItem.song_id
         ).filter(
             QueueItem.room_id == room_id
         ).order_by(QueueItem.position).all()
-        
+
+        song_ids = [song.id for _, song in queue_items if song]
+        artists_by_song = defaultdict(list)
+        if song_ids:
+            rows = (
+                db.query(SongArtist, Artist)
+                .join(Artist, SongArtist.artist_id == Artist.id)
+                .filter(SongArtist.song_id.in_(song_ids))
+                .all()
+            )
+            for sa, artist in rows:
+                artists_by_song[sa.song_id].append({
+                    "id": str(artist.id),
+                    "name": artist.name,
+                    "role": sa.role or "",
+                    "image_url": artist.image_url,
+                })
+
         queue = []
         for qi, song in queue_items:
             if not song:
                 continue
-            
-            # Queue only contains song_id and song basic info - no artist data
+
             queue.append({
                 "id": str(qi.id),
-                "song_id": qi.song_id,  # Primary identifier for queue
+                "song_id": qi.song_id,
                 "title": song.title,
                 "album": song.album,
                 "language": song.language,
                 "position": qi.position,
-                "added_by": qi.added_by
+                "added_by": qi.added_by,
+                "artists": artists_by_song.get(song.id, []),
             })
-        
+
         return queue
     except HTTPException:
         raise
@@ -406,6 +425,30 @@ def reorder_queue(room_id: str, payload: dict = Body(...), db: Session = Depends
     except Exception as e:
         db.rollback()
         print(f"Error reordering queue: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/queue/clear")
+def clear_queue(room_id: str, db: Session = Depends(get_db)):
+    """Remove all songs from the room queue (does not end the session)."""
+    try:
+        room = db.query(Room).filter(Room.id == room_id).first()
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found")
+
+        queue_items = db.query(QueueItem).filter(QueueItem.room_id == room_id).all()
+        queue_count = len(queue_items)
+        for item in queue_items:
+            db.delete(item)
+
+        db.commit()
+        print(f"POST /rooms/{room_id}/queue/clear: Cleared {queue_count} queue items")
+        return {"status": "cleared", "queue_cleared": queue_count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error clearing queue: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

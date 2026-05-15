@@ -1,7 +1,41 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import RoomSquare from "../components/RoomSquare";
 import RoomModal from "../components/RoomModal";
+
+const ROOM_GRID_SIZE = 8;
+
+/** Sort Room 1, Room 2, … Room 8 (numeric order from name). */
+function getRoomNumber(room) {
+  const name = String(room?.name ?? "").trim();
+  const match = name.match(/room\s*#?\s*(\d+)/i) || name.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+function sortRoomsByNumber(rooms) {
+  return [...rooms].sort((a, b) => {
+    const diff = getRoomNumber(a) - getRoomNumber(b);
+    if (diff !== 0) return diff;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""));
+  });
+}
+
+/** Fixed grid slots: row1 = 1–4, row2 = 5–8 */
+function roomsForGrid(rooms) {
+  const byNumber = new Map();
+  for (const room of rooms) {
+    const n = getRoomNumber(room);
+    if (n >= 1 && n <= ROOM_GRID_SIZE && !byNumber.has(n)) {
+      byNumber.set(n, room);
+    }
+  }
+  const ordered = [];
+  for (let n = 1; n <= ROOM_GRID_SIZE; n++) {
+    const room = byNumber.get(n);
+    if (room) ordered.push(room);
+  }
+  return ordered;
+}
 
 export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
@@ -9,15 +43,15 @@ export default function Dashboard() {
   const [devices, setDevices] = useState([]);
   const [connectionError, setConnectionError] = useState(null);
 
+  const gridRooms = useMemo(() => roomsForGrid(rooms), [rooms]);
+
   // Fetch rooms from database
   const loadRooms = async () => {
     console.log("📡 Fetching rooms...");
     try {
       const res = await api('/rooms');
       const data = res.data || res;
-      const roomsArray = Array.isArray(data) ? data : [];
-      // Sort by id
-      roomsArray.sort((a, b) => (a.id || "").localeCompare(b.id || ""));
+      const roomsArray = sortRoomsByNumber(Array.isArray(data) ? data : []);
       console.log("📦 Rooms fetched:", roomsArray);
       setRooms(roomsArray);
       setConnectionError(null); // Clear error on success
@@ -211,9 +245,9 @@ export default function Dashboard() {
           <div className="text-center text-red-600 text-xl">
             Cannot connect to backend server at http://localhost:8000
           </div>
-        ) : rooms.length > 0 ? (
-          <div className="grid grid-cols-3 gap-40">
-            {rooms.map((room) => (
+        ) : gridRooms.length > 0 ? (
+          <div className="rooms-grid">
+            {gridRooms.map((room) => (
               <RoomSquare
                 key={room.id}
                 room={room}
