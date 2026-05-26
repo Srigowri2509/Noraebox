@@ -529,12 +529,48 @@ const VideoPlayer = forwardRef(
       return () => document.removeEventListener("visibilitychange", onVisibility);
     }, [slotEl]);
 
+    // Immediately stop playback on BOTH slots (audio + video) without
+    // clearing src. Used for hard cut-to-logo on session end so the user
+    // doesn't hear a stale audio tail; the React commit that flips both
+    // slots to opacity 0 then handles the visual hide atomically.
+    const pauseAllSlots = useCallback(() => {
+      // Abort any in-flight load/play loops first.
+      loadTokenRef.current += 1;
+      // Mark both slots idle BEFORE pausing — the karaoke onPause stall-
+      // recovery would otherwise see mode === "karaoke" and immediately
+      // call play() to undo our pause.
+      if (slotModeRef.current.a === "karaoke") slotModeRef.current.a = "idle";
+      if (slotModeRef.current.b === "karaoke") slotModeRef.current.b = "idle";
+      try {
+        const va = videoARef.current;
+        if (va) {
+          va.muted = true;
+          va.volume = 0;
+          va.pause();
+        }
+      } catch {
+        /* ignore */
+      }
+      try {
+        const vb = videoBRef.current;
+        if (vb) {
+          vb.muted = true;
+          vb.volume = 0;
+          vb.pause();
+        }
+      } catch {
+        /* ignore */
+      }
+      console.log("[AUDIO] all slots paused (no src clear)");
+    }, []);
+
     useImperativeHandle(ref, () => ({
       play: () => activeEl()?.play(),
       pause: () => activeEl()?.pause(),
       getActiveVideo: activeEl,
       warmPreload: (url) => warmPreloadOnHiddenSlot(url),
       stopKaraokeAudio: () => silenceAllSlots(),
+      pauseAllSlots,
     }));
 
     const showLogo = idleMode === "logo" && !song?.videoUrl;

@@ -121,36 +121,39 @@ export default function Display({ roomId }) {
     setCurrentSong((prev) => (prev ? { ...prev, videoUrl: null } : null));
   }, []);
 
-  // True only while a karaoke song is actively visible/playing.
-  const isPlayingKaraokeNow = useCallback(() => {
-    return (
-      !!currentSongRef.current?.videoUrl &&
-      !betweenSongsRef.current &&
-      !sessionEndPhaseRef.current
-    );
-  }, []);
-
+  // HARD cut to logo. Runs the moment the session time ends (or the backend
+  // reports session ended), even if a karaoke song or transition clip is in
+  // the middle of playing. No final transition, no waiting for natural end.
   const startSessionEndSequence = useCallback(() => {
-    if (sessionEndPhaseRef.current || sessionFinalizedRef.current) return;
-    if (!hasPlayedSongRef.current) {
-      resetToHomeLogo();
-      setHasSessionStarted(false);
-      setSessionEnded(true);
-      return;
-    }
-    console.log("[STATE] SESSION_ENDED → final transition → logo");
-    sessionEndPhaseRef.current = true;
-    setSessionEndPhase(true);
-    betweenSongsRef.current = true;
-    setBetweenSongs(true);
+    if (sessionFinalizedRef.current) return;
+    console.log("[STATE] SESSION_ENDED → hard cut to logo");
+    // Mark finalized first so the 1 s poll cannot re-trigger anything.
+    sessionFinalizedRef.current = true;
+    // Stop audio + video frame advancement immediately. We deliberately do
+    // NOT clear src here — keeping the last frame visible for the ~1 React
+    // commit cycle until both slots become opacity 0 is much smoother than
+    // flashing BLACK_POSTER before the logo placeholder mounts.
+    videoRef.current?.pauseAllSlots?.();
+    // Wipe all session/playback state in one batch so React commits the
+    // logo placeholder + slot opacity flip + cleared timer atomically.
+    sessionEndPhaseRef.current = false;
+    setSessionEndPhase(false);
+    betweenSongsRef.current = false;
+    setBetweenSongs(false);
     pendingSongRef.current = null;
     skipPendingSongIdRef.current = null;
-    videoRef.current?.stopKaraokeAudio?.();
+    pendingSessionEndRef.current = false;
+    consecutiveAdvanceRetriesRef.current = 0;
+    lastSongIdRef.current = null;
+    hasPlayedSongRef.current = false;
+    setHasPlayedSong(false);
+    setHasSessionStarted(false);
+    setSessionEnded(true);
     setPreloadUrl(null);
     setNextSong(null);
     setTimeLeft(null);
-    setCurrentSong((prev) => (prev ? { ...prev, videoUrl: null } : null));
-  }, [resetToHomeLogo]);
+    setCurrentSong(null);
+  }, []);
 
   const advanceQueueFromBackend = useCallback(async () => {
     if (queueAdvancingRef.current) {
@@ -387,23 +390,16 @@ export default function Display({ roomId }) {
         const active = !isSessionEnded && (session.status === "playing" || session.status === "idle" || session.status === "active");
         setIsActive(active);
 
-        // Session ended on backend — never cut a song mid-playback. If a song
-        // is currently playing, defer the visual end sequence until the song
-        // finishes naturally (handleVideoEnded consumes the flag).
+        // Session ended on backend — cut immediately to logo, regardless of
+        // whether a song or transition is currently playing. User wants a
+        // hard stop the moment the session time runs out.
         if (isSessionEnded) {
           if (sessionFinalizedRef.current) {
             return; // already finalized; ignore stale "ended" reads from backend
           }
-          if (hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
-            if (isPlayingKaraokeNow()) {
-              if (!pendingSessionEndRef.current) {
-                console.log("[POLL] backend ended but song still playing — deferring end sequence");
-                pendingSessionEndRef.current = true;
-              }
-            } else {
-              startSessionEndSequence();
-            }
-          } else if (!sessionEndPhaseRef.current && !hasPlayedSongRef.current) {
+          if (hasPlayedSongRef.current) {
+            startSessionEndSequence();
+          } else {
             resetToHomeLogo();
             setHasSessionStarted(false);
             setSessionEnded(true);
@@ -434,13 +430,13 @@ export default function Display({ roomId }) {
             // Show timer (session has started)
             setTimeLeft(remainingMs);
 
-            // Timer ran out — auto-cancel the backend session once, then run
-            // the final transition → logo. If a song is mid-playback, defer
-            // the visual end sequence so the song plays to its natural end.
+            // Timer ran out — auto-cancel the backend session once and hard-
+            // cut to logo immediately. Whatever is playing (karaoke or a
+            // random transition) is stopped on the spot.
             if (remainingSeconds === 0) {
               if (sessionFinalizedRef.current) {
                 /* already finalized; ignore */
-              } else if (hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
+              } else if (hasPlayedSongRef.current) {
                 if (!sessionEndRequestedRef.current) {
                   sessionEndRequestedRef.current = true;
                   console.log("[POLL] timer hit 0 — auto-cancelling backend session");
@@ -448,15 +444,8 @@ export default function Display({ roomId }) {
                     console.warn("[SESSION] /end POST failed:", err)
                   );
                 }
-                if (isPlayingKaraokeNow()) {
-                  if (!pendingSessionEndRef.current) {
-                    console.log("[POLL] timer hit 0 but song still playing — deferring end sequence");
-                    pendingSessionEndRef.current = true;
-                  }
-                } else {
-                  startSessionEndSequence();
-                }
-              } else if (!hasPlayedSongRef.current) {
+                startSessionEndSequence();
+              } else {
                 resetToHomeLogo();
                 setSessionEnded(true);
               }
@@ -600,20 +589,13 @@ export default function Display({ roomId }) {
 
   // Karaoke finished — play transition; advance backend queue only after the clip ends.
   const handleVideoEnded = () => {
+    // Ignore any late-firing ended event after we've already hard-cut to
+    // logo (session-end finalized).
+    if (sessionFinalizedRef.current) return;
     if (betweenSongsRef.current || sessionEndPhaseRef.current) return;
     console.log("[STATE] SONG_ENDED");
     pendingSongRef.current = null;
     skipPendingSongIdRef.current = null;
-
-    // Session-end was deferred mid-song to avoid cutting playback; now that
-    // the song finished naturally, run the single end transition → logo.
-    if (pendingSessionEndRef.current) {
-      console.log("[STATE] pending session-end consumed → final transition → logo");
-      pendingSessionEndRef.current = false;
-      startSessionEndSequence();
-      return;
-    }
-
     enterBetweenSongs();
   };
 
@@ -635,9 +617,13 @@ export default function Display({ roomId }) {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
+  // Last 5 minutes: from 04:59 (299 999 ms) down to 00:01 the timer renders
+  // red as a visual warning. 00:00 / null / placeholder show neutral.
+  const timeUrgent = timeLeft != null && timeLeft > 0 && timeLeft < 5 * 60 * 1000;
+
   return (
     <div className="display-root" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSong} />
+      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSong} timeUrgent={timeUrgent} />
 
       <div className="display-content" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         {/* Center: Video or Default Background - Fullscreen excluding navbar */}

@@ -7,7 +7,7 @@ import { api } from "../api";
   On left: Room name indicator
   Styling: dark neon background
 */
-export default function Navbar({ timeText, roomId, nextSong }) {
+export default function Navbar({ timeText, roomId, nextSong, timeUrgent = false }) {
   const [roomName, setRoomName] = useState(null);
   // ONLY use roomId prop - don't trust localStorage (backend is source of truth)
   const currentRoomId = roomId || null;
@@ -80,7 +80,9 @@ export default function Navbar({ timeText, roomId, nextSong }) {
         <div className="nav-right">
           <div className="time-label">
             <span>Time left</span>
-            <span className="time-value">{timeText}</span>
+            <span className={timeUrgent ? "time-value time-value--urgent" : "time-value"}>
+              {timeText}
+            </span>
           </div>
         </div>
       </div>
