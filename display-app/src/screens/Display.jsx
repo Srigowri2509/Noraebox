@@ -1,44 +1,8 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Navbar from "../components/Navbar";
 import VideoPlayer from "../components/VideoPlayer";
 import NextBanner from "../components/NextBanner";
 import { api } from "../api";
-
-const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
-
-/** Matches `display-app/public/transcitions/` — spelling is intentional; rename folder + this constant together. */
-const TRANSCITIONS_FOLDER = "transcitions";
-
-/** Local clips under `public/${TRANSCITIONS_FOLDER}/` — URLs resolved vs current page for Capacitor `https://localhost/...`. */
-function buildTransitionVideoUrls() {
-  return TRANSITION_IDS.map((id) => {
-    const relativePath = `${TRANSCITIONS_FOLDER}/${id}.mp4`;
-    if (typeof window !== "undefined") {
-      try {
-        return new URL(relativePath, window.location.href).href;
-      } catch {
-        /* fall through */
-      }
-    }
-    const base = import.meta.env?.BASE_URL ?? "/";
-    const prefix = base.endsWith("/") ? base : `${base}/`;
-    return `${prefix}${relativePath}`;
-  });
-}
-
-async function fetchSongPlayableUrl(songId) {
-  const songData = await api(`/songs/${songId}`);
-  let videoUrl = songData.file_url || songData.video_url || songData.url;
-  if (videoUrl && !videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
-    try {
-      const signed = await api(`/songs/${songId}/signed-url`);
-      videoUrl = signed.signed_url || signed.url || videoUrl;
-    } catch {
-      // keep path url
-    }
-  }
-  return videoUrl || "";
-}
 
 /*
   Display app behavior:
@@ -57,15 +21,6 @@ export default function Display({ roomId }) {
   const [sessionEnded, setSessionEnded] = useState(false);
   const videoRef = useRef();
   const lastSongIdRef = useRef(null);
-  const [nextSongVideoUrl, setNextSongVideoUrl] = useState("");
-  const [nextNextSongVideoUrl, setNextNextSongVideoUrl] = useState("");
-  const queuedNextSongIdRef = useRef(null);
-  const queuedNextNextSongIdRef = useRef(null);
-  const endedInFlightRef = useRef(false);
-  const endedNonceRef = useRef(0);
-  const [hasSessionStarted, setHasSessionStarted] = useState(false);
-
-  const transitionVideoUrls = useMemo(() => buildTransitionVideoUrls(), []);
 
   // Autoplay unlock is handled inside VideoPlayer itself.
   // Just mark user interaction once so all future videos autoplay with sound.
@@ -106,11 +61,6 @@ export default function Display({ roomId }) {
           setTimeLeft(null);
           setSessionEnded(true);
           setCurrentSong(null);
-          setNextSongVideoUrl("");
-          setNextNextSongVideoUrl("");
-          queuedNextSongIdRef.current = null;
-          queuedNextNextSongIdRef.current = null;
-          setHasSessionStarted(false);
           return;
         }
 
@@ -126,11 +76,6 @@ export default function Display({ roomId }) {
           setTimeLeft(null);
           setNextSong(null);
           lastSongIdRef.current = null;
-          setNextSongVideoUrl("");
-          setNextNextSongVideoUrl("");
-          queuedNextSongIdRef.current = null;
-          queuedNextNextSongIdRef.current = null;
-          setHasSessionStarted(false);
           console.log("Display: Session ended, clearing all state");
           return;
         }
@@ -141,7 +86,6 @@ export default function Display({ roomId }) {
         // Calculate timer from session_start_time + total_minutes
         // Timer only shows when session_start_time exists (first song played)
         if (session.session_start_time && session.total_minutes) {
-          setHasSessionStarted(true);
           try {
             const startedAt = new Date(session.session_start_time);
             const now = new Date();
@@ -179,7 +123,6 @@ export default function Display({ roomId }) {
 
         // Handle current song
         if (currentSongId && currentSongId !== lastSongIdRef.current) {
-          setHasSessionStarted(true);
           // New song started - fetch song details
           lastSongIdRef.current = currentSongId;
           try {
@@ -248,54 +191,13 @@ export default function Display({ roomId }) {
                 (nextSongData.song && nextSongData.song.artist_name) ||
                 ""
             });
-
-            const nextId = nextSongData.song_id;
-            const nextNextItem = queue.length > 1 ? queue[1] : null;
-            const nextNextId = nextNextItem && nextNextItem.song_id;
-
-            if (nextId && queuedNextSongIdRef.current !== nextId) {
-              queuedNextSongIdRef.current = nextId;
-              (async () => {
-                try {
-                  const videoUrl = await fetchSongPlayableUrl(nextId);
-                  setNextSongVideoUrl(videoUrl);
-                } catch (e) {
-                  console.warn("Display: could not prefetch next video URL", e);
-                  setNextSongVideoUrl("");
-                }
-              })();
-            }
-
-            if (nextNextId && queuedNextNextSongIdRef.current !== nextNextId) {
-              queuedNextNextSongIdRef.current = nextNextId;
-              (async () => {
-                try {
-                  const videoUrl = await fetchSongPlayableUrl(nextNextId);
-                  setNextNextSongVideoUrl(videoUrl);
-                } catch (e) {
-                  console.warn("Display: could not prefetch next+1 video URL", e);
-                  setNextNextSongVideoUrl("");
-                }
-              })();
-            } else if (!nextNextId) {
-              setNextNextSongVideoUrl("");
-              queuedNextNextSongIdRef.current = null;
-            }
           } else {
             console.log("Display: Queue is empty, no next song");
             setNextSong(null);
-            setNextSongVideoUrl("");
-            setNextNextSongVideoUrl("");
-            queuedNextSongIdRef.current = null;
-            queuedNextNextSongIdRef.current = null;
           }
         } catch (err) {
           console.error("Error getting queue:", err);
           setNextSong(null);
-          setNextSongVideoUrl("");
-          setNextNextSongVideoUrl("");
-          queuedNextSongIdRef.current = null;
-          queuedNextNextSongIdRef.current = null;
         }
 
       } catch (error) {
@@ -330,12 +232,7 @@ export default function Display({ roomId }) {
 
   // Handle video ended - call backend to mark playback ended and auto-start next song
   const handleVideoEnded = async () => {
-    if (endedInFlightRef.current) return;
-    endedInFlightRef.current = true;
-    const myNonce = ++endedNonceRef.current;
     console.log("🎵 Video ended, notifying backend for autoplay");
-    queuedNextSongIdRef.current = null;
-    queuedNextNextSongIdRef.current = null;
     try {
       const response = await api(`/rooms/${roomId}/playback/ended`, {
         method: "POST"
@@ -417,21 +314,13 @@ export default function Display({ roomId }) {
       // Will be updated on next poll (2 seconds) if a new song is added
     } catch (error) {
       console.error("❌ Error notifying playback ended:", error);
-      // If backend failed, do NOT skip/advance further. Keep current UI state.
-      // Polling will reconcile the state on the next tick.
-    }
-    finally {
-      // Only clear in-flight if this is the latest call (avoid race if multiple events fire).
-      if (endedNonceRef.current === myNonce) {
-        endedInFlightRef.current = false;
-      }
+      setCurrentSong(null);
     }
   };
 
   const handleVideoError = async (videoError) => {
-    // IMPORTANT: do not advance/skip queue on playback errors.
-    // On Android/WebView these can be transient (slow network, decoder warm-up, signed URL delay).
-    console.error("❌ Video failed to load (will not skip):", videoError);
+    console.error("❌ Video failed to load, skipping song:", videoError);
+    await handleVideoEnded();
   };
 
   // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"
@@ -463,15 +352,33 @@ export default function Display({ roomId }) {
           width: "100%",
           height: "100%"
         }}>
-          <VideoPlayer
-            ref={videoRef}
-            song={currentSong}
-            transitionVideoUrls={transitionVideoUrls}
-            idleMode={hasSessionStarted ? "transition" : "logo"}
-            logoSrc="/logo_norebox.jpg"
-            onEnded={handleVideoEnded}
-            onError={handleVideoError}
-          />
+          {currentSong && currentSong.videoUrl ? (
+            <VideoPlayer
+              ref={videoRef}
+              song={currentSong}
+              onEnded={handleVideoEnded}
+              onError={handleVideoError}
+            />
+          ) : (
+            <div
+              className="logo-fallback-wrapper"
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#000",
+              }}
+            >
+              <img
+                src="/logo_norebox.jpg"
+                alt="Norebox logo"
+                className="logo-fallback"
+                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
