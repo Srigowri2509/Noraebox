@@ -158,6 +158,21 @@ const VideoPlayer = forwardRef(
       if (slotModeRef.current[slot] === "karaoke") {
         slotModeRef.current[slot] = "idle";
       }
+      // 24/7 hygiene + snap-pic fix:
+      // - removeAttribute('src') + load() releases the decoder/audio buffer
+      //   so the WebView doesn't accumulate media-pipeline state across
+      //   hundreds of clips per day.
+      // - It also clears the last-frame "snap pic" the user would otherwise
+      //   see while the next clip loads on the hidden slot; the slot falls
+      //   back to BLACK_POSTER and the #000 video-stage-base shows through.
+      try {
+        if (video.currentSrc || video.getAttribute("src")) {
+          video.removeAttribute("src");
+          video.load();
+        }
+      } catch {
+        /* ignore */
+      }
     }, [slotEl]);
 
     const silenceAllSlots = useCallback(() => {
@@ -459,6 +474,8 @@ const VideoPlayer = forwardRef(
       (slot) => () => {
         const video = slotEl(slot);
         if (activeSlotRef.current !== slot) return;
+        // Ignore errors that fire after our intentional silenceSlot() clears src.
+        if (!video?.getAttribute("src") && !video?.currentSrc) return;
         const url = video?.currentSrc || video?.src || "";
         console.warn("[VIDEO] error", url, video?.error?.code);
         onErrorRef.current?.({

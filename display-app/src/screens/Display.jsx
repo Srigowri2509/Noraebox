@@ -219,7 +219,13 @@ export default function Display({ roomId }) {
       lastSongIdRef.current = null;
       hasPlayedSongRef.current = false;
       setHasPlayedSong(false);
-      videoRef.current?.stopKaraokeAudio?.();
+      // NOTE: do NOT clear the video slots synchronously here.
+      // The transition slot is still video-slot--front (opacity 1) at this
+      // instant; clearing its src would show BLACK_POSTER for ~one React
+      // commit cycle, producing a visible "glitch" between the transition's
+      // last frame and the logo. Let VideoPlayer's idleMode="logo" useEffect
+      // run silenceAllSlots() after the placeholder is on screen — both
+      // slots will already be at opacity 0 by then, so the clear is invisible.
       console.log("[STATE] final transition done → home logo");
       return true;
     }
@@ -277,16 +283,23 @@ export default function Display({ roomId }) {
     // If our latest poll snapshot believed the queue still had items, this is
     // almost certainly a transient race (queue item committed after our
     // advance request). Don't drop to the logo: return false so VideoPlayer
-    // starts another transition, giving the backend more time. Capped at one
-    // retry to prevent endless transition loops if state is truly empty.
+    // starts another transition, giving the backend more time.
+    //
+    // Cap raised to MAX_TRANSITION_RETRIES so a slow backend (or a brief
+    // network blip) over a long session never flashes the logo with songs
+    // still queued — user explicitly wants song → transition → next song
+    // continuity for 10–12 hour shifts. With ~2–3 s per transition this
+    // gives ~20–30 s of recovery time before we give up and let the
+    // auto-restart-from-idle poll pick up.
+    const MAX_TRANSITION_RETRIES = 10;
     if (
       latestQueueLengthRef.current > 0 &&
-      consecutiveAdvanceRetriesRef.current < 1 &&
+      consecutiveAdvanceRetriesRef.current < MAX_TRANSITION_RETRIES &&
       !pendingSessionEndRef.current
     ) {
       consecutiveAdvanceRetriesRef.current += 1;
       console.warn(
-        `[QUEUE] advance failed but queue snapshot has ${latestQueueLengthRef.current} item(s) — playing another transition (retry ${consecutiveAdvanceRetriesRef.current})`
+        `[QUEUE] advance failed but queue snapshot has ${latestQueueLengthRef.current} item(s) — playing another transition (retry ${consecutiveAdvanceRetriesRef.current}/${MAX_TRANSITION_RETRIES})`
       );
       // Stay in between-songs state; VideoPlayer will autostart another transition.
       return false;
