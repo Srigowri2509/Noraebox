@@ -240,8 +240,10 @@ class UpdateService {
   async checkOnStartup() {
     console.log("🚀 Checking for updates on startup...");
     setTimeout(() => {
-      this.checkAndUpdateNow(false);
-    }, 5000); // Wait longer for TV/display app
+      this.checkAndUpdateNow(false).catch((err) => {
+        console.warn("Startup update check failed (ignored):", err);
+      });
+    }, 5000);
   }
 
   stopScheduledChecks() {

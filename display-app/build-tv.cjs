@@ -46,8 +46,11 @@ build({
     cpSync("public", outDir, { recursive: true });
   }
 
+  const srcCssFile = join("src", "index.css");
   let inlineCss = "";
-  if (existsSync(intermediateCssFile)) {
+  if (existsSync(srcCssFile)) {
+    inlineCss = readFileSync(srcCssFile, "utf8");
+  } else if (existsSync(intermediateCssFile)) {
     inlineCss = readFileSync(intermediateCssFile, "utf8");
   }
 

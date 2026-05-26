@@ -61,18 +61,24 @@ export default function SearchResults({
   const resultsHeader =
     languageLabel || (songList?.length > 0 && !loading) ? (
       <div className="search-results-header shrink-0">
-        {languageLabel ? (
-          <span className="text-sm font-semibold text-sky-200 md:text-base">
-            Showing results: <span className="text-white">{languageLabel}</span>
-          </span>
-        ) : (
-          <span className="text-sm font-semibold text-white md:text-base">Search results</span>
+        <p className="search-results-header-label">
+          {languageLabel ? (
+            <>
+              Showing results: <span className="text-white">{languageLabel}</span>
+            </>
+          ) : (
+            "Search results"
+          )}
+        </p>
+        {songList?.length > 0 && totalPages <= 1 && (
+          <p className="search-results-header-meta">
+            {songList.length} {songList.length === 1 ? "song" : "songs"}
+          </p>
         )}
-        {songList?.length > 0 && (
-          <span className="text-xs font-medium text-slate-400 md:text-sm">
-            Page {currentPage} of {totalPages}
-            <span className="text-slate-500"> · {songList.length} songs</span>
-          </span>
+        {songList?.length > 0 && totalPages > 1 && (
+          <p className="search-results-header-meta">
+            Page {currentPage}/{totalPages}
+          </p>
         )}
       </div>
     ) : null;
@@ -82,9 +88,9 @@ export default function SearchResults({
       <div className="search-results-root">
         {languageLabel && (
           <div className="search-results-header shrink-0">
-            <span className="text-sm font-semibold text-sky-200 md:text-base">
+            <p className="search-results-header-label">
               Showing results: <span className="text-white">{languageLabel}</span>
-            </span>
+            </p>
           </div>
         )}
         <div className="search-results-scroll flex items-center justify-center py-8">
@@ -99,9 +105,9 @@ export default function SearchResults({
       <div className="search-results-root">
         {languageLabel && (
           <div className="search-results-header shrink-0">
-            <span className="text-sm font-semibold text-sky-200 md:text-base">
+            <p className="search-results-header-label">
               Showing results: <span className="text-white">{languageLabel}</span>
-            </span>
+            </p>
           </div>
         )}
         <div className="most-played-scroll flex flex-col items-center justify-center px-6 py-8 text-center md:px-10">
@@ -125,7 +131,7 @@ export default function SearchResults({
     <div className="search-results-root">
       {resultsHeader}
       <div ref={scrollRef} className="search-results-scroll">
-        <div className="flex flex-col gap-1">
+        <div className="search-results-list">
           {pageSongs.map((s) => (
             <SongCard key={s.id || s.title} song={s} onQueue={handleQueue} />
           ))}
@@ -133,33 +139,32 @@ export default function SearchResults({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex shrink-0 items-center justify-between pt-2 pb-1" style={{ minHeight: 36 }}>
-          <span className="whitespace-nowrap text-xs text-slate-500">{songList.length} songs</span>
-          <div className="flex items-center gap-0.5">
+        <div className="search-results-footer">
+          <span className="search-results-footer-count">{songList.length} songs</span>
+          <div className="search-results-pagination">
             <button
+              type="button"
               onClick={() => goToPage(currentPage - 1)}
               disabled={currentPage === 1}
-              className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium ${
-                currentPage === 1
-                  ? "cursor-not-allowed text-slate-600"
-                  : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+              className={`search-results-page-btn ${
+                currentPage === 1 ? "search-results-page-btn--disabled" : ""
               }`}
+              aria-label="Previous page"
             >
               ‹
             </button>
             {getPageNumbers().map((page, idx) =>
               page === "..." ? (
-                <span key={`e-${idx}`} className="w-5 text-center text-xs text-slate-500">
+                <span key={`e-${idx}`} className="search-results-page-ellipsis">
                   …
                 </span>
               ) : (
                 <button
                   key={page}
+                  type="button"
                   onClick={() => goToPage(page)}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium ${
-                    page === currentPage
-                      ? "bg-purple-600 text-white"
-                      : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+                  className={`search-results-page-btn ${
+                    page === currentPage ? "search-results-page-btn--active" : ""
                   }`}
                 >
                   {page}
@@ -167,20 +172,17 @@ export default function SearchResults({
               )
             )}
             <button
+              type="button"
               onClick={() => goToPage(currentPage + 1)}
               disabled={currentPage === totalPages}
-              className={`flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium ${
-                currentPage === totalPages
-                  ? "cursor-not-allowed text-slate-600"
-                  : "text-slate-300 hover:bg-slate-700 active:bg-slate-600"
+              className={`search-results-page-btn ${
+                currentPage === totalPages ? "search-results-page-btn--disabled" : ""
               }`}
+              aria-label="Next page"
             >
               ›
             </button>
           </div>
-          <span className="whitespace-nowrap text-xs text-slate-500">
-            {currentPage}/{totalPages}
-          </span>
         </div>
       )}
     </div>

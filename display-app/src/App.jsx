@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Display from "./screens/Display";
 import RoomSelectModal from "./components/RoomSelectModal";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import { ensureDeviceRegistered } from "./init/registerDevice";
 import { api, API_BASE } from "./api";
 import updateService from "./services/updateService";
@@ -8,7 +9,7 @@ import updateService from "./services/updateService";
 const STARTUP_TIMEOUT_MS = 20000;
 
 export default function App() {
-  const [roomId, setRoomId] = useState(null); // Start with null - backend is source of truth
+  const [roomId, setRoomId] = useState(null);
   const [isRegistering, setIsRegistering] = useState(true);
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [rooms, setRooms] = useState([]);
@@ -23,63 +24,27 @@ export default function App() {
     setIsRegistering(false);
   };
 
+  // Log only — do not replace the whole UI on benign async errors (updates, network blips).
   useEffect(() => {
     const onError = (event) => {
-      let details = "Unknown runtime error";
-
-      if (event && event.error && event.error.stack) {
-        details = event.error.stack;
-      } else if (event && event.message) {
-        details = event.message;
-      }
-
-      handleStartupFailure("Runtime error while loading display app.", String(details));
+      console.error("Display App runtime error:", event?.error || event?.message);
     };
-
     const onUnhandledRejection = (event) => {
-      const reason = event && event.reason;
-      let details = "Unknown error";
-
-      if (reason && reason.stack) {
-        details = reason.stack;
-      } else if (reason && reason.message) {
-        details = reason.message;
-      } else if (typeof reason === "string") {
-        details = reason;
-      } else {
-        try {
-          details = JSON.stringify(reason);
-        } catch (e) {
-          details = "Unknown error";
-        }
-      }
-
-      handleStartupFailure("Unhandled startup promise rejection.", String(details));
+      console.error("Display App unhandled rejection:", event?.reason);
     };
-
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onUnhandledRejection);
-
     return () => {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
     };
   }, []);
 
-  // Initialize update service
   useEffect(() => {
-    // Check for updates on startup (after 10 seconds for TV/display)
-    updateService.checkOnStartup();
-    
-    // Schedule daily update checks at 3 AM (off-peak for TV)
     updateService.scheduleDailyCheck(3, 0);
-    
-    return () => {
-      updateService.stopScheduledChecks();
-    };
+    return () => updateService.stopScheduledChecks();
   }, []);
 
-  // Register device on mount
   useEffect(() => {
     let isMounted = true;
     const timeoutId = window.setTimeout(() => {
@@ -91,13 +56,8 @@ export default function App() {
     }, STARTUP_TIMEOUT_MS);
 
     (async () => {
-      // Clear any stale room data from localStorage first
-      localStorage.removeItem("room_id");
-      localStorage.removeItem("roomId");
-      
       try {
         const result = await ensureDeviceRegistered();
-        console.log("Display App: Registration result:", result);
         if (!isMounted) return;
 
         if (result && result.error) {
@@ -106,44 +66,44 @@ export default function App() {
         }
 
         setDeviceInfo(result.device);
-        
-        // Fetch rooms list
+
         try {
-          const roomsRes = await api('/rooms');
-          const roomsData = Array.isArray(roomsRes) ? roomsRes : (roomsRes.data || []);
+          const roomsRes = await api("/rooms");
+          const roomsData = Array.isArray(roomsRes) ? roomsRes : roomsRes.data || [];
           setRooms(roomsData);
         } catch (error) {
           console.error("Error fetching rooms:", error);
           setRooms([]);
         }
-        
-        // Check if device is assigned to a room
-        // The registration endpoint returns assigned:true and room_id if device has a room
+
         if (result.assigned && result.room_id) {
-          console.log("Display App: Device already assigned to room:", result.room_id);
           localStorage.setItem("room_id", result.room_id);
           localStorage.setItem("roomId", result.room_id);
           setRoomId(result.room_id);
           setShowRoomSelect(false);
         } else {
-          // No room assigned in backend - show room selection (BLOCK everything until room selected)
-          console.log("Display App: No room assigned - showing room selection");
-          console.log("Registration result:", { assigned: result.assigned, room_id: result.room_id });
-          setShowRoomSelect(true);
-          setRoomId(null);
+          const savedRoom =
+            localStorage.getItem("room_id") || localStorage.getItem("roomId");
+          if (savedRoom) {
+            setRoomId(savedRoom);
+            setShowRoomSelect(false);
+          } else {
+            setShowRoomSelect(true);
+            setRoomId(null);
+          }
         }
       } catch (error) {
         console.error("Error in device registration:", error);
         if (!isMounted) return;
-        // Backend is down - show room selection and clear stale data
-        localStorage.removeItem("room_id");
-        localStorage.removeItem("roomId");
-        setShowRoomSelect(true);
-        setRoomId(null);
-        handleStartupFailure(
-          "Cannot connect during startup.",
-          (error && error.message) || "Unknown startup registration error."
-        );
+        const savedRoom =
+          localStorage.getItem("room_id") || localStorage.getItem("roomId");
+        if (savedRoom) {
+          setRoomId(savedRoom);
+          setShowRoomSelect(false);
+        } else {
+          setShowRoomSelect(true);
+          setRoomId(null);
+        }
       } finally {
         if (isMounted) {
           window.clearTimeout(timeoutId);
@@ -158,44 +118,14 @@ export default function App() {
     };
   }, []);
 
-  const handleRoomSelect = async (selectedRoomId) => {
+  /** RoomSelectModal already calls assign-room API — only update local state (no reload). */
+  const handleRoomSelect = (selectedRoomId) => {
     if (!selectedRoomId) return;
-    console.log("Display App: Room selected:", selectedRoomId);
-    
-    const deviceUuid = localStorage.getItem("device_uuid");
-    if (!deviceUuid) {
-      alert("Device UUID not found. Please refresh the page.");
-      return;
-    }
-    
-    try {
-      // Use POST /devices/assign-room endpoint
-      await api("/devices/assign-room", {
-        method: "POST",
-        body: JSON.stringify({ 
-          device_uuid: deviceUuid,
-          room_id: selectedRoomId
-        })
-      });
-      console.log("✅ Display device assigned to room:", selectedRoomId);
-      
-      localStorage.setItem("roomId", selectedRoomId);
-      localStorage.setItem("room_id", selectedRoomId);
-      setRoomId(selectedRoomId);
-      setShowRoomSelect(false);
-      // Reload to ensure all components use the new room_id
-      window.location.reload();
-    } catch (error) {
-      console.error("Error assigning room:", error);
-      const errorMsg = error.message || "Unknown error";
-      if (errorMsg.includes("already has a")) {
-        alert(`Room assignment failed: ${errorMsg}. Please select a different room.`);
-      } else {
-        alert(`Failed to assign room: ${errorMsg}`);
-      }
-    }
+    localStorage.setItem("roomId", selectedRoomId);
+    localStorage.setItem("room_id", selectedRoomId);
+    setRoomId(selectedRoomId);
+    setShowRoomSelect(false);
   };
-
 
   if (startupError) {
     return (
@@ -204,8 +134,8 @@ export default function App() {
           <h1 className="startup-error-title">Display App Startup Error</h1>
           <p className="startup-error-message">{startupError}</p>
           <p className="startup-error-meta">API endpoint: {API_BASE}</p>
-          {startupDetails && <pre className="startup-error-details">{startupDetails}</pre>}
-          <button className="startup-error-retry" onClick={() => window.location.reload()}>
+          {startupDetails ? <pre className="startup-error-details">{startupDetails}</pre> : null}
+          <button type="button" className="startup-error-retry" onClick={() => window.location.reload()}>
             Retry
           </button>
         </div>
@@ -213,21 +143,32 @@ export default function App() {
     );
   }
 
-  // Block everything until room is assigned (same as tablet-app)
-  if (!isRegistering && (showRoomSelect || !roomId)) {
+  if (isRegistering) {
+    return (
+      <div className="startup-loading-screen">
+        <div className="startup-loading-card">
+          <h1 className="startup-loading-title">Norebox Display</h1>
+          <p className="startup-loading-subtitle">Connecting to server…</p>
+          <p className="startup-error-meta">{API_BASE}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (showRoomSelect || !roomId) {
     return (
       <RoomSelectModal
         rooms={rooms}
         device={deviceInfo}
         onSelect={handleRoomSelect}
-        onClose={() => {
-          // Don't allow closing - device must be assigned
-          alert("Please select a room to continue.");
-        }}
+        onClose={() => alert("Please select a room to continue.")}
       />
     );
   }
 
-  // Only show Display component after room is selected
-  return <Display roomId={roomId} />;
+  return (
+    <AppErrorBoundary>
+      <Display roomId={roomId} />
+    </AppErrorBoundary>
+  );
 }

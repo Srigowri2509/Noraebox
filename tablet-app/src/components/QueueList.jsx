@@ -184,23 +184,25 @@ export default function QueueList({ queue = [], onRemove, onReorder, onClear, cl
       style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0, overflow: "hidden" }}
     >
       {/* ── Queue header ── */}
-      <div className="mb-2 flex flex-shrink-0 flex-col gap-0.5 md:mb-3">
-        <div className="flex min-w-0 items-center gap-2 md:gap-2.5">
-          <span className="text-lg text-sky-300 md:text-xl">🎵</span>
-          <h4 className="text-base font-semibold text-white sm:text-lg md:text-xl">Queue</h4>
+      <div className="queue-panel-header mb-2 flex-shrink-0 md:mb-3">
+        <div className="queue-panel-header-row">
+          <div className="queue-panel-title-wrap">
+            <span className="text-lg text-sky-300 md:text-xl">🎵</span>
+            <h4 className="text-base font-semibold text-white sm:text-lg md:text-xl">Queue</h4>
+          </div>
           {queue.length > 0 && onClear && (
             <button
               type="button"
               onClick={onClear}
               disabled={clearing}
-              className="ml-1 shrink-0 rounded-full border border-slate-500/45 bg-slate-800/90 px-3 py-1 text-[11px] font-semibold text-slate-300 transition-colors hover:border-red-400/50 hover:bg-red-950/40 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-45 md:px-3.5 md:py-1.5 md:text-xs"
+              className="queue-clear-btn"
             >
               {clearing ? "Clearing…" : "Clear"}
             </button>
           )}
         </div>
         {queue.length > 0 && (
-          <p className="pl-7 text-[10px] text-slate-500 md:pl-9 md:text-[11px]">Long press to reorder</p>
+          <p className="queue-panel-hint">Long press to reorder</p>
         )}
       </div>
 
@@ -322,3 +324,5 @@ export default function QueueList({ queue = [], onRemove, onReorder, onClear, cl
     </div>
   );
 }
+
+

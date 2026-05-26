@@ -1,400 +1,582 @@
-import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
-const KNOWN_GOOD_TEST_URL = "https://www.w3schools.com/html/mov_bbb.mp4";
+const BLACK_POSTER =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-/*
-  Video player for display-app (karaoke TV screen).
-  
-  Autoplay strategy:
-  1. Start muted (browsers always allow muted autoplay)
-  2. ALWAYS try to unmute immediately after play starts (aggressive)
-  3. If unmute succeeds → great, video plays with sound
-  4. If browser blocks unmute → show "click to unmute" overlay
-  5. On first click/touch → unmute and remember for all future videos
-*/
-const VideoPlayer = forwardRef(({ song, onEnded, onError }, ref) => {
-  const vref = useRef();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isMuted, setIsMuted] = useState(true); // React-controlled muted state
-  const [activeVideoUrl, setActiveVideoUrl] = useState("");
-  const [usedCodecFallback, setUsedCodecFallback] = useState(false);
+const SWAP_STABILIZE_MS = 350;
+const PRELOAD_WARM_MS = 150;
+const HIDDEN_KARAOKE_RETRY_MS = 600;
 
-  // Track user interaction (once true, stays true for the session)
-  const userInteractedRef = useRef(
-    sessionStorage.getItem("video_autoplay_enabled") === "true"
-  );
+function normalizeMediaUrl(u) {
+  if (!u) return "";
+  try {
+    return String(u).split("#")[0];
+  } catch {
+    return String(u);
+  }
+}
 
-  // On any user interaction: unmute + remember
-  useEffect(() => {
-    const unlock = () => {
-      userInteractedRef.current = true;
-      sessionStorage.setItem("video_autoplay_enabled", "true");
+function pickRandomTransition(paths, avoidUrl) {
+  if (!paths?.length) return "";
+  const pool = avoidUrl ? paths.filter((p) => normalizeMediaUrl(p) !== normalizeMediaUrl(avoidUrl)) : paths;
+  const list = pool.length ? pool : paths;
+  return list[Math.floor(Math.random() * list.length)] || "";
+}
 
-      // Unmute the current video immediately on any click/touch
-      const video = vref.current;
-      if (video) {
-        video.muted = false;
-        setIsMuted(false);
-        // If video was paused due to autoplay failure, try playing
-        if (video.paused && video.src) {
-          video.play().catch(() => {});
-        }
-        console.log("✅ Unmuted video after user interaction");
-      }
-    };
+function configureVideo(video) {
+  if (!video) return;
+  video.muted = true;
+  video.defaultMuted = true;
+  video.controls = false;
+  video.removeAttribute("controls");
+  video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
+  video.playsInline = true;
+}
 
-    const events = ["click", "touchstart", "keydown", "pointerdown"];
-    events.forEach((e) =>
-      document.addEventListener(e, unlock, { passive: true })
-    );
-    return () => events.forEach((e) => document.removeEventListener(e, unlock));
-  }, []);
-
-  useEffect(() => {
-    const onKeyDown = (event) => {
-      const video = vref.current;
-      if (!video) return;
-
-      const code = event.code || event.key || "";
-      const keyCode = event.keyCode;
-      const isToggle =
-        code === "MediaPlayPause" ||
-        code === "Space" ||
-        code === "Enter" ||
-        keyCode === 415 ||
-        keyCode === 19 ||
-        keyCode === 179;
-
-      const isPause = code === "MediaPause" || keyCode === 413;
-      const isPlay = code === "MediaPlay" || keyCode === 415;
-
-      if (!(isToggle || isPause || isPlay)) return;
-      event.preventDefault();
-
-      userInteractedRef.current = true;
-      sessionStorage.setItem("video_autoplay_enabled", "true");
-      video.muted = false;
-      setIsMuted(false);
-
-      if (isPause) {
-        video.pause();
-        return;
-      }
-      if (isPlay) {
-        video.play().catch(() => {});
-        return;
-      }
-      if (video.paused) video.play().catch(() => {});
-      else video.pause();
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  useEffect(() => {
-    if (song && song.videoUrl) {
-      setActiveVideoUrl(song.videoUrl);
-      setUsedCodecFallback(false);
-      setError(null);
-    } else {
-      setActiveVideoUrl("");
-      setUsedCodecFallback(false);
-      setError(null);
-    }
-  }, [song]);
-
-  // ── Main playback effect ──
-  useEffect(() => {
-    if (!activeVideoUrl) {
-      setError(null);
-      setLoading(false);
+function waitReady(video, timeoutMs = 12000) {
+  return new Promise((resolve) => {
+    if (!video) {
+      resolve();
       return;
     }
+    if (video.readyState >= 3) {
+      resolve();
+      return;
+    }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(tid);
+      video.removeEventListener("canplaythrough", onReady);
+      video.removeEventListener("canplay", onReady);
+      video.removeEventListener("loadeddata", onReady);
+      resolve();
+    };
+    const onReady = () => finish();
+    video.addEventListener("canplaythrough", onReady);
+    video.addEventListener("canplay", onReady);
+    video.addEventListener("loadeddata", onReady);
+    const tid = window.setTimeout(finish, timeoutMs);
+  });
+}
 
-    const video = vref.current;
-    if (!video) return;
+function waitPlaying(video, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    if (!video) {
+      resolve(false);
+      return;
+    }
+    if (!video.paused && video.readyState >= 2) {
+      resolve(true);
+      return;
+    }
+    let done = false;
+    const finish = (ok) => {
+      if (done) return;
+      done = true;
+      window.clearTimeout(tid);
+      video.removeEventListener("playing", onPlaying);
+      resolve(ok);
+    };
+    const onPlaying = () => finish(true);
+    video.addEventListener("playing", onPlaying);
+    const tid = window.setTimeout(() => finish(!video.paused && video.readyState >= 2), timeoutMs);
+  });
+}
 
-    setError(null);
-    setLoading(true);
+/**
+ * Dual permanently mounted <video> elements (videoA / videoB).
+ * Hidden slot loads + plays + stabilizes, then opacity swap — never reload visible slot.
+ */
+const VideoPlayer = forwardRef(
+  (
+    {
+      song,
+      preloadUrl = null,
+      transitionVideoUrls = [],
+      idleMode = "transition",
+      endWithLogo = false,
+      logoSrc = "/logo_noraebox.png",
+      onEnded,
+      onError,
+      onTransitionClipEnded,
+    },
+    ref
+  ) => {
+    const videoARef = useRef(null);
+    const videoBRef = useRef(null);
+    const onEndedRef = useRef(onEnded);
+    const onErrorRef = useRef(onError);
+    const onTransitionClipEndedRef = useRef(onTransitionClipEnded);
+    const transitionUrlsRef = useRef(transitionVideoUrls);
+    const activeSlotRef = useRef("a");
+    const loadTokenRef = useRef(0);
+    const slotModeRef = useRef({ a: "idle", b: "idle" });
+    const lastTransitionRef = useRef("");
+    const karaokeStartedAtRef = useRef(0);
+    const preloadTokenRef = useRef(0);
+    const hiddenKaraokeRetryRef = useRef(null);
+    const pendingKaraokeUrlRef = useRef(null);
+    const userInteractedRef = useRef(sessionStorage.getItem("video_autoplay_enabled") === "true");
+    const [activeSlot, setActiveSlot] = useState("a");
 
-    let hasNotifiedError = false;
+    const slotEl = useCallback((slot) => (slot === "a" ? videoARef.current : videoBRef.current), []);
+    const hiddenSlot = useCallback(() => (activeSlotRef.current === "a" ? "b" : "a"), []);
+    const activeEl = useCallback(() => slotEl(activeSlotRef.current), [slotEl]);
+    useEffect(() => {
+      onEndedRef.current = onEnded;
+      onErrorRef.current = onError;
+      onTransitionClipEndedRef.current = onTransitionClipEnded;
+      transitionUrlsRef.current = transitionVideoUrls;
+    }, [onEnded, onError, onTransitionClipEnded, transitionVideoUrls]);
 
-    /* ---- helpers ---- */
-    const tryUnmute = () => {
-      if (!video.muted) return; // already unmuted
-      video.muted = false;
-      // Check if browser actually allowed the unmute
-      if (!video.muted) {
-        setIsMuted(false);
-        userInteractedRef.current = true;
-        sessionStorage.setItem("video_autoplay_enabled", "true");
-        console.log("✅ Video unmuted successfully");
-      } else {
-        console.log("⚠️ Browser blocked unmute – overlay will appear");
+    useEffect(() => {
+      configureVideo(videoARef.current);
+      configureVideo(videoBRef.current);
+    }, []);
+
+    useEffect(() => {
+      return () => {
+        if (hiddenKaraokeRetryRef.current) {
+          window.clearTimeout(hiddenKaraokeRetryRef.current);
+        }
+      };
+    }, []);
+
+    const silenceSlot = useCallback((slot) => {
+      const video = slotEl(slot);
+      if (!video) return;
+      try {
+        video.pause();
+        video.muted = true;
+        video.volume = 0;
+      } catch {
+        /* ignore */
       }
-    };
+      if (slotModeRef.current[slot] === "karaoke") {
+        slotModeRef.current[slot] = "idle";
+      }
+    }, [slotEl]);
 
-    const onCanPlay = () => {
-      setLoading(false);
-      console.log("VideoPlayer: canplay – trying unmute");
-      tryUnmute();
-    };
+    const silenceAllSlots = useCallback(() => {
+      loadTokenRef.current += 1;
+      silenceSlot("a");
+      silenceSlot("b");
+      console.log("[AUDIO] all slots silenced");
+    }, [silenceSlot]);
 
-    const onPlaying = () => {
-      setLoading(false);
-      console.log("VideoPlayer: playing event – trying unmute");
-      tryUnmute();
-    };
+    const showSlot = useCallback(
+      (slot) => {
+        const other = slot === "a" ? "b" : "a";
+        silenceSlot(other);
+        console.log("[SWAP] visible slot", slot);
+        activeSlotRef.current = slot;
+        setActiveSlot(slot);
+      },
+      [silenceSlot]
+    );
 
-    const onErrorHandler = (e) => {
-      const code = video && video.error && video.error.code;
-      const msg = video && video.error && video.error.message;
-      console.error("VideoPlayer error:", { code, msg, src: activeVideoUrl });
-      setLoading(false);
-
-      if (!usedCodecFallback && activeVideoUrl !== KNOWN_GOOD_TEST_URL) {
-        console.warn("VideoPlayer: primary URL failed, trying codec test URL");
-        setUsedCodecFallback(true);
-        setError("Primary video failed. Testing fallback video...");
-        setActiveVideoUrl(KNOWN_GOOD_TEST_URL);
+    const tryUnmuteKaraoke = useCallback((video, slot) => {
+      if (!video || slotModeRef.current[slot] !== "karaoke") return;
+      video.volume = 1;
+      if (userInteractedRef.current) {
+        video.muted = false;
         return;
       }
-
-      setError("Failed to load video");
-      if (!hasNotifiedError && onError) {
-        hasNotifiedError = true;
-        onError({
-          title: song && song.title,
-          videoUrl: song && song.videoUrl,
-          code,
-          message: msg,
-        });
+      video.muted = false;
+      if (!video.muted) {
+        userInteractedRef.current = true;
+        sessionStorage.setItem("video_autoplay_enabled", "true");
       }
-    };
+    }, []);
 
-    /* ---- attach listeners ---- */
-    video.addEventListener("canplay", onCanPlay);
-    video.addEventListener("playing", onPlaying);
-    video.addEventListener("error", onErrorHandler);
+    const playOnSlot = useCallback(
+      async (slot, url, mode, token) => {
+        const video = slotEl(slot);
+        if (!video || !url) return false;
 
-    /* ---- load & play ---- */
-    console.log("VideoPlayer: loading", song.title, activeVideoUrl.substring(0, 80));
-    video.src = activeVideoUrl;
-    video.muted = true; // start muted so autoplay always works
-    setIsMuted(true);
-    video.load();
+        console.log("[VIDEO] loading", url);
 
-    const startPlayback = async () => {
-      try {
-        // Step 1: Play muted (guaranteed by all browsers)
-        await video.play();
-        console.log("VideoPlayer: muted play started ✅");
-        setLoading(false);
-
-        // Step 2: ALWAYS try to unmute immediately
-        video.muted = false;
-        if (!video.muted) {
-          // Browser allowed unmuted playback!
-          setIsMuted(false);
-          userInteractedRef.current = true;
-          sessionStorage.setItem("video_autoplay_enabled", "true");
-          console.log("VideoPlayer: auto-unmuted ✅ (browser allowed it)");
-        } else {
-          console.log("VideoPlayer: browser kept muted – showing overlay");
-          // Retry once more after a brief delay
-          setTimeout(() => {
-            if (video.muted && !video.paused) {
-              video.muted = false;
-              if (!video.muted) {
-                setIsMuted(false);
-                console.log("VideoPlayer: delayed auto-unmute succeeded ✅");
-              }
-            }
-          }, 200);
+        configureVideo(video);
+        video.loop = false;
+        slotModeRef.current[slot] = mode;
+        if (mode === "karaoke") {
+          video.volume = 1;
         }
-      } catch (err) {
-        console.warn("VideoPlayer: muted play() rejected:", err.message);
-        // Try unmuted play directly (some browsers prefer this)
-        try {
-          video.muted = false;
-          setIsMuted(false);
-          await video.play();
-          console.log("VideoPlayer: unmuted play succeeded ✅");
-        } catch {
-          // Last resort: play muted
+
+        if (normalizeMediaUrl(video.src) !== normalizeMediaUrl(url)) {
+          video.src = url;
+          try {
+            video.load();
+          } catch {
+            /* ignore */
+          }
+        }
+
+        await waitReady(video);
+        if (loadTokenRef.current !== token) return false;
+
+        let played = false;
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          if (loadTokenRef.current !== token) return false;
           video.muted = true;
-          setIsMuted(true);
-          video.play().catch(() => {});
-          console.log("VideoPlayer: fell back to muted play");
-        }
-      }
-    };
-
-    startPlayback();
-
-    return () => {
-      video.removeEventListener("canplay", onCanPlay);
-      video.removeEventListener("playing", onPlaying);
-      video.removeEventListener("error", onErrorHandler);
-    };
-  }, [song, activeVideoUrl, usedCodecFallback]);
-
-  useImperativeHandle(ref, () => ({
-    play: () => {
-      if (vref.current) vref.current.play();
-    },
-    pause: () => {
-      if (vref.current) vref.current.pause();
-    },
-  }));
-
-  /* ---- Render states ---- */
-  if (!song || !song.videoUrl) {
-    return (
-      <div className="video-placeholder">
-        <img
-          src="/logo_norebox.jpg"
-          alt="Norebox logo"
-          className="logo-fallback"
-          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-        />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div
-        className="video-placeholder"
-        style={{
-          position: "relative",
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: "#000",
-        }}
-      >
-        <img
-          src="/logo_norebox.jpg"
-          alt="Norebox logo"
-          className="logo-fallback"
-          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
-        />
-        <div
-          className="poster-text"
-          style={{
-            position: "absolute",
-            top: 80,
-            left: 20,
-            color: "#ff6b6b",
-            background: "rgba(0,0,0,0.5)",
-            padding: "8px 12px",
-            borderRadius: 8,
-          }}
-        >
-          {error}
-          {usedCodecFallback && (
-            <small style={{ fontSize: "13px", marginLeft: 8, color: "#fcd34d" }}>
-              (Fallback URL: mov_bbb.mp4)
-            </small>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className="video-wrapper"
-      style={{ position: "relative", width: "100%", height: "100%", zIndex: 1 }}
-    >
-      <video
-        ref={vref}
-        className="video-element"
-        onEnded={() => {
-          console.log("VideoPlayer: video ended");
-          if (onEnded) onEnded();
-        }}
-        onError={() => {
-          const video = vref.current;
-          if (onError) {
-            onError({
-              title: song && song.title,
-              videoUrl: song && song.videoUrl,
-              code: video && video.error && video.error.code,
-              message: video && video.error && video.error.message,
-            });
-          }
-        }}
-        onClick={() => {
-          // User click → mark interaction, unmute, and toggle play/pause
-          if (!userInteractedRef.current) {
-            userInteractedRef.current = true;
-            sessionStorage.setItem("video_autoplay_enabled", "true");
-          }
-          const video = vref.current;
-          if (video) {
-            video.muted = false;
-            setIsMuted(false);
-          }
-        }}
-        controls
-        disablePictureInPicture
-        controlsList="nodownload nofullscreen noremoteplayback"
-        playsInline
-        autoPlay
-        muted={isMuted}
-        preload="auto"
-        style={{
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          display: "block",
-          pointerEvents: "auto",
-          cursor: "default",
-          backgroundColor: "black",
-        }}
-      >
-        Your browser does not support the video tag.
-      </video>
-
-      {/* Show "click to unmute" hint if video is playing muted */}
-      {isMuted && !loading && !error && (
-        <div
-          onClick={() => {
-            userInteractedRef.current = true;
-            sessionStorage.setItem("video_autoplay_enabled", "true");
-            const video = vref.current;
-            if (video) {
-              video.muted = false;
-              setIsMuted(false);
+          try {
+            await video.play();
+          } catch (err) {
+            if (attempt === 3) {
+              console.warn("[VIDEO] play failed", url, err);
+              onErrorRef.current?.({ videoUrl: url, message: String(err) });
+              return false;
             }
-          }}
-          style={{
-            position: "absolute",
-            bottom: 60,
-            right: 20,
-            background: "rgba(0,0,0,0.7)",
-            color: "#fff",
-            padding: "10px 20px",
-            borderRadius: 8,
-            cursor: "pointer",
-            fontSize: 16,
-            zIndex: 10,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          🔇 Click anywhere to unmute
-        </div>
-      )}
-    </div>
-  );
-});
+            await new Promise((r) => window.setTimeout(r, 200 * (attempt + 1)));
+            continue;
+          }
+          const isPlaying = await waitPlaying(video);
+          if (isPlaying) {
+            played = true;
+            break;
+          }
+        }
 
+        if (!played || loadTokenRef.current !== token) {
+          try {
+            video.pause();
+            video.muted = true;
+          } catch {
+            /* ignore */
+          }
+          return false;
+        }
+
+        console.log("[VIDEO] playing", url);
+
+        await new Promise((r) => window.setTimeout(r, SWAP_STABILIZE_MS));
+
+        if (loadTokenRef.current !== token) {
+          try {
+            video.pause();
+            video.muted = true;
+          } catch {
+            /* ignore */
+          }
+          return false;
+        }
+
+        // Karaoke: swap when actually playing — avoid audio-only on hidden slot (opacity 0).
+        const unstable = video.paused || video.readyState < 2;
+        if (unstable) {
+          if (mode === "karaoke" && !video.paused) {
+            console.log("[VIDEO] karaoke swap (playing, stabilizing readyState)", url);
+          } else {
+            console.warn("[VIDEO] Playback unstable before swap — pausing", url);
+            try {
+              video.pause();
+              video.muted = true;
+            } catch {
+              /* ignore */
+            }
+            return false;
+          }
+        }
+
+        showSlot(slot);
+
+        if (mode === "karaoke") {
+          karaokeStartedAtRef.current = Date.now();
+          tryUnmuteKaraoke(video, slot);
+        }
+        return true;
+      },
+      [slotEl, showSlot, tryUnmuteKaraoke]
+    );
+
+    const swapToUrlRef = useRef(null);
+
+    const scheduleHiddenKaraokeRetry = useCallback((url) => {
+      pendingKaraokeUrlRef.current = url;
+      if (hiddenKaraokeRetryRef.current) {
+        window.clearTimeout(hiddenKaraokeRetryRef.current);
+      }
+      hiddenKaraokeRetryRef.current = window.setTimeout(() => {
+        hiddenKaraokeRetryRef.current = null;
+        const retryUrl = pendingKaraokeUrlRef.current;
+        if (!retryUrl) return;
+        if (slotModeRef.current[activeSlotRef.current] !== "transition") return;
+        console.log("[VIDEO] retry hidden karaoke preload", retryUrl);
+        void swapToUrlRef.current?.(retryUrl, "karaoke");
+      }, HIDDEN_KARAOKE_RETRY_MS);
+    }, []);
+
+    const swapToUrl = useCallback(
+      async (url, mode) => {
+        if (!url) return;
+        const token = ++loadTokenRef.current;
+        const hidden = hiddenSlot();
+        const visible = activeSlotRef.current;
+
+        // Stop karaoke audio on the visible slot before transition/karaoke loads on hidden.
+        if (mode === "transition" || mode === "karaoke") {
+          silenceSlot(visible);
+        }
+
+        const ok = await playOnSlot(hidden, url, mode, token);
+        if (ok) {
+          pendingKaraokeUrlRef.current = null;
+          if (hiddenKaraokeRetryRef.current) {
+            window.clearTimeout(hiddenKaraokeRetryRef.current);
+            hiddenKaraokeRetryRef.current = null;
+          }
+          return;
+        }
+        if (loadTokenRef.current !== token) return;
+
+        // Never reload the visible slot — keep transition running and retry hidden only.
+        if (mode === "karaoke" && slotModeRef.current[activeSlotRef.current] === "transition") {
+          console.warn("[VIDEO] hidden karaoke swap failed — will retry", url);
+          scheduleHiddenKaraokeRetry(url);
+        }
+      },
+      [hiddenSlot, playOnSlot, scheduleHiddenKaraokeRetry, silenceSlot]
+    );
+
+    swapToUrlRef.current = swapToUrl;
+
+    const warmPreloadOnHiddenSlot = useCallback(
+      async (url) => {
+        if (!url) return;
+        const token = ++preloadTokenRef.current;
+        const hidden = hiddenSlot();
+        const video = slotEl(hidden);
+        if (!video) return;
+
+        if (normalizeMediaUrl(video.src) === normalizeMediaUrl(url)) return;
+
+        console.log("[VIDEO] warm preload", url);
+
+        configureVideo(video);
+        video.muted = true;
+        video.volume = 0;
+        video.preload = "auto";
+        slotModeRef.current[hidden] = "preload";
+
+        if (normalizeMediaUrl(video.src) !== normalizeMediaUrl(url)) {
+          video.src = url;
+        }
+
+        try {
+          video.load();
+          await video.play();
+          await new Promise((r) => window.setTimeout(r, PRELOAD_WARM_MS));
+          video.pause();
+          video.currentTime = 0;
+          video.muted = true;
+          slotModeRef.current[hidden] = "idle";
+          console.log("[VIDEO] warm preload ready", url);
+        } catch (err) {
+          slotModeRef.current[hidden] = "idle";
+          if (preloadTokenRef.current === token) {
+            console.warn("[VIDEO] Warm preload failed", url, err);
+          }
+        }
+      },
+      [hiddenSlot, slotEl]
+    );
+
+    const startTransition = useCallback(() => {
+      const paths = transitionUrlsRef.current || [];
+      if (!paths.length) return;
+      const next = pickRandomTransition(paths, lastTransitionRef.current);
+      if (!next) return;
+      lastTransitionRef.current = normalizeMediaUrl(next);
+      console.log("[TRANSITION] started", next);
+      void swapToUrl(next, "transition");
+    }, [swapToUrl]);
+
+    useEffect(() => {
+      if (!preloadUrl) return;
+      if (slotModeRef.current[activeSlotRef.current] !== "transition") return;
+      void warmPreloadOnHiddenSlot(preloadUrl);
+    }, [preloadUrl, warmPreloadOnHiddenSlot]);
+
+    useEffect(() => {
+      const url = song?.videoUrl ? String(song.videoUrl) : "";
+      if (url) {
+        void swapToUrl(url, "karaoke");
+      } else if (idleMode === "logo") {
+        silenceAllSlots();
+      } else if (
+        idleMode === "transition" &&
+        slotModeRef.current[activeSlotRef.current] !== "transition"
+      ) {
+        silenceAllSlots();
+        startTransition();
+      }
+    }, [song?.videoUrl, idleMode, swapToUrl, startTransition, silenceAllSlots]);
+
+    const onSlotEnded = useCallback(
+      (slot) => () => {
+        if (activeSlotRef.current !== slot) return;
+        const video = slotEl(slot);
+        const slotMode = slotModeRef.current[slot];
+        const url = video?.currentSrc || video?.src || "";
+
+        if (slotMode === "karaoke") {
+          const playedSec = video?.currentTime || 0;
+          const dur = video?.duration || 0;
+          const elapsed = Date.now() - (karaokeStartedAtRef.current || 0);
+          const nearEnd = dur > 0 && playedSec >= Math.max(2, dur * 0.85);
+          const longEnough = elapsed >= 4000 || nearEnd;
+          if (!longEnough) {
+            console.warn("[VIDEO] ignored spurious ended", url, { playedSec, dur, elapsed });
+            try {
+              void video?.play();
+            } catch {
+              /* ignore */
+            }
+            return;
+          }
+          console.log("[VIDEO] ended", url);
+          silenceSlot(slot);
+          onEndedRef.current?.();
+          // Transition is started by Display clearing videoUrl — not here.
+        } else if (slotMode === "transition") {
+          console.log("[TRANSITION] ended", url);
+          slotModeRef.current[slot] = "idle";
+          void (async () => {
+            const handled = await onTransitionClipEndedRef.current?.();
+            if (handled !== true && !endWithLogo) {
+              startTransition();
+            }
+          })();
+        }
+      },
+      [slotEl, startTransition, silenceSlot, endWithLogo]
+    );
+
+    const onSlotError = useCallback(
+      (slot) => () => {
+        const video = slotEl(slot);
+        if (activeSlotRef.current !== slot) return;
+        const url = video?.currentSrc || video?.src || "";
+        console.warn("[VIDEO] error", url, video?.error?.code);
+        onErrorRef.current?.({
+          videoUrl: url,
+          code: video?.error?.code,
+          message: video?.error?.message,
+        });
+      },
+      [slotEl]
+    );
+
+    // 24/7 stall recovery: HTML5 `waiting`/`stalled` fire when the decoder
+    // or network buffer underruns mid-playback (common on long-running TVs).
+    // Nudge play() — never skip, only resume the same stream.
+    const onSlotStall = useCallback(
+      (slot) => () => {
+        if (activeSlotRef.current !== slot) return;
+        const video = slotEl(slot);
+        const mode = slotModeRef.current[slot];
+        if (!video || mode !== "karaoke") return;
+        if (video.paused) {
+          console.warn("[VIDEO] stall detected — resuming", video.currentSrc || video.src);
+          try {
+            void video.play();
+          } catch {
+            /* ignore */
+          }
+        }
+      },
+      [slotEl]
+    );
+
+    // 24/7 visibility recovery: some Android TV webviews pause background
+    // <video> elements on suspend. Resume the active karaoke when shown.
+    useEffect(() => {
+      const onVisibility = () => {
+        if (document.visibilityState !== "visible") return;
+        const slot = activeSlotRef.current;
+        const video = slotEl(slot);
+        if (!video) return;
+        if (slotModeRef.current[slot] !== "karaoke") return;
+        if (!video.paused) return;
+        console.warn("[VIDEO] visibility resume — re-playing active karaoke");
+        try {
+          void video.play();
+        } catch {
+          /* ignore */
+        }
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      return () => document.removeEventListener("visibilitychange", onVisibility);
+    }, [slotEl]);
+
+    useImperativeHandle(ref, () => ({
+      play: () => activeEl()?.play(),
+      pause: () => activeEl()?.pause(),
+      getActiveVideo: activeEl,
+      warmPreload: (url) => warmPreloadOnHiddenSlot(url),
+      stopKaraokeAudio: () => silenceAllSlots(),
+    }));
+
+    const showLogo = idleMode === "logo" && !song?.videoUrl;
+    const slotClass = (slot) => {
+      const base = "video-element video-slot";
+      if (showLogo) return `${base} video-slot--back`;
+      return `${base} ${activeSlot === slot ? "video-slot--front" : "video-slot--back"}`;
+    };
+
+    return (
+      <div className="video-dual-stack">
+        <div className="video-stage-base" aria-hidden="true" />
+
+        <video
+          ref={videoARef}
+          id="videoA"
+          className={slotClass("a")}
+          poster={BLACK_POSTER}
+          muted
+          preload="auto"
+          playsInline
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
+          controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
+          onEnded={onSlotEnded("a")}
+          onError={onSlotError("a")}
+          onWaiting={onSlotStall("a")}
+          onStalled={onSlotStall("a")}
+          onPause={onSlotStall("a")}
+        />
+        <video
+          ref={videoBRef}
+          id="videoB"
+          className={slotClass("b")}
+          poster={BLACK_POSTER}
+          muted
+          preload="auto"
+          playsInline
+          disablePictureInPicture
+          disableRemotePlayback
+          controls={false}
+          controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
+          onEnded={onSlotEnded("b")}
+          onError={onSlotError("b")}
+          onWaiting={onSlotStall("b")}
+          onStalled={onSlotStall("b")}
+          onPause={onSlotStall("b")}
+        />
+
+        {showLogo ? (
+          <div className="video-placeholder">
+            <img src={logoSrc} alt="Norebox logo" className="logo-fallback" />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+);
+
+VideoPlayer.displayName = "VideoPlayer";
 export default VideoPlayer;
