@@ -7,6 +7,7 @@ import { api, API_BASE } from "../api";
 const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 const TRANSCITIONS_FOLDER = "transcitions";
 let streamProbeResult = null; // null=unknown, true=available, false=unavailable
+const MAX_MEDIA_RECOVERY_RETRIES = 3;
 
 function buildTransitionVideoUrls() {
   return TRANSITION_IDS.map((id) => {
@@ -27,8 +28,24 @@ async function fetchSongWithUrl(songId) {
     const songData = await api(`/songs/${songId}`);
     const base = (API_BASE || "").replace(/\/$/, "");
     const streamUrl = `${base}/songs/${songId}/stream`;
+    let videoUrl = songData.file_url || songData.video_url || songData.url || "";
 
-    // Probe stream endpoint once per app run to avoid repeated 404 console noise.
+    // Prefer direct/signed media URL first. The /stream endpoint can stall
+    // in some browser + backend combinations when range responses truncate.
+    if (videoUrl) {
+      if (!videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
+        try {
+          const signedUrlResponse = await api(`/songs/${songId}/signed-url`);
+          videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+        } catch {
+          /* use file_url as-is */
+        }
+      }
+      return { ...songData, videoUrl };
+    }
+
+    // Fallback only when song metadata has no usable media URL.
+    // Keep probe result cached to avoid noisy failed HEAD requests.
     if (streamProbeResult !== false) {
       try {
         const probe = await fetch(streamUrl, { method: "HEAD" });
@@ -41,18 +58,7 @@ async function fetchSongWithUrl(songId) {
         streamProbeResult = false;
       }
     }
-
-    let videoUrl = songData.file_url || songData.video_url || songData.url;
-    if (videoUrl && !videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
-      try {
-        const signedUrlResponse = await api(`/songs/${songId}/signed-url`);
-        videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
-      } catch {
-        /* use file_url as-is */
-      }
-    }
-    if (!videoUrl) return null;
-    return { ...songData, videoUrl };
+    return null;
 
   } catch (err) {
     console.error("[DISPLAY] fetch song failed:", err);
@@ -113,6 +119,25 @@ export default function Display({ roomId }) {
   const songEndedLockRef = useRef(false);
   const transitionResolveInFlightRef = useRef(false);
   const transitionVideoUrls = useMemo(() => buildTransitionVideoUrls(), []);
+  const mediaRecoveryRef = useRef({
+    key: "",
+    attempts: 0,
+    timeoutId: null,
+  });
+
+  const clearMediaRecoveryTimeout = useCallback(() => {
+    const timeoutId = mediaRecoveryRef.current.timeoutId;
+    if (timeoutId) {
+      window.clearTimeout(timeoutId);
+      mediaRecoveryRef.current.timeoutId = null;
+    }
+  }, []);
+
+  const resetMediaRecovery = useCallback(() => {
+    clearMediaRecoveryTimeout();
+    mediaRecoveryRef.current.key = "";
+    mediaRecoveryRef.current.attempts = 0;
+  }, [clearMediaRecoveryTimeout]);
 
   const markSongPlayed = useCallback(() => {
     if (hasPlayedSongRef.current) return;
@@ -141,6 +166,7 @@ export default function Display({ roomId }) {
         lastSongIdRef.current = songId;
         setPreloadUrl(null);
         preloadedSongIdRef.current = null;
+        resetMediaRecovery();
         localStorage.setItem("lastVideo", loaded.videoUrl);
         markSongPlayed();
         setCurrentSong(loaded);
@@ -151,7 +177,7 @@ export default function Display({ roomId }) {
         return false;
       }
     },
-    [markSongPlayed]
+    [markSongPlayed, resetMediaRecovery]
   );
 
   const resetToHomeLogo = useCallback(() => {
@@ -183,12 +209,13 @@ export default function Display({ roomId }) {
     // The current preload (if any) has now become the active song.
     // Clear so the next poll can preload the NEW queue head.
     preloadedSongIdRef.current = null;
+    resetMediaRecovery();
     localStorage.setItem("lastVideo", pending.videoUrl);
     markSongPlayed();
     setCurrentSong(pending);
     songEndedLockRef.current = false;
     return true;
-  }, [markSongPlayed]);
+  }, [markSongPlayed, resetMediaRecovery]);
 
   const enterBetweenSongs = useCallback(() => {
     if (betweenSongsRef.current) return;
@@ -745,6 +772,7 @@ export default function Display({ roomId }) {
     if (betweenSongsRef.current || sessionEndPhaseRef.current) return;
     if (songEndedLockRef.current) return;
     songEndedLockRef.current = true;
+    resetMediaRecovery();
     console.log("[STATE] SONG_ENDED");
     pendingSongRef.current = null;
     skipPendingSongIdRef.current = null;
@@ -753,9 +781,42 @@ export default function Display({ roomId }) {
 
   const handleVideoError = (videoError) => {
     console.error("❌ Video failed to load (will retry, not skipping):", videoError);
-    // Intentionally do nothing here.
-    // Requirement: never auto-skip songs on media errors.
+    if (sessionFinalizedRef.current || sessionEndPhaseRef.current || betweenSongsRef.current) return;
+
+    const activeSong = currentSongRef.current;
+    if (!activeSong?.videoUrl) return;
+
+    const key = String(activeSong.id || activeSong.videoUrl);
+    if (mediaRecoveryRef.current.key !== key) {
+      mediaRecoveryRef.current.key = key;
+      mediaRecoveryRef.current.attempts = 0;
+    }
+
+    clearMediaRecoveryTimeout();
+    mediaRecoveryRef.current.attempts += 1;
+    const attempt = mediaRecoveryRef.current.attempts;
+
+    if (attempt <= MAX_MEDIA_RECOVERY_RETRIES) {
+      const delayMs = 600 * attempt;
+      mediaRecoveryRef.current.timeoutId = window.setTimeout(() => {
+        mediaRecoveryRef.current.timeoutId = null;
+        // Force a fresh load attempt for the same song URL.
+        setCurrentSong((prev) => (prev?.videoUrl ? { ...prev } : prev));
+      }, delayMs);
+      return;
+    }
+
+    console.warn("[VIDEO] retries exhausted, moving to transition to avoid stuck state");
+    mediaRecoveryRef.current.attempts = 0;
+    songEndedLockRef.current = false;
+    enterBetweenSongs();
   };
+
+  useEffect(() => {
+    return () => {
+      clearMediaRecoveryTimeout();
+    };
+  }, [clearMediaRecoveryTimeout]);
 
   // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"
   const fmt = (ms) => {

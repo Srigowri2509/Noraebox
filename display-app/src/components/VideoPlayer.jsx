@@ -692,8 +692,11 @@ const VideoPlayer = forwardRef(
           return;
         }
 
-        // Ignore startup jitter for first few seconds.
-        if (t < 5) return;
+        // Startup freeze guard:
+        // Some Edge/WebView runs stall around 0-2 s with paused=false and
+        // readyState looking healthy. If progress has been flat for long
+        // enough, treat this as a real freeze even during startup.
+        if (t < 5 && dtWall < 5000) return;
         // Give it longer before declaring frozen.
         if (dtWall < 7000) return;
         // Cooldown between recoveries so we don't thrash.
@@ -703,8 +706,8 @@ const VideoPlayer = forwardRef(
         if (!url) return;
         const norm = normalizeMediaUrl(url);
         if (unsupportedKaraokeUrlRef.current && norm === unsupportedKaraokeUrlRef.current) return;
-        // If decoder/network appears healthy, don't recover.
-        if (!video.paused && video.readyState >= 2) return;
+        // Do not rely only on paused/readyState here — those can look healthy
+        // while currentTime is frozen at startup on some browser builds.
 
         lastRecoveryAtRef.current = now;
         lastProgressWallClockRef.current = now;

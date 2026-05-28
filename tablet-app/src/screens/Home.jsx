@@ -29,6 +29,7 @@ export default function Home() {
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
   const [skipLocked, setSkipLocked] = useState(false);
+  const [isSongPlaying, setIsSongPlaying] = useState(false);
   const skipUnlockTimerRef = useRef(null);
 
   useEffect(() => {
@@ -467,6 +468,9 @@ const filteredSongs = useMemo(() => {
       alert("No room selected. Please select a room first.");
       return;
     }
+    if (isSongPlaying) {
+      return;
+    }
     
     console.log("🎬 READY TO SING BUTTON CLICKED!");
     console.log("📋 Room ID:", currentRoomId);
@@ -580,6 +584,41 @@ const filteredSongs = useMemo(() => {
     }
   };
 
+  // Poll room session to know whether a song is currently playing.
+  // Used to grey out Play while playback is active.
+  useEffect(() => {
+    const currentRoomId = roomId || room?.id;
+    if (!currentRoomId || currentRoomId === "") {
+      setIsSongPlaying(false);
+      return;
+    }
+
+    let mounted = true;
+    const pollSession = async () => {
+      try {
+        const sessionData = await api(`/rooms/${currentRoomId}/session`);
+        const session = sessionData?.session || null;
+        const playing = Boolean(
+          session &&
+          session.current_song_id &&
+          session.status !== "ended" &&
+          session.status !== "finished"
+        );
+        if (mounted) setIsSongPlaying(playing);
+      } catch {
+        if (mounted) setIsSongPlaying(false);
+      }
+    };
+
+    pollSession();
+    const interval = setInterval(pollSession, 2000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [roomId, room?.id]);
+
+  const playDisabled = !queue || queue.length === 0 || isSongPlaying;
   const skipDisabled = !queue || queue.length === 0 || skipLocked;
 
   // Poll queue to check for changes and auto-play next song
@@ -795,17 +834,17 @@ const filteredSongs = useMemo(() => {
                     <button
                       type="button"
                       onClick={handleReadyToSing}
-                      disabled={!queue || queue.length === 0}
+                      disabled={playDisabled}
                       className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-5 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[6rem] md:min-h-[44px] md:min-w-[8rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[9rem] lg:px-9 lg:text-base
-                      ${(!queue || queue.length === 0)
+                      ${(playDisabled)
                         ? "cursor-not-allowed opacity-45"
                         : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
                     `}
                       style={{
-                        backgroundColor: (!queue || queue.length === 0) ? "#475569" : "#ff4081",
+                        backgroundColor: (playDisabled) ? "#475569" : "#ff4081",
                         borderRadius: 9999,
                         boxShadow:
-                          !queue || queue.length === 0
+                          playDisabled
                             ? "inset 0 1px 0 rgba(255,255,255,0.08)"
                             : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(255,64,129,0.8), 0 0 48px rgba(255,64,129,0.38)",
                       }}
