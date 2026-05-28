@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Header from "../components/Header.jsx";
 import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
@@ -28,6 +28,14 @@ export default function Home() {
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading, search } = useSongSearch();
+  const [skipLocked, setSkipLocked] = useState(false);
+  const skipUnlockTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (skipUnlockTimerRef.current) clearTimeout(skipUnlockTimerRef.current);
+    };
+  }, []);
 
   // --- Prefix search hooks (hit backend /songs/search) ---
   // Enable when user has typed ≥1 char in the respective field
@@ -528,6 +536,8 @@ const filteredSongs = useMemo(() => {
   };
 
   const handleSkip = async () => {
+    if (skipLocked) return;
+
     const currentRoomId = roomId || room?.id;
     if (!currentRoomId || currentRoomId === "") {
       alert("No room selected. Please select a room first.");
@@ -552,6 +562,10 @@ const filteredSongs = useMemo(() => {
       } else if (response.status === "no_songs") {
         alert("No more songs in queue.");
       } else if (response.status === "playing") {
+        setSkipLocked(true);
+        if (skipUnlockTimerRef.current) clearTimeout(skipUnlockTimerRef.current);
+        skipUnlockTimerRef.current = setTimeout(() => setSkipLocked(false), 5000);
+
         console.log("✅ Successfully skipped to next song:", response.song_title);
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
@@ -565,6 +579,8 @@ const filteredSongs = useMemo(() => {
       alert(`Failed to skip song: ${error.message || "Unknown error"}`);
     }
   };
+
+  const skipDisabled = !queue || queue.length === 0 || skipLocked;
 
   // Poll queue to check for changes and auto-play next song
   useEffect(() => {
@@ -800,17 +816,17 @@ const filteredSongs = useMemo(() => {
                     <button
                       type="button"
                       onClick={handleSkip}
-                      disabled={!queue || queue.length === 0}
+                      disabled={skipDisabled}
                       className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-4 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[7.75rem] md:min-h-[44px] md:min-w-[10rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[11.25rem] lg:px-9 lg:text-base
-                      ${(!queue || queue.length === 0)
+                      ${skipDisabled
                         ? "cursor-not-allowed opacity-45"
                         : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
                     `}
                       style={{
-                        backgroundColor: (!queue || queue.length === 0) ? "#475569" : "#00bcd4",
+                        backgroundColor: skipDisabled ? "#475569" : "#00bcd4",
                         borderRadius: 9999,
                         boxShadow:
-                          !queue || queue.length === 0
+                          skipDisabled
                             ? "inset 0 1px 0 rgba(255,255,255,0.08)"
                             : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(0,229,255,0.7), 0 0 48px rgba(0,188,212,0.42)",
                       }}

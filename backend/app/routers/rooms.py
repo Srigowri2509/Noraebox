@@ -90,7 +90,6 @@ def get_room_session(room_id: str, db: Session = Depends(get_db)):
         if not session:
             return {"session": None, "queue": []}
         
-        print(f"📊 GET /rooms/{room_id}/session: Found session id={session.id}, status={session.status}, total_minutes={session.total_minutes}")
 
         # Get queue
         queue_items = db.query(QueueItem, Song).join(
@@ -120,8 +119,6 @@ def get_room_session(room_id: str, db: Session = Depends(get_db)):
             "current_song_id": session.current_song_id,
             "current_song_start_time": session.current_song_start_time.isoformat() if session.current_song_start_time else None
         }
-        print(f"📊 GET /rooms/{room_id}/session: Returning session with total_minutes={session.total_minutes}")
-        
         return {
             "session": session_response,
             "queue": queue

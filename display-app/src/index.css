@@ -201,6 +201,27 @@ video::-internal-media-controls-overlay-cast-button {
   -webkit-appearance: none !important;
 }
 
+.video-tap-to-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.85rem 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.video-tap-to-play:hover {
+  background: rgba(30, 41, 59, 0.95);
+}
+
 /* Third upcoming clip — in-tree buffer (opacity 0, full-bleed; no visibility:hidden for TV) */
 .video-layer-preload-buddy {
   position: absolute;

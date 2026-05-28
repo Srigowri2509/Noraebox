@@ -43,6 +43,13 @@ function LanguageFilter({ value = "all", onChange, languages = [] }) {
 }
 
 function SearchField({ label, placeholder, value, onChange }) {
+  const dismissKeyboard = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+  };
+
   return (
     <div className="min-w-0">
       <label className={labelCls}>{label}</label>
@@ -59,9 +66,12 @@ function SearchField({ label, placeholder, value, onChange }) {
             </svg>
           </div>
           <input
-            type="text"
+            type="search"
+            enterKeyHint="search"
+            inputMode="search"
             value={value}
             onChange={(e) => onChange?.(e.target.value)}
+            onKeyDown={dismissKeyboard}
             placeholder={placeholder}
             className={`${inputRest} border-l border-white/[0.06] pl-2 md:pl-2.5`}
           />

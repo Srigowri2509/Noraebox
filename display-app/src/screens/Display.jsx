@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
 import Navbar from "../components/Navbar";
 import VideoPlayer from "../components/VideoPlayer";
 import NextBanner from "../components/NextBanner";
-import { api } from "../api";
+import { api, API_BASE } from "../api";
 
 const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 const TRANSCITIONS_FOLDER = "transcitions";
+let streamProbeResult = null; // null=unknown, true=available, false=unavailable
 
 function buildTransitionVideoUrls() {
   return TRANSITION_IDS.map((id) => {
@@ -22,18 +23,41 @@ function buildTransitionVideoUrls() {
 }
 
 async function fetchSongWithUrl(songId) {
-  const songData = await api(`/songs/${songId}`);
-  let videoUrl = songData.file_url || songData.video_url || songData.url;
-  if (videoUrl && !videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
-    try {
-      const signedUrlResponse = await api(`/songs/${songId}/signed-url`);
-      videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
-    } catch {
-      /* use file_url as-is */
+  try {
+    const songData = await api(`/songs/${songId}`);
+    const base = (API_BASE || "").replace(/\/$/, "");
+    const streamUrl = `${base}/songs/${songId}/stream`;
+
+    // Probe stream endpoint once per app run to avoid repeated 404 console noise.
+    if (streamProbeResult !== false) {
+      try {
+        const probe = await fetch(streamUrl, { method: "HEAD" });
+        if (probe.ok) {
+          streamProbeResult = true;
+          return { ...songData, videoUrl: streamUrl };
+        }
+        streamProbeResult = false;
+      } catch {
+        streamProbeResult = false;
+      }
     }
+
+    let videoUrl = songData.file_url || songData.video_url || songData.url;
+    if (videoUrl && !videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
+      try {
+        const signedUrlResponse = await api(`/songs/${songId}/signed-url`);
+        videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+      } catch {
+        /* use file_url as-is */
+      }
+    }
+    if (!videoUrl) return null;
+    return { ...songData, videoUrl };
+
+  } catch (err) {
+    console.error("[DISPLAY] fetch song failed:", err);
+    return null;
   }
-  if (!videoUrl) return null;
-  return { ...songData, videoUrl };
 }
 
 /*
@@ -70,11 +94,24 @@ export default function Display({ roomId }) {
   const sessionEndRequestedRef = useRef(false);
   const pendingSessionEndRef = useRef(false);
   const lastSessionIdRef = useRef(null);
+  // Set true the first time the backend actually reports the session as
+  // ended/finished. The "session restarted in-place" recovery block only
+  // fires after this has been observed, so that the gap between our
+  // client-side timer hitting 0 and the backend processing /end cannot
+  // accidentally clear the finalization lock and re-load the just-ended song.
+  const backendConfirmedEndedRef = useRef(false);
   // Snapshot of queue length from the most recent successful poll — used to
   // decide whether to retry a queue advance with another transition versus
   // falling back to the logo.
   const latestQueueLengthRef = useRef(0);
   const consecutiveAdvanceRetriesRef = useRef(0);
+  // Tracks the song id we've already proactively preloaded for the queue
+  // head, so polls don't refetch the signed URL or re-warm the hidden slot
+  // on every tick. Cleared whenever a song actually starts playing.
+  const preloadedSongIdRef = useRef(null);
+  // Guards to prevent duplicate end/transition resolution races.
+  const songEndedLockRef = useRef(false);
+  const transitionResolveInFlightRef = useRef(false);
   const transitionVideoUrls = useMemo(() => buildTransitionVideoUrls(), []);
 
   const markSongPlayed = useCallback(() => {
@@ -83,6 +120,40 @@ export default function Display({ roomId }) {
     setHasPlayedSong(true);
   }, []);
 
+  const promoteSongFromBackend = useCallback(
+    async (songId, { escapeTransition = false } = {}) => {
+      if (!songId || songId === lastSongIdRef.current) return true;
+
+      if (escapeTransition) {
+        betweenSongsRef.current = false;
+        setBetweenSongs(false);
+        skipPendingSongIdRef.current = null;
+        pendingSongRef.current = null;
+        videoRef.current?.stopKaraokeAudio?.();
+      }
+
+      try {
+        const loaded = await fetchSongWithUrl(songId);
+        if (!loaded?.videoUrl) {
+          setCurrentSong(null);
+          return false;
+        }
+        lastSongIdRef.current = songId;
+        setPreloadUrl(null);
+        preloadedSongIdRef.current = null;
+        localStorage.setItem("lastVideo", loaded.videoUrl);
+        markSongPlayed();
+        setCurrentSong(loaded);
+        return true;
+      } catch (err) {
+        console.error("[POLL] promote song failed:", err);
+        setCurrentSong(null);
+        return false;
+      }
+    },
+    [markSongPlayed]
+  );
+
   const resetToHomeLogo = useCallback(() => {
     betweenSongsRef.current = false;
     setBetweenSongs(false);
@@ -90,7 +161,9 @@ export default function Display({ roomId }) {
     setSessionEndPhase(false);
     pendingSongRef.current = null;
     skipPendingSongIdRef.current = null;
+    lastSongIdRef.current = null;
     setPreloadUrl(null);
+    preloadedSongIdRef.current = null;
     setCurrentSong(null);
     videoRef.current?.stopKaraokeAudio?.();
   }, []);
@@ -107,13 +180,18 @@ export default function Display({ roomId }) {
     setBetweenSongs(false);
     lastSongIdRef.current = pending.id;
     setPreloadUrl(null);
+    // The current preload (if any) has now become the active song.
+    // Clear so the next poll can preload the NEW queue head.
+    preloadedSongIdRef.current = null;
     localStorage.setItem("lastVideo", pending.videoUrl);
     markSongPlayed();
     setCurrentSong(pending);
+    songEndedLockRef.current = false;
     return true;
   }, [markSongPlayed]);
 
   const enterBetweenSongs = useCallback(() => {
+    if (betweenSongsRef.current) return;
     betweenSongsRef.current = true;
     setBetweenSongs(true);
     videoRef.current?.stopKaraokeAudio?.();
@@ -150,6 +228,7 @@ export default function Display({ roomId }) {
     setHasSessionStarted(false);
     setSessionEnded(true);
     setPreloadUrl(null);
+    preloadedSongIdRef.current = null;
     setNextSong(null);
     setTimeLeft(null);
     setCurrentSong(null);
@@ -169,7 +248,9 @@ export default function Display({ roomId }) {
         if (loaded) {
           pendingSongRef.current = loaded;
           setPreloadUrl(loaded.videoUrl);
-          console.log("[QUEUE] advanced →", loaded.title);
+          // The advanced song was likely the one we'd prefetched as the
+          // queue head — release the lock so the new head can preload.
+          preloadedSongIdRef.current = null;
           return true;
         }
       }
@@ -198,15 +279,17 @@ export default function Display({ roomId }) {
   }, [roomId]);
 
   const handleTransitionClipEnded = useCallback(async () => {
-    console.log("[TRANSITION] clip ended — resolving next song");
+    if (transitionResolveInFlightRef.current) return true;
+    transitionResolveInFlightRef.current = true;
+    try {
 
-    if (!hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
-      consecutiveAdvanceRetriesRef.current = 0;
-      resetToHomeLogo();
-      return true;
-    }
+      if (!hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
+        consecutiveAdvanceRetriesRef.current = 0;
+        resetToHomeLogo();
+        return true;
+      }
 
-    if (sessionEndPhaseRef.current) {
+      if (sessionEndPhaseRef.current) {
       // One-shot lock: prevent the 1 s poll from re-triggering another
       // session-end transition after this final one completes.
       sessionFinalizedRef.current = true;
@@ -230,10 +313,10 @@ export default function Display({ roomId }) {
       // run silenceAllSlots() after the placeholder is on screen — both
       // slots will already be at opacity 0 by then, so the clear is invisible.
       console.log("[STATE] final transition done → home logo");
-      return true;
-    }
+        return true;
+      }
 
-    if (pendingSongRef.current?.videoUrl) {
+      if (pendingSongRef.current?.videoUrl) {
       try {
         await videoRef.current?.warmPreload?.(pendingSongRef.current.videoUrl);
       } catch (warmErr) {
@@ -242,10 +325,10 @@ export default function Display({ roomId }) {
       applyPendingSong();
       skipPendingSongIdRef.current = null;
       consecutiveAdvanceRetriesRef.current = 0;
-      return true;
-    }
+        return true;
+      }
 
-    if (skipPendingSongIdRef.current) {
+      if (skipPendingSongIdRef.current) {
       try {
         const loaded = await fetchSongWithUrl(skipPendingSongIdRef.current);
         skipPendingSongIdRef.current = null;
@@ -258,29 +341,29 @@ export default function Display({ roomId }) {
           }
           applyPendingSong();
           consecutiveAdvanceRetriesRef.current = 0;
+            return true;
+          }
+        } catch (error) {
+          console.error("[QUEUE] skip pending load failed:", error);
+        }
+      }
+
+      try {
+        const hasNext = await advanceQueueFromBackend();
+        if (hasNext && pendingSongRef.current?.videoUrl) {
+          const nextUrl = pendingSongRef.current.videoUrl;
+          try {
+            await videoRef.current?.warmPreload?.(nextUrl);
+          } catch (warmErr) {
+            console.warn("[VIDEO] warm preload before swap failed", warmErr);
+          }
+          applyPendingSong();
+          consecutiveAdvanceRetriesRef.current = 0;
           return true;
         }
       } catch (error) {
-        console.error("[QUEUE] skip pending load failed:", error);
+        console.error("[QUEUE] advance failed after transition:", error);
       }
-    }
-
-    try {
-      const hasNext = await advanceQueueFromBackend();
-      if (hasNext && pendingSongRef.current?.videoUrl) {
-        const nextUrl = pendingSongRef.current.videoUrl;
-        try {
-          await videoRef.current?.warmPreload?.(nextUrl);
-        } catch (warmErr) {
-          console.warn("[VIDEO] warm preload before swap failed", warmErr);
-        }
-        applyPendingSong();
-        consecutiveAdvanceRetriesRef.current = 0;
-        return true;
-      }
-    } catch (error) {
-      console.error("[QUEUE] advance failed after transition:", error);
-    }
 
     // Fallback path — backend reports no next song.
     // If our latest poll snapshot believed the queue still had items, this is
@@ -294,38 +377,43 @@ export default function Display({ roomId }) {
     // continuity for 10–12 hour shifts. With ~2–3 s per transition this
     // gives ~20–30 s of recovery time before we give up and let the
     // auto-restart-from-idle poll pick up.
-    const MAX_TRANSITION_RETRIES = 10;
-    if (
-      latestQueueLengthRef.current > 0 &&
-      consecutiveAdvanceRetriesRef.current < MAX_TRANSITION_RETRIES &&
-      !pendingSessionEndRef.current
-    ) {
-      consecutiveAdvanceRetriesRef.current += 1;
-      console.warn(
-        `[QUEUE] advance failed but queue snapshot has ${latestQueueLengthRef.current} item(s) — playing another transition (retry ${consecutiveAdvanceRetriesRef.current}/${MAX_TRANSITION_RETRIES})`
-      );
-      // Stay in between-songs state; VideoPlayer will autostart another transition.
-      return false;
-    }
+      const MAX_TRANSITION_RETRIES = 10;
+      if (
+        latestQueueLengthRef.current > 0 &&
+        consecutiveAdvanceRetriesRef.current < MAX_TRANSITION_RETRIES &&
+        !pendingSessionEndRef.current
+      ) {
+        consecutiveAdvanceRetriesRef.current += 1;
+        console.warn(
+          `[QUEUE] advance failed but queue snapshot has ${latestQueueLengthRef.current} item(s) — playing another transition (retry ${consecutiveAdvanceRetriesRef.current}/${MAX_TRANSITION_RETRIES})`
+        );
+        // Stay in between-songs state; VideoPlayer will autostart another transition.
+        return false;
+      }
 
-    consecutiveAdvanceRetriesRef.current = 0;
-    betweenSongsRef.current = false;
-    setBetweenSongs(false);
-    setPreloadUrl(null);
-    setCurrentSong(null);
-    return true;
+      consecutiveAdvanceRetriesRef.current = 0;
+      betweenSongsRef.current = false;
+      setBetweenSongs(false);
+      setPreloadUrl(null);
+      setCurrentSong(null);
+      return true;
+    } finally {
+      transitionResolveInFlightRef.current = false;
+    }
   }, [applyPendingSong, advanceQueueFromBackend, resetToHomeLogo]);
 
-  // Autoplay unlock is handled inside VideoPlayer itself.
-  // Just mark user interaction once so all future videos autoplay with sound.
+  // Browser autoplay: one click on the display page unlocks video+audio and retries playback.
   useEffect(() => {
     const unlock = () => {
       sessionStorage.setItem("video_autoplay_enabled", "true");
+      const active = videoRef.current?.getActiveVideo?.();
+      const needsRetry = !active || active.paused;
+      if (needsRetry) {
+        setCurrentSong((prev) => (prev?.videoUrl ? { ...prev } : prev));
+      }
     };
     const events = ["click", "touchstart", "keydown", "pointerdown"];
-    events.forEach((e) =>
-      document.addEventListener(e, unlock, { once: true, passive: true })
-    );
+    events.forEach((e) => document.addEventListener(e, unlock, { passive: true }));
     return () => events.forEach((e) => document.removeEventListener(e, unlock));
   }, []);
 
@@ -369,12 +457,14 @@ export default function Display({ roomId }) {
         // next session's end-of-song / timer / cancel flow can fire normally.
         if (session.id && session.id !== lastSessionIdRef.current) {
           if (lastSessionIdRef.current) {
-            console.log("[POLL] new session detected — resetting end-sequence locks:", session.id);
             sessionFinalizedRef.current = false;
             sessionEndRequestedRef.current = false;
             pendingSessionEndRef.current = false;
+            backendConfirmedEndedRef.current = false;
             consecutiveAdvanceRetriesRef.current = 0;
+            preloadedSongIdRef.current = null;
           }
+          lastSongIdRef.current = null;
           lastSessionIdRef.current = session.id;
         }
 
@@ -390,10 +480,34 @@ export default function Display({ roomId }) {
         const active = !isSessionEnded && (session.status === "playing" || session.status === "idle" || session.status === "active");
         setIsActive(active);
 
+        // Recover from the session-end finalization lock when the backend
+        // restarts the session in-place (same session.id, status flipped
+        // from ended/finished back to playing/active). Gated by
+        // backendConfirmedEndedRef so a stale "active" read from before the
+        // backend has processed our /end POST can't clear the lock and
+        // re-load the just-ended song.
+        if (
+          !isSessionEnded &&
+          sessionFinalizedRef.current &&
+          backendConfirmedEndedRef.current
+        ) {
+          console.log("[POLL] session restarted in-place — clearing finalization lock");
+          sessionFinalizedRef.current = false;
+          sessionEndRequestedRef.current = false;
+          pendingSessionEndRef.current = false;
+          backendConfirmedEndedRef.current = false;
+          consecutiveAdvanceRetriesRef.current = 0;
+          preloadedSongIdRef.current = null;
+        }
+
         // Session ended on backend — cut immediately to logo, regardless of
         // whether a song or transition is currently playing. User wants a
         // hard stop the moment the session time runs out.
         if (isSessionEnded) {
+          // Mark that the backend has acknowledged the end at least once.
+          // The recovery block above requires this before it will clear the
+          // finalization lock on a subsequent "active" read.
+          backendConfirmedEndedRef.current = true;
           if (sessionFinalizedRef.current) {
             return; // already finalized; ignore stale "ended" reads from backend
           }
@@ -435,8 +549,14 @@ export default function Display({ roomId }) {
             // random transition) is stopped on the spot.
             if (remainingSeconds === 0) {
               if (sessionFinalizedRef.current) {
-                /* already finalized; ignore */
-              } else if (hasPlayedSongRef.current) {
+                // Already finalized — but the backend may still be
+                // reporting the old current_song_id because /end hasn't
+                // been processed yet. Bail out of this poll so the
+                // song-change branch below cannot re-load the just-ended
+                // song.
+                return;
+              }
+              if (hasPlayedSongRef.current) {
                 if (!sessionEndRequestedRef.current) {
                   sessionEndRequestedRef.current = true;
                   console.log("[POLL] timer hit 0 — auto-cancelling backend session");
@@ -445,13 +565,18 @@ export default function Display({ roomId }) {
                   );
                 }
                 startSessionEndSequence();
-              } else {
-                resetToHomeLogo();
-                setSessionEnded(true);
+                // Critical: bail out NOW. Without this return, the song-
+                // change branch further down would see the still-stale
+                // current_song_id from the backend (no /end processed
+                // yet) and re-fetch + setCurrentSong, restarting the
+                // song we just stopped.
+                return;
               }
-            } else {
-              setSessionEnded(false);
+              resetToHomeLogo();
+              setSessionEnded(true);
+              return;
             }
+            setSessionEnded(false);
           } catch (e) {
             console.error("Error calculating timer:", e);
             setTimeLeft(null);
@@ -466,43 +591,22 @@ export default function Display({ roomId }) {
         // Song changes from backend — never interrupt transition or session-end sequence
         if (sessionEndPhaseRef.current) {
           /* wait for final transition → logo */
-        } else if (betweenSongsRef.current) {
-          if (currentSongId && currentSongId !== lastSongIdRef.current) {
-            console.log("[POLL] between-songs — recording skip target only", currentSongId);
-            skipPendingSongIdRef.current = currentSongId;
-          }
         } else if (currentSongId && currentSongId !== lastSongIdRef.current) {
           setHasSessionStarted(true);
-
-          const wasPlayingKaraoke =
-            currentSongRef.current?.videoUrl && lastSongIdRef.current != null;
-          const isSkipFromTablet = wasPlayingKaraoke;
-
-          if (isSkipFromTablet) {
-            console.log("[POLL] skip detected — transition before next song");
-            skipPendingSongIdRef.current = currentSongId;
-            pendingSongRef.current = null;
-            enterBetweenSongs();
-          } else {
-            try {
-              const loaded = await fetchSongWithUrl(currentSongId);
-              if (!loaded) {
-                setCurrentSong(null);
-              } else {
-                lastSongIdRef.current = currentSongId;
-                localStorage.setItem("lastVideo", loaded.videoUrl);
-                markSongPlayed();
-                setCurrentSong(loaded);
-                console.log("[POLL] new song loaded:", loaded.title);
-              }
-            } catch (err) {
-              console.error("[POLL] fetch song failed:", err);
-              setCurrentSong(null);
-            }
+          const escapeTransition = betweenSongsRef.current;
+          if (escapeTransition) {
+          } else if (currentSongRef.current?.videoUrl && lastSongIdRef.current != null) {
           }
+          await promoteSongFromBackend(currentSongId, { escapeTransition });
         } else if (!currentSongId) {
           if (lastSongIdRef.current && !betweenSongsRef.current) {
-            setCurrentSong(null);
+            // If backend clears current_song_id while session is still active,
+            // preserve smooth UX: run one transition before dropping to logo.
+            if (active && hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
+              enterBetweenSongs();
+            } else {
+              setCurrentSong(null);
+            }
           }
           if (!betweenSongsRef.current) {
             lastSongIdRef.current = null;
@@ -532,6 +636,52 @@ export default function Display({ roomId }) {
         } catch (err) {
           console.error("Error getting queue:", err);
           setNextSong(null);
+        }
+
+        // Proactive preload of the queue head while the current song is
+        // playing. Primes the browser HTTP cache so the swap from
+        // transition → next karaoke is near-instant instead of waiting
+        // 1–5 s for S3 to deliver the new file. Big win for back-to-back
+        // playback timing.
+        if (
+          active &&
+          currentSongRef.current?.videoUrl &&
+          !betweenSongsRef.current &&
+          !sessionEndPhaseRef.current &&
+          !sessionFinalizedRef.current &&
+          !pendingSessionEndRef.current &&
+          queueSnapshot.length > 0
+        ) {
+          const head = queueSnapshot[0] || {};
+          const nextId =
+            head.song_id ||
+            (head.song && head.song.id) ||
+            head.id ||
+            null;
+          if (nextId && nextId !== preloadedSongIdRef.current) {
+            preloadedSongIdRef.current = nextId;
+            (async () => {
+              try {
+                const loaded = await fetchSongWithUrl(nextId);
+                if (!loaded?.videoUrl) return;
+                // Bail if state moved on while we were fetching (e.g.
+                // session ended, queue head changed, song already started).
+                if (
+                  preloadedSongIdRef.current !== nextId ||
+                  sessionFinalizedRef.current ||
+                  sessionEndPhaseRef.current
+                ) {
+                  return;
+                }
+                setPreloadUrl(loaded.videoUrl);
+              } catch (err) {
+                console.warn("[PRELOAD] queue-head prefetch failed:", err);
+                if (preloadedSongIdRef.current === nextId) {
+                  preloadedSongIdRef.current = null;
+                }
+              }
+            })();
+          }
         }
 
         // Auto-restart from idle: if the display landed on the logo while
@@ -593,6 +743,8 @@ export default function Display({ roomId }) {
     // logo (session-end finalized).
     if (sessionFinalizedRef.current) return;
     if (betweenSongsRef.current || sessionEndPhaseRef.current) return;
+    if (songEndedLockRef.current) return;
+    songEndedLockRef.current = true;
     console.log("[STATE] SONG_ENDED");
     pendingSongRef.current = null;
     skipPendingSongIdRef.current = null;
@@ -601,6 +753,8 @@ export default function Display({ roomId }) {
 
   const handleVideoError = (videoError) => {
     console.error("❌ Video failed to load (will retry, not skipping):", videoError);
+    // Intentionally do nothing here.
+    // Requirement: never auto-skip songs on media errors.
   };
 
   // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"

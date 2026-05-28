@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import distinct, or_, text
 from typing import List
 import json
 import re
+from botocore.exceptions import ClientError
 from app.db import get_db
 from app.models import Song, SongArtist, Artist, SongSuggestion
 from app.schemas import SongResponse, SongSuggestionCreate, SongSuggestionResponse
-from app.s3_service import generate_signed_url
+from app.s3_service import generate_signed_url, resolve_full_s3_key, open_s3_object, get_streaming_s3_client, S3_BUCKET_NAME
 
 router = APIRouter()
 
@@ -350,6 +352,83 @@ def update_suggestion_status(
         db.rollback()
         print(f"❌ Error updating suggestion: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.head("/{song_id}/stream")
+@router.get("/{song_id}/stream")
+def stream_song(song_id: str, request: Request, db: Session = Depends(get_db)):
+    """
+    Stream karaoke MP4 through the API with correct Content-Type and CORS.
+    Use this URL in <video src> instead of raw S3 links (fixes blank browser tab
+    when S3 objects are application/octet-stream or bucket CORS is missing).
+    """
+    try:
+        song_id_int = int(song_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid song ID format: {song_id}")
+
+    song = db.query(Song).filter(Song.id == song_id_int).first()
+    if not song:
+        raise HTTPException(status_code=404, detail=f"Song with ID {song_id_int} not found")
+    if not song.file_url:
+        raise HTTPException(status_code=404, detail=f"Song {song_id_int} has no file_url")
+
+    full_key = resolve_full_s3_key(song.file_url, language=song.language)
+    if not full_key:
+        raise HTTPException(status_code=400, detail="Song file is not stored in S3")
+
+    try:
+        head = get_streaming_s3_client().head_object(Bucket=S3_BUCKET_NAME, Key=full_key)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        print(f"❌ S3 stream failed for key '{full_key}': {code} {e}")
+        if code in ("404", "NoSuchKey"):
+            raise HTTPException(status_code=404, detail=f"S3 object not found: {full_key}")
+        raise HTTPException(status_code=502, detail=f"S3 stream error: {code}")
+
+    content_type = head.get("ContentType") or "video/mp4"
+    if content_type in ("application/octet-stream", "binary/octet-stream"):
+        content_type = "video/mp4"
+
+    headers = {
+        "Content-Type": content_type,
+        "Content-Disposition": "inline",
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "private, max-age=3600",
+    }
+    if head.get("ContentLength") is not None:
+        headers["Content-Length"] = str(head["ContentLength"])
+    if head.get("ETag"):
+        headers["ETag"] = head["ETag"]
+
+    if request.method == "HEAD":
+        return Response(status_code=200, headers=headers)
+
+    range_header = request.headers.get("range")
+    try:
+        obj = open_s3_object(full_key, range_header=range_header)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "")
+        print(f"❌ S3 stream failed for key '{full_key}': {code} {e}")
+        if code in ("404", "NoSuchKey"):
+            raise HTTPException(status_code=404, detail=f"S3 object not found: {full_key}")
+        raise HTTPException(status_code=502, detail=f"S3 stream error: {code}")
+
+    if obj.get("ContentRange"):
+        headers["Content-Range"] = obj["ContentRange"]
+    status_code = 206 if range_header and obj.get("ContentRange") else 200
+
+    def iter_body():
+        for chunk in obj["Body"].iter_chunks(chunk_size=1024 * 512):
+            if chunk:
+                yield chunk
+
+    return StreamingResponse(
+        iter_body(),
+        status_code=status_code,
+        headers=headers,
+        media_type=content_type,
+    )
 
 
 @router.get("/{song_id}", response_model=SongResponse)

@@ -28,6 +28,91 @@ if not S3_PUBLIC_BUCKET:
         )
     )
 
+# Always available for server-side streaming (fixes browser playback when S3
+# objects have application/octet-stream or missing CORS).
+_streaming_s3_client = None
+
+
+def get_streaming_s3_client():
+    global _streaming_s3_client
+    if _streaming_s3_client is None:
+        _streaming_s3_client = boto3.client(
+            "s3",
+            region_name=AWS_REGION,
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "virtual"},
+            ),
+        )
+    return _streaming_s3_client
+
+
+def _presign_get_params(full_key: str):
+    return {
+        "Bucket": S3_BUCKET_NAME,
+        "Key": full_key,
+        "ResponseContentType": "video/mp4",
+        "ResponseContentDisposition": 'inline; filename="video.mp4"',
+    }
+
+
+def resolve_full_s3_key(s3_key: str, language: str = None):
+    """
+    Resolve DB file_url + language into the full S3 object key.
+    Returns None when s3_key is empty or a non-S3 HTTP URL.
+    """
+    if not s3_key:
+        return None
+
+    if s3_key.startswith("http://") or s3_key.startswith("https://"):
+        parsed = urlparse(s3_key)
+        host = (parsed.netloc or "").lower()
+        path = unquote((parsed.path or "").lstrip("/"))
+
+        is_s3_url = S3_BUCKET_NAME.lower() in host or "amazonaws.com" in host
+
+        if is_s3_url and path:
+            if path.startswith(f"{S3_BUCKET_NAME}/"):
+                path = path[len(S3_BUCKET_NAME) + 1 :]
+            s3_key = path
+        else:
+            return None
+
+    prefix = None
+    if language:
+        prefix = language.strip().strip("/")
+    elif S3_KEY_PREFIX:
+        prefix = S3_KEY_PREFIX.strip().strip("/")
+
+    if prefix:
+        key_starts_with_prefix = s3_key.startswith(prefix + "/")
+        has_any_language_prefix = "/" in s3_key and not s3_key.startswith("/")
+
+        if not key_starts_with_prefix:
+            if has_any_language_prefix:
+                full_key = s3_key.lstrip("/")
+            else:
+                full_key = prefix + "/" + s3_key.lstrip("/")
+        else:
+            full_key = s3_key.lstrip("/")
+    else:
+        full_key = s3_key.lstrip("/")
+
+    _, key_ext = os.path.splitext(full_key.rsplit("/", 1)[-1])
+    if not key_ext:
+        full_key = f"{full_key}.mp4"
+
+    return full_key
+
+
+def open_s3_object(full_key: str, range_header: str = None):
+    """Open an S3 object for streaming (supports HTTP Range for HTML5 video)."""
+    params = {"Bucket": S3_BUCKET_NAME, "Key": full_key}
+    if range_header:
+        params["Range"] = range_header
+    return get_streaming_s3_client().get_object(**params)
+
+
 def get_file_url(s3_key: str, language: str = None):
     """
     Get the URL for an S3 object.
@@ -50,75 +135,18 @@ def get_file_url(s3_key: str, language: str = None):
     """
     if not s3_key:
         return None
-    
-    # Some older rows store a full S3 URL instead of the object key.
-    # Normalize those URLs back into a key so we can build a fresh playback URL.
-    if s3_key.startswith('http://') or s3_key.startswith('https://'):
+
+    if s3_key.startswith("http://") or s3_key.startswith("https://"):
         parsed = urlparse(s3_key)
         host = (parsed.netloc or "").lower()
-        path = unquote((parsed.path or "").lstrip("/"))
-
-        is_s3_url = (
-            S3_BUCKET_NAME.lower() in host
-            or "amazonaws.com" in host
-        )
-
-        if is_s3_url and path:
-            if path.startswith(f"{S3_BUCKET_NAME}/"):
-                path = path[len(S3_BUCKET_NAME) + 1 :]
-            s3_key = path
-            print(f"🔄 Normalized full S3 URL to key: '{s3_key}'")
-        else:
-            print(f"⚠️ s3_key is a non-S3 URL, returning as-is: {s3_key}")
+        is_s3_url = S3_BUCKET_NAME.lower() in host or "amazonaws.com" in host
+        if not is_s3_url:
             return s3_key
-    
-    # Determine prefix: use language if provided, otherwise fall back to S3_KEY_PREFIX
-    prefix = None
-    if language:
-        # Use language as prefix (e.g., "Telugu" -> "Telugu/")
-        prefix = language.strip().strip('/')
-        print(f"🌐 Using language '{prefix}' as prefix")
-    elif S3_KEY_PREFIX:
-        # Fall back to S3_KEY_PREFIX if no language provided
-        prefix = S3_KEY_PREFIX.strip().strip('/')
-        print(f"🔧 Using S3_KEY_PREFIX '{prefix}' as prefix")
-    
-    # Apply prefix if we have one and the key doesn't already have it
-    if prefix:
-        # Check if the key already starts with the prefix followed by a slash
-        # This ensures we match "Hindi/song.mp4" but not "HindiSong.mp4"
-        key_starts_with_prefix = s3_key.startswith(prefix + '/')
-        
-        # Also check if key already has any language-like prefix (e.g., "Telugu/", "Hindi/", etc.)
-        # This handles cases where the database has the prefix but language field might differ
-        has_any_language_prefix = '/' in s3_key and not s3_key.startswith('/')
-        
-        if not key_starts_with_prefix:
-            if has_any_language_prefix:
-                # Key already has a language prefix (but different from current language)
-                # Use it as-is - assume the database has the correct prefix
-                full_key = s3_key.lstrip('/')
-                print(f"✅ Key already has language prefix (different from '{prefix}'), using as-is: '{full_key}'")
-            else:
-                # Add prefix with slash: "Telugu/" + "song.mp4" = "Telugu/song.mp4"
-                full_key = prefix + '/' + s3_key.lstrip('/')
-                print(f"🔧 Applied prefix '{prefix}/' to key: '{s3_key}' -> '{full_key}'")
-        else:
-            # Key already has the correct prefix, use as-is
-            full_key = s3_key.lstrip('/')
-            print(f"✅ Key already has prefix '{prefix}/', using as-is: '{full_key}'")
-    else:
-        # No prefix available, use key as-is
-        full_key = s3_key.lstrip('/')
-        print(f"⚠️ No prefix available (language={language}, S3_KEY_PREFIX={S3_KEY_PREFIX}), using key as-is: '{full_key}'")
 
-    # Some DB rows are missing the file extension even though the S3 object is an MP4.
-    # Normalize those keys here so playback URLs point to the actual object.
-    _, key_ext = os.path.splitext(full_key.rsplit('/', 1)[-1])
-    if not key_ext:
-        full_key = f"{full_key}.mp4"
-        print(f"🔧 Added missing .mp4 extension to key: '{full_key}'")
-    
+    full_key = resolve_full_s3_key(s3_key, language=language)
+    if not full_key:
+        return None
+
     # For public buckets, return simple URL
     if S3_PUBLIC_BUCKET:
         if not S3_BUCKET_NAME:
@@ -141,10 +169,6 @@ def get_file_url(s3_key: str, language: str = None):
         encoded_parts = [quote(part, safe=SAFE_CHARS) for part in path_parts]
         encoded_key = '/'.join(encoded_parts)
         url = f"{base_url}/{encoded_key}"
-        print(f"✅ Generated public URL: {url}")
-        print(f"   - Bucket: {S3_BUCKET_NAME}, Region: {AWS_REGION}")
-        print(f"   - Full key: {full_key} (original: {s3_key}, prefix: '{S3_KEY_PREFIX}')")
-        print(f"   - Encoded key: {encoded_key}")
         return url
     
     # For private buckets, generate presigned URL
@@ -156,32 +180,26 @@ def get_file_url(s3_key: str, language: str = None):
     try:
         url = s3_client.generate_presigned_url(
             "get_object",
-            Params={
-                "Bucket": S3_BUCKET_NAME,
-                "Key": full_key,
-            },
+            Params=_presign_get_params(full_key),
             ExpiresIn=S3_SIGNED_URL_EXPIRATION,
         )
-        print(f"✅ Generated presigned URL for key: {full_key} (original: {s3_key})")
         return url
     except Exception as e:
         print(f"❌ ERROR generating presigned URL for key '{full_key}' (original: '{s3_key}'): {e}")
-        # Try without prefix as fallback
-        if prefix:
+        # Fallback: try the raw key from DB (without language/prefix expansion).
+        raw_key = s3_key.lstrip("/")
+        if raw_key and raw_key != full_key:
             try:
-                print(f"⚠️ Trying without prefix: {s3_key}")
+                print(f"⚠️ Trying raw key fallback: {raw_key}")
                 url = s3_client.generate_presigned_url(
                     "get_object",
-                    Params={
-                        "Bucket": S3_BUCKET_NAME,
-                        "Key": s3_key.lstrip('/'),
-                    },
+                    Params=_presign_get_params(raw_key),
                     ExpiresIn=S3_SIGNED_URL_EXPIRATION,
                 )
-                print(f"✅ Generated presigned URL without prefix for key: {s3_key}")
+                print(f"✅ Generated presigned URL using raw key: {raw_key}")
                 return url
             except Exception as e2:
-                print(f"❌ ERROR generating presigned URL without prefix for key '{s3_key}': {e2}")
+                print(f"❌ ERROR generating presigned URL with raw key '{raw_key}': {e2}")
         raise
 
 
