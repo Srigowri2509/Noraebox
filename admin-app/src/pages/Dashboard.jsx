@@ -2,39 +2,26 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import RoomSquare from "../components/RoomSquare";
 import RoomModal from "../components/RoomModal";
+import DeviceRoomPanel from "../components/DeviceRoomPanel";
 
-const ROOM_GRID_SIZE = 8;
-
-/** Sort Room 1, Room 2, … Room 8 (numeric order from name). */
+/**
+ * Sort rooms for display. Rooms named with a number ("Room 3") sort
+ * numerically; rooms named anything else (e.g. "Country", "Pop", "Jazz")
+ * sort alphabetically after the numbered ones. Name-agnostic so custom
+ * room names always appear.
+ */
 function getRoomNumber(room) {
   const name = String(room?.name ?? "").trim();
   const match = name.match(/room\s*#?\s*(\d+)/i) || name.match(/(\d+)/);
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
-function sortRoomsByNumber(rooms) {
+function sortRooms(rooms) {
   return [...rooms].sort((a, b) => {
     const diff = getRoomNumber(a) - getRoomNumber(b);
     if (diff !== 0) return diff;
     return String(a.name ?? "").localeCompare(String(b.name ?? ""));
   });
-}
-
-/** Fixed grid slots: row1 = 1–4, row2 = 5–8 */
-function roomsForGrid(rooms) {
-  const byNumber = new Map();
-  for (const room of rooms) {
-    const n = getRoomNumber(room);
-    if (n >= 1 && n <= ROOM_GRID_SIZE && !byNumber.has(n)) {
-      byNumber.set(n, room);
-    }
-  }
-  const ordered = [];
-  for (let n = 1; n <= ROOM_GRID_SIZE; n++) {
-    const room = byNumber.get(n);
-    if (room) ordered.push(room);
-  }
-  return ordered;
 }
 
 export default function Dashboard() {
@@ -43,7 +30,7 @@ export default function Dashboard() {
   const [devices, setDevices] = useState([]);
   const [connectionError, setConnectionError] = useState(null);
 
-  const gridRooms = useMemo(() => roomsForGrid(rooms), [rooms]);
+  const gridRooms = useMemo(() => sortRooms(rooms), [rooms]);
 
   // Fetch rooms from database
   const loadRooms = async () => {
@@ -51,7 +38,7 @@ export default function Dashboard() {
     try {
       const res = await api('/rooms');
       const data = res.data || res;
-      const roomsArray = sortRoomsByNumber(Array.isArray(data) ? data : []);
+      const roomsArray = sortRooms(Array.isArray(data) ? data : []);
       console.log("📦 Rooms fetched:", roomsArray);
       setRooms(roomsArray);
       setConnectionError(null); // Clear error on success
@@ -198,14 +185,20 @@ export default function Dashboard() {
   // Handle device assignment
   const assignDeviceToRoom = async (deviceId, roomId) => {
     try {
-      // Check if room is already assigned to another device (frontend validation)
-      if (roomId) {
-        const alreadyAssigned = devices.find(
-          d => d.id !== deviceId && d.room_id === roomId
+      const device = devices.find((d) => d.id === deviceId);
+      if (roomId && device?.device_type) {
+        const sameTypeInRoom = devices.find(
+          (d) =>
+            d.id !== deviceId &&
+            d.room_id === roomId &&
+            d.device_type === device.device_type
         );
-        if (alreadyAssigned) {
-          const deviceName = alreadyAssigned.name || alreadyAssigned.device_uuid?.slice(0, 8) || "Unknown";
-          alert(`Cannot assign: Room is already assigned to device "${deviceName}"`);
+        if (sameTypeInRoom) {
+          const otherName =
+            sameTypeInRoom.name || sameTypeInRoom.device_uuid?.slice(0, 8) || "Unknown";
+          alert(
+            `This room already has a ${device.device_type} device (${otherName}). Unassign it first.`
+          );
           return;
         }
       }
@@ -220,6 +213,35 @@ export default function Dashboard() {
       console.error("Error assigning device:", err);
       alert(`Failed to assign device: ${err.message || "Unknown error"}`);
       // Reload devices to sync state
+      loadDevices();
+    }
+  };
+
+  // Delete a single device.
+  const deleteDevice = async (deviceId) => {
+    try {
+      await api(`/devices/${deviceId}`, { method: "DELETE" });
+      loadDevices();
+    } catch (err) {
+      console.error("Error deleting device:", err);
+      alert(`Failed to delete device: ${err.message || "Unknown error"}`);
+      loadDevices();
+    }
+  };
+
+  // Delete all unassigned devices (clears test junk).
+  const deleteUnassignedDevices = async () => {
+    const count = devices.filter((d) => !d.room_id).length;
+    if (count === 0) return;
+    if (!window.confirm(`Delete ${count} unassigned device${count === 1 ? "" : "s"}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api(`/devices/unassigned`, { method: "DELETE" });
+      loadDevices();
+    } catch (err) {
+      console.error("Error deleting unassigned devices:", err);
+      alert(`Failed to delete unassigned devices: ${err.message || "Unknown error"}`);
       loadDevices();
     }
   };
@@ -263,71 +285,19 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Devices Panel */}
-      <div className="w-full flex justify-center mt-12">
-        <div className="max-w-6xl w-full">
-          <h2 className="text-2xl font-bold text-white mb-6">Devices</h2>
+      {/* Devices — one compact card per room */}
+      <div className="w-full flex justify-center mt-10 mb-16 px-4">
+        <div className="device-panel-wrap">
           {devices.length > 0 ? (
-            <div className="bg-gray-800 rounded-lg p-6">
-              <table className="w-full text-white">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="text-left p-3">Device UUID</th>
-                    <th className="text-left p-3">Name</th>
-                    <th className="text-left p-3">Assigned Room</th>
-                    <th className="text-left p-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {devices.map((device) => (
-                    <tr key={device.id} className="border-b border-gray-700">
-                      <td className="p-3 text-sm">{device.device_uuid?.slice(0, 8)}...</td>
-                      <td className="p-3">{device.name || "Unnamed"}</td>
-                      <td className="p-3">
-                        {device.rooms?.name || device.room_id ? 
-                          (device.rooms?.name || `Room ${device.room_id?.slice(0, 8)}`) : 
-                          "Unassigned"}
-                      </td>
-                      <td className="p-3">
-                        <select
-                          value={device.room_id || ""}
-                          onChange={(e) => assignDeviceToRoom(device.id, e.target.value)}
-                          className="bg-gray-700 text-white px-3 py-1 rounded border border-gray-600"
-                        >
-                          <option value="">Unassigned</option>
-                          {rooms.map((room) => {
-                            // Check if room is assigned to another device
-                            const isAssignedToOther = devices.some(
-                              d => d.id !== device.id && d.room_id === room.id
-                            );
-                            const isCurrentDevice = device.room_id === room.id;
-                            
-                            return (
-                              <option 
-                                key={room.id} 
-                                value={room.id}
-                                disabled={isAssignedToOther && !isCurrentDevice}
-                                style={{ 
-                                  color: isAssignedToOther && !isCurrentDevice ? '#666' : 'inherit',
-                                  fontStyle: isAssignedToOther && !isCurrentDevice ? 'italic' : 'normal'
-                                }}
-                              >
-                                {room.name || room.id.slice(0, 8)}
-                                {isAssignedToOther && !isCurrentDevice ? ' (Assigned)' : ''}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <DeviceRoomPanel
+              rooms={rooms}
+              devices={devices}
+              onAssign={assignDeviceToRoom}
+              onDelete={deleteDevice}
+              onDeleteUnassigned={deleteUnassignedDevices}
+            />
           ) : (
-            <div className="text-center text-gray-500 text-lg">
-              No devices registered yet
-            </div>
+            <p className="device-panel-empty">No devices registered yet. Open the tablet or TV app to register.</p>
           )}
         </div>
       </div>

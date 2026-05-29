@@ -118,6 +118,42 @@ export default function App() {
     };
   }, []);
 
+  // Live assignment sync: the display resolves its room once at startup and
+  // caches it. Without this, an admin un-assigning (or re-assigning) the room
+  // is never noticed and the display keeps polling its old room. Re-check the
+  // device's current assignment periodically and react to changes. Transient
+  // errors are ignored so a network blip can't kick a playing display offline.
+  useEffect(() => {
+    if (isRegistering) return undefined;
+    let mounted = true;
+
+    const checkAssignment = async () => {
+      const result = await ensureDeviceRegistered();
+      if (!mounted || !result || result.error) return;
+
+      if (result.assigned && result.room_id) {
+        localStorage.setItem("room_id", result.room_id);
+        localStorage.setItem("roomId", result.room_id);
+        setRoomId((prev) => (prev !== result.room_id ? result.room_id : prev));
+        setShowRoomSelect(false);
+      } else {
+        // Unassigned by the admin -> forget the cached room and return to the
+        // selector. Clearing roomId unmounts Display and stops playback.
+        localStorage.removeItem("room_id");
+        localStorage.removeItem("roomId");
+        if (Array.isArray(result.rooms)) setRooms(result.rooms);
+        setRoomId(null);
+        setShowRoomSelect(true);
+      }
+    };
+
+    const interval = window.setInterval(checkAssignment, 8000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [isRegistering]);
+
   /** RoomSelectModal already calls assign-room API — only update local state (no reload). */
   const handleRoomSelect = (selectedRoomId) => {
     if (!selectedRoomId) return;

@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Navbar from "../components/Navbar";
 import VideoPlayer from "../components/VideoPlayer";
-import NextBanner from "../components/NextBanner";
 import { api, API_BASE } from "../api";
 
-const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+// Transition clips bundled with the app (public/transcitions/*.mp4).
+const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i"];
 const TRANSCITIONS_FOLDER = "transcitions";
-let streamProbeResult = null; // null=unknown, true=available, false=unavailable
-const MAX_MEDIA_RECOVERY_RETRIES = 3;
+const POLL_INTERVAL_MS = 400;
 
 function buildTransitionVideoUrls() {
   return TRANSITION_IDS.map((id) => {
@@ -23,43 +22,39 @@ function buildTransitionVideoUrls() {
   });
 }
 
+function pickRandom(list, avoid) {
+  if (!list?.length) return "";
+  const pool = avoid ? list.filter((u) => u !== avoid) : list;
+  const from = pool.length ? pool : list;
+  return from[Math.floor(Math.random() * from.length)] || "";
+}
+
+function queueHeadId(queue) {
+  const head = queue?.[0];
+  if (!head) return null;
+  return head.song_id || head.id || (head.song && head.song.id) || null;
+}
+
+/** Fetch song metadata and resolve a directly-playable (S3) media URL. */
 async function fetchSongWithUrl(songId) {
   try {
     const songData = await api(`/songs/${songId}`);
-    const base = (API_BASE || "").replace(/\/$/, "");
-    const streamUrl = `${base}/songs/${songId}/stream`;
     let videoUrl = songData.file_url || songData.video_url || songData.url || "";
-
-    // Prefer direct/signed media URL first. The /stream endpoint can stall
-    // in some browser + backend combinations when range responses truncate.
     if (videoUrl) {
-      if (!videoUrl.startsWith("http://") && !videoUrl.startsWith("https://")) {
+      const needsSign =
+        !videoUrl.startsWith("http://") && !videoUrl.startsWith("https://");
+      if (needsSign) {
         try {
-          const signedUrlResponse = await api(`/songs/${songId}/signed-url`);
-          videoUrl = signedUrlResponse.signed_url || signedUrlResponse.url || videoUrl;
+          const signed = await api(`/songs/${songId}/signed-url`);
+          videoUrl = signed.signed_url || signed.url || videoUrl;
         } catch {
           /* use file_url as-is */
         }
       }
-      return { ...songData, videoUrl };
+      return { ...songData, id: songId, videoUrl };
     }
-
-    // Fallback only when song metadata has no usable media URL.
-    // Keep probe result cached to avoid noisy failed HEAD requests.
-    if (streamProbeResult !== false) {
-      try {
-        const probe = await fetch(streamUrl, { method: "HEAD" });
-        if (probe.ok) {
-          streamProbeResult = true;
-          return { ...songData, videoUrl: streamUrl };
-        }
-        streamProbeResult = false;
-      } catch {
-        streamProbeResult = false;
-      }
-    }
-    return null;
-
+    const base = (API_BASE || "").replace(/\/$/, "");
+    return { ...songData, id: songId, videoUrl: `${base}/songs/${songId}/stream` };
   } catch (err) {
     console.error("[DISPLAY] fetch song failed:", err);
     return null;
@@ -67,692 +62,459 @@ async function fetchSongWithUrl(songId) {
 }
 
 /*
-  Display app behavior:
-  - Polls backend /rooms/{roomId}/status every 2 seconds
-  - Gets current_song_id and fetches song details
-  - Calculates timer from started_at + total_minutes
-  - Shows video when current_song_id is set
-  - Shows logo (no loop video) when idle, between songs, or session ends
-*/
-
+ * Display controller — explicit state machine.
+ *
+ * States: LOGO | SONG | TRANSITION | ENDING
+ *   - NEXT_SONG is not a visible state; it is the "armed" next song that is
+ *     fully preloaded into a hidden element while the current SONG plays.
+ *
+ * The 4 scenarios:
+ *   1. Song ends, queue has songs : SONG -> TRANSITION -> next SONG
+ *   2. Skip                       : SONG -> next SONG (instant, no transition)
+ *   3. Song ends, queue empty     : SONG -> TRANSITION -> LOGO
+ *   4. Timer expires (any time)   : -> LOGO (hard cut, cancels everything)
+ *
+ * Preloading: the moment a SONG begins we arm both the transition clip and the
+ * next song into hidden elements. State changes are then pure visibility
+ * toggles handled by VideoPlayer — never a fetch or load at transition time.
+ */
 export default function Display({ roomId }) {
-  const [currentSong, setCurrentSong] = useState(null); // null = show logo (no idle loop video)
-  const [nextSong, setNextSong] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(null); // milliseconds remaining
-  const [isActive, setIsActive] = useState(false);
-  const [sessionEnded, setSessionEnded] = useState(false);
-  const videoRef = useRef();
-  const lastSongIdRef = useRef(null);
-  const currentSongRef = useRef(null);
-  const [hasSessionStarted, setHasSessionStarted] = useState(false);
-  const [preloadUrl, setPreloadUrl] = useState(null);
-  const betweenSongsRef = useRef(false);
-  const [betweenSongs, setBetweenSongs] = useState(false);
-  const pendingSongRef = useRef(null);
-  const queueAdvancingRef = useRef(false);
-  const skipPendingSongIdRef = useRef(null);
-  const sessionEndPhaseRef = useRef(false);
-  const [sessionEndPhase, setSessionEndPhase] = useState(false);
-  const hasPlayedSongRef = useRef(false);
-  const [hasPlayedSong, setHasPlayedSong] = useState(false);
-  // Locks/state for session-end coordination — see fix-session-end-transition-loop plan.
-  const sessionFinalizedRef = useRef(false);
-  const sessionEndRequestedRef = useRef(false);
-  const pendingSessionEndRef = useRef(false);
+  const videoRef = useRef(null);
+  const transitionUrls = useMemo(() => buildTransitionVideoUrls(), []);
+
+  // UI state (Navbar only).
+  const [timeLeft, setTimeLeft] = useState(null);
+  const [nextSongBanner, setNextSongBanner] = useState(null);
+
+  // Interaction gate: the browser blocks all autoplay until the user performs
+  // a gesture. We show a fullscreen overlay on mount; a single click/tap/key
+  // satisfies the autoplay requirement for the whole page session. No song,
+  // transition, or logo video is driven until interactedRef is true.
+  const [needsInteraction, setNeedsInteraction] = useState(true);
+  const interactedRef = useRef(false);
+
+  // ---- State machine refs --------------------------------------------------
+  const stageRef = useRef("LOGO"); // LOGO | SONG | TRANSITION | ENDING
+  const currentSongIdRef = useRef(null); // id the controller believes is current
+  const hasPlayedRef = useRef(false);
+
+  // Armed (preloaded) assets for the current song.
+  const armedNextRef = useRef(null); // { id, url } | null
+  const armedTransitionRef = useRef(""); // transition url armed for this song
+  // After a natural song end we remember what the transition should resolve to.
+  const transitionTargetRef = useRef(null); // { type: 'song', id, url } | { type: 'logo' }
+
+  // Session / timer coordination.
   const lastSessionIdRef = useRef(null);
-  // Set true the first time the backend actually reports the session as
-  // ended/finished. The "session restarted in-place" recovery block only
-  // fires after this has been observed, so that the gap between our
-  // client-side timer hitting 0 and the backend processing /end cannot
-  // accidentally clear the finalization lock and re-load the just-ended song.
-  const backendConfirmedEndedRef = useRef(false);
-  // Snapshot of queue length from the most recent successful poll — used to
-  // decide whether to retry a queue advance with another transition versus
-  // falling back to the logo.
-  const latestQueueLengthRef = useRef(0);
-  const consecutiveAdvanceRetriesRef = useRef(0);
-  // Tracks the song id we've already proactively preloaded for the queue
-  // head, so polls don't refetch the signed URL or re-warm the hidden slot
-  // on every tick. Cleared whenever a song actually starts playing.
-  const preloadedSongIdRef = useRef(null);
-  // Guards to prevent duplicate end/transition resolution races.
-  const songEndedLockRef = useRef(false);
-  const transitionResolveInFlightRef = useRef(false);
-  const transitionVideoUrls = useMemo(() => buildTransitionVideoUrls(), []);
-  const mediaRecoveryRef = useRef({
-    key: "",
-    attempts: 0,
-    timeoutId: null,
-  });
+  const finalizedRef = useRef(false); // hard-cut lock until a new session appears
+  const endRequestedRef = useRef(false);
+  const queueAdvancingRef = useRef(false);
 
-  const clearMediaRecoveryTimeout = useCallback(() => {
-    const timeoutId = mediaRecoveryRef.current.timeoutId;
-    if (timeoutId) {
-      window.clearTimeout(timeoutId);
-      mediaRecoveryRef.current.timeoutId = null;
-    }
+  // Guards.
+  const busyRef = useRef(false); // a swap/transition op is in flight
+  const songEndLockRef = useRef(false);
+  const transitionStartedAtRef = useRef(0);
+  const bannerKeyRef = useRef(""); // avoids re-rendering the banner every poll
+  // Poll-exclusive playback drive: ensures only one cold-start/skip op runs at
+  // a time WITHOUT ever blocking the poll loop itself (ops are fire-and-forget).
+  const driveLockRef = useRef(false);
+  const armingRef = useRef(false); // prevents overlapping armAssets() runs
+
+  // Run a playback operation in the background, never awaited by the poll loop.
+  // A single in-flight op at a time; a stalled video call can therefore never
+  // freeze backend-state polling (skip / session-stop / queue detection).
+  const drive = useCallback((fn) => {
+    if (driveLockRef.current) return;
+    driveLockRef.current = true;
+    Promise.resolve()
+      .then(fn)
+      .catch((err) => console.error("[DRIVE] error:", err))
+      .finally(() => {
+        driveLockRef.current = false;
+      });
   }, []);
 
-  const resetMediaRecovery = useCallback(() => {
-    clearMediaRecoveryTimeout();
-    mediaRecoveryRef.current.key = "";
-    mediaRecoveryRef.current.attempts = 0;
-  }, [clearMediaRecoveryTimeout]);
+  // ---- Backend helpers -----------------------------------------------------
 
-  const markSongPlayed = useCallback(() => {
-    if (hasPlayedSongRef.current) return;
-    hasPlayedSongRef.current = true;
-    setHasPlayedSong(true);
-  }, []);
-
-  const promoteSongFromBackend = useCallback(
-    async (songId, { escapeTransition = false } = {}) => {
-      if (!songId || songId === lastSongIdRef.current) return true;
-
-      if (escapeTransition) {
-        betweenSongsRef.current = false;
-        setBetweenSongs(false);
-        skipPendingSongIdRef.current = null;
-        pendingSongRef.current = null;
-        videoRef.current?.stopKaraokeAudio?.();
-      }
-
-      try {
-        const loaded = await fetchSongWithUrl(songId);
-        if (!loaded?.videoUrl) {
-          setCurrentSong(null);
-          return false;
-        }
-        lastSongIdRef.current = songId;
-        setPreloadUrl(null);
-        preloadedSongIdRef.current = null;
-        resetMediaRecovery();
-        localStorage.setItem("lastVideo", loaded.videoUrl);
-        markSongPlayed();
-        setCurrentSong(loaded);
-        return true;
-      } catch (err) {
-        console.error("[POLL] promote song failed:", err);
-        setCurrentSong(null);
-        return false;
-      }
-    },
-    [markSongPlayed, resetMediaRecovery]
-  );
-
-  const resetToHomeLogo = useCallback(() => {
-    betweenSongsRef.current = false;
-    setBetweenSongs(false);
-    sessionEndPhaseRef.current = false;
-    setSessionEndPhase(false);
-    pendingSongRef.current = null;
-    skipPendingSongIdRef.current = null;
-    lastSongIdRef.current = null;
-    setPreloadUrl(null);
-    preloadedSongIdRef.current = null;
-    setCurrentSong(null);
-    videoRef.current?.stopKaraokeAudio?.();
-  }, []);
-
-  useEffect(() => {
-    currentSongRef.current = currentSong;
-  }, [currentSong]);
-
-  const applyPendingSong = useCallback(() => {
-    const pending = pendingSongRef.current;
-    if (!pending?.videoUrl) return false;
-    pendingSongRef.current = null;
-    betweenSongsRef.current = false;
-    setBetweenSongs(false);
-    lastSongIdRef.current = pending.id;
-    setPreloadUrl(null);
-    // The current preload (if any) has now become the active song.
-    // Clear so the next poll can preload the NEW queue head.
-    preloadedSongIdRef.current = null;
-    resetMediaRecovery();
-    localStorage.setItem("lastVideo", pending.videoUrl);
-    markSongPlayed();
-    setCurrentSong(pending);
-    songEndedLockRef.current = false;
-    return true;
-  }, [markSongPlayed, resetMediaRecovery]);
-
-  const enterBetweenSongs = useCallback(() => {
-    if (betweenSongsRef.current) return;
-    betweenSongsRef.current = true;
-    setBetweenSongs(true);
-    videoRef.current?.stopKaraokeAudio?.();
-    setPreloadUrl(null);
-    setCurrentSong((prev) => (prev ? { ...prev, videoUrl: null } : null));
-  }, []);
-
-  // HARD cut to logo. Runs the moment the session time ends (or the backend
-  // reports session ended), even if a karaoke song or transition clip is in
-  // the middle of playing. No final transition, no waiting for natural end.
-  const startSessionEndSequence = useCallback(() => {
-    if (sessionFinalizedRef.current) return;
-    console.log("[STATE] SESSION_ENDED → hard cut to logo");
-    // Mark finalized first so the 1 s poll cannot re-trigger anything.
-    sessionFinalizedRef.current = true;
-    // Stop audio + video frame advancement immediately. We deliberately do
-    // NOT clear src here — keeping the last frame visible for the ~1 React
-    // commit cycle until both slots become opacity 0 is much smoother than
-    // flashing BLACK_POSTER before the logo placeholder mounts.
-    videoRef.current?.pauseAllSlots?.();
-    // Wipe all session/playback state in one batch so React commits the
-    // logo placeholder + slot opacity flip + cleared timer atomically.
-    sessionEndPhaseRef.current = false;
-    setSessionEndPhase(false);
-    betweenSongsRef.current = false;
-    setBetweenSongs(false);
-    pendingSongRef.current = null;
-    skipPendingSongIdRef.current = null;
-    pendingSessionEndRef.current = false;
-    consecutiveAdvanceRetriesRef.current = 0;
-    lastSongIdRef.current = null;
-    hasPlayedSongRef.current = false;
-    setHasPlayedSong(false);
-    setHasSessionStarted(false);
-    setSessionEnded(true);
-    setPreloadUrl(null);
-    preloadedSongIdRef.current = null;
-    setNextSong(null);
-    setTimeLeft(null);
-    setCurrentSong(null);
-  }, []);
-
-  const advanceQueueFromBackend = useCallback(async () => {
-    if (queueAdvancingRef.current) {
-      console.warn("[QUEUE] advance already in progress — skipped duplicate");
-      return false;
-    }
-    queueAdvancingRef.current = true;
+  const postEnded = useCallback(async () => {
     try {
-      console.log("[QUEUE] advancing");
-      const response = await api(`/rooms/${roomId}/playback/ended`, { method: "POST" });
-      if (response?.status === "next_started" && response.song_id) {
-        const loaded = await fetchSongWithUrl(response.song_id);
-        if (loaded) {
-          pendingSongRef.current = loaded;
-          setPreloadUrl(loaded.videoUrl);
-          // The advanced song was likely the one we'd prefetched as the
-          // queue head — release the lock so the new head can preload.
-          preloadedSongIdRef.current = null;
-          return true;
-        }
-      }
-      console.log("[QUEUE] no next song");
-      return false;
-    } finally {
-      queueAdvancingRef.current = false;
+      return await api(`/rooms/${roomId}/playback/ended`, { method: "POST" });
+    } catch (err) {
+      console.warn("[QUEUE] /playback/ended failed:", err);
+      return null;
     }
   }, [roomId]);
 
-  // Lightweight nudge — used when the display is idle on logo and the queue
-  // gains items. Unlike advanceQueueFromBackend, this does NOT prefetch or
-  // populate pendingSongRef, because the poll loop will pick up the freshly
-  // promoted current_song_id and load it directly (logo → song, no transition).
-  const triggerBackendQueueAdvance = useCallback(async () => {
+  const nudgeAdvance = useCallback(async () => {
     if (queueAdvancingRef.current) return;
     queueAdvancingRef.current = true;
     try {
-      console.log("[QUEUE] idle nudge → POST /playback/ended");
       await api(`/rooms/${roomId}/playback/ended`, { method: "POST" });
     } catch (err) {
-      console.warn("[QUEUE] idle advance failed:", err);
+      console.warn("[QUEUE] idle nudge failed:", err);
     } finally {
       queueAdvancingRef.current = false;
     }
   }, [roomId]);
 
-  const handleTransitionClipEnded = useCallback(async () => {
-    if (transitionResolveInFlightRef.current) return true;
-    transitionResolveInFlightRef.current = true;
+  // ---- State transitions ---------------------------------------------------
+
+  const goToLogo = useCallback(() => {
+    stageRef.current = "LOGO";
+    currentSongIdRef.current = null;
+    armedNextRef.current = null;
+    armedTransitionRef.current = "";
+    transitionTargetRef.current = null;
+    songEndLockRef.current = false;
+    setNextSongBanner(null);
+    videoRef.current?.cutToLogo();
+  }, []);
+
+  // HARD cut to logo on timer expiry / session end. Cancels everything,
+  // never plays a transition, and locks until a new session starts.
+  const hardCutToLogo = useCallback(() => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+    console.log("[STATE] hard cut -> LOGO");
+    stageRef.current = "ENDING";
+    currentSongIdRef.current = null;
+    armedNextRef.current = null;
+    armedTransitionRef.current = "";
+    transitionTargetRef.current = null;
+    busyRef.current = false;
+    songEndLockRef.current = false;
+    hasPlayedRef.current = false;
+    setTimeLeft(null);
+    setNextSongBanner(null);
+    videoRef.current?.cutToLogo();
+    stageRef.current = "LOGO";
+  }, []);
+
+  // Begin playing a song NOW (cold start from logo, or instant skip target).
+  const enterSong = useCallback(async (songId, url) => {
+    if (!url) return false;
+    busyRef.current = true;
     try {
-
-      if (!hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
-        consecutiveAdvanceRetriesRef.current = 0;
-        resetToHomeLogo();
-        return true;
-      }
-
-      if (sessionEndPhaseRef.current) {
-      // One-shot lock: prevent the 1 s poll from re-triggering another
-      // session-end transition after this final one completes.
-      sessionFinalizedRef.current = true;
-      consecutiveAdvanceRetriesRef.current = 0;
-      sessionEndPhaseRef.current = false;
-      setSessionEndPhase(false);
-      betweenSongsRef.current = false;
-      setBetweenSongs(false);
-      setHasSessionStarted(false);
-      setSessionEnded(true);
-      setPreloadUrl(null);
-      setCurrentSong(null);
-      lastSongIdRef.current = null;
-      hasPlayedSongRef.current = false;
-      setHasPlayedSong(false);
-      // NOTE: do NOT clear the video slots synchronously here.
-      // The transition slot is still video-slot--front (opacity 1) at this
-      // instant; clearing its src would show BLACK_POSTER for ~one React
-      // commit cycle, producing a visible "glitch" between the transition's
-      // last frame and the logo. Let VideoPlayer's idleMode="logo" useEffect
-      // run silenceAllSlots() after the placeholder is on screen — both
-      // slots will already be at opacity 0 by then, so the clear is invisible.
-      console.log("[STATE] final transition done → home logo");
-        return true;
-      }
-
-      if (pendingSongRef.current?.videoUrl) {
-      try {
-        await videoRef.current?.warmPreload?.(pendingSongRef.current.videoUrl);
-      } catch (warmErr) {
-        console.warn("[VIDEO] warm preload before swap failed", warmErr);
-      }
-      applyPendingSong();
-      skipPendingSongIdRef.current = null;
-      consecutiveAdvanceRetriesRef.current = 0;
-        return true;
-      }
-
-      if (skipPendingSongIdRef.current) {
-      try {
-        const loaded = await fetchSongWithUrl(skipPendingSongIdRef.current);
-        skipPendingSongIdRef.current = null;
-        if (loaded) {
-          pendingSongRef.current = loaded;
-          try {
-            await videoRef.current?.warmPreload?.(loaded.videoUrl);
-          } catch (warmErr) {
-            console.warn("[VIDEO] warm preload before skip swap failed", warmErr);
-          }
-          applyPendingSong();
-          consecutiveAdvanceRetriesRef.current = 0;
-            return true;
-          }
-        } catch (error) {
-          console.error("[QUEUE] skip pending load failed:", error);
-        }
-      }
-
-      try {
-        const hasNext = await advanceQueueFromBackend();
-        if (hasNext && pendingSongRef.current?.videoUrl) {
-          const nextUrl = pendingSongRef.current.videoUrl;
-          try {
-            await videoRef.current?.warmPreload?.(nextUrl);
-          } catch (warmErr) {
-            console.warn("[VIDEO] warm preload before swap failed", warmErr);
-          }
-          applyPendingSong();
-          consecutiveAdvanceRetriesRef.current = 0;
-          return true;
-        }
-      } catch (error) {
-        console.error("[QUEUE] advance failed after transition:", error);
-      }
-
-    // Fallback path — backend reports no next song.
-    // If our latest poll snapshot believed the queue still had items, this is
-    // almost certainly a transient race (queue item committed after our
-    // advance request). Don't drop to the logo: return false so VideoPlayer
-    // starts another transition, giving the backend more time.
-    //
-    // Cap raised to MAX_TRANSITION_RETRIES so a slow backend (or a brief
-    // network blip) over a long session never flashes the logo with songs
-    // still queued — user explicitly wants song → transition → next song
-    // continuity for 10–12 hour shifts. With ~2–3 s per transition this
-    // gives ~20–30 s of recovery time before we give up and let the
-    // auto-restart-from-idle poll pick up.
-      const MAX_TRANSITION_RETRIES = 10;
-      if (
-        latestQueueLengthRef.current > 0 &&
-        consecutiveAdvanceRetriesRef.current < MAX_TRANSITION_RETRIES &&
-        !pendingSessionEndRef.current
-      ) {
-        consecutiveAdvanceRetriesRef.current += 1;
-        console.warn(
-          `[QUEUE] advance failed but queue snapshot has ${latestQueueLengthRef.current} item(s) — playing another transition (retry ${consecutiveAdvanceRetriesRef.current}/${MAX_TRANSITION_RETRIES})`
-        );
-        // Stay in between-songs state; VideoPlayer will autostart another transition.
+      const ok = await videoRef.current?.playSong(url);
+      if (!ok) return false;
+      // Session may have been stopped while the song was loading.
+      if (finalizedRef.current) {
+        videoRef.current?.cutToLogo();
         return false;
       }
-
-      consecutiveAdvanceRetriesRef.current = 0;
-      betweenSongsRef.current = false;
-      setBetweenSongs(false);
-      setPreloadUrl(null);
-      setCurrentSong(null);
+      stageRef.current = "SONG";
+      currentSongIdRef.current = songId;
+      hasPlayedRef.current = true;
+      songEndLockRef.current = false;
+      // Force fresh assets to be armed for this song on the next poll tick.
+      armedNextRef.current = null;
+      armedTransitionRef.current = "";
+      transitionTargetRef.current = null;
+      try {
+        localStorage.setItem("lastVideo", url);
+      } catch {
+        /* ignore */
+      }
       return true;
     } finally {
-      transitionResolveInFlightRef.current = false;
+      busyRef.current = false;
     }
-  }, [applyPendingSong, advanceQueueFromBackend, resetToHomeLogo]);
+  }, []);
 
-  // Browser autoplay: one click on the display page unlocks video+audio and retries playback.
-  useEffect(() => {
-    const unlock = () => {
-      sessionStorage.setItem("video_autoplay_enabled", "true");
-      const active = videoRef.current?.getActiveVideo?.();
-      const needsRetry = !active || active.paused;
-      if (needsRetry) {
-        setCurrentSong((prev) => (prev?.videoUrl ? { ...prev } : prev));
+  // Arm transition + next song while the current song plays.
+  const armAssets = useCallback(
+    async (queue) => {
+      if (stageRef.current !== "SONG") return;
+      if (armingRef.current) return; // a previous arm is still running
+      armingRef.current = true;
+      try {
+        if (!armedTransitionRef.current) {
+          const url = pickRandom(transitionUrls);
+          if (url) {
+            armedTransitionRef.current = url;
+            videoRef.current?.armTransition(url);
+          }
+        }
+
+        const headId = queueHeadId(queue);
+        if (!headId) {
+          // Queue is empty — evaluated now, during the song, not at song end.
+          armedNextRef.current = null;
+          return;
+        }
+        if (armedNextRef.current?.id === headId) return;
+        // Don't arm the song that is currently playing.
+        if (headId === currentSongIdRef.current) return;
+        const loaded = await fetchSongWithUrl(headId);
+        if (!loaded?.videoUrl) return;
+        if (stageRef.current !== "SONG") return;
+        armedNextRef.current = { id: headId, url: loaded.videoUrl };
+        videoRef.current?.armNext(loaded.videoUrl);
+      } finally {
+        armingRef.current = false;
       }
-    };
+    },
+    [transitionUrls]
+  );
+
+  // Song finished naturally -> play the armed transition, then resolve.
+  const handleSongEnded = useCallback(async () => {
+    if (stageRef.current !== "SONG") return;
+    if (finalizedRef.current) return;
+    if (songEndLockRef.current) return;
+    songEndLockRef.current = true;
+    console.log("[STATE] SONG ended");
+
+    const next = armedNextRef.current;
+    // Decide where the transition leads BEFORE it starts.
+    if (next?.url) {
+      transitionTargetRef.current = { type: "song", id: next.id, url: next.url };
+      // Claim the next id locally so the poll doesn't read the backend's
+      // soon-to-advance current_song_id as a skip.
+      currentSongIdRef.current = next.id;
+    } else {
+      transitionTargetRef.current = { type: "logo" };
+      currentSongIdRef.current = null;
+    }
+
+    stageRef.current = "TRANSITION";
+    transitionStartedAtRef.current = Date.now();
+    // Advance the backend queue in the background while the transition plays.
+    void postEnded();
+    await videoRef.current?.playTransition();
+  }, [postEnded]);
+
+  // Transition clip finished -> show next song or the logo.
+  const handleTransitionEnded = useCallback(async () => {
+    if (stageRef.current !== "TRANSITION") return;
+    transitionStartedAtRef.current = 0;
+    const target = transitionTargetRef.current;
+    transitionTargetRef.current = null;
+
+    if (target?.type === "song" && target.url) {
+      const ok = await enterSong(target.id, target.url);
+      if (!ok) goToLogo();
+      return;
+    }
+    // Queue empty (Scenario 3) or no usable next -> logo.
+    goToLogo();
+  }, [enterSong, goToLogo]);
+
+  const handleSongError = useCallback(
+    (info) => {
+      console.warn("[VIDEO] song error", info);
+      if (stageRef.current !== "SONG") return;
+      // Treat an unrecoverable song error like a natural end so the pipeline
+      // keeps moving instead of freezing on a black frame.
+      if (!songEndLockRef.current) {
+        void handleSongEnded();
+      }
+    },
+    [handleSongEnded]
+  );
+
+  // ---- Interaction gate / autoplay unlock ----------------------------------
+  const markInteracted = useCallback(() => {
+    interactedRef.current = true;
+    sessionStorage.setItem("video_autoplay_enabled", "true");
+    setNeedsInteraction(false);
+    // Unmute/resume anything already playing muted.
+    videoRef.current?.retryActive();
+  }, []);
+
+  useEffect(() => {
+    const unlock = () => markInteracted();
     const events = ["click", "touchstart", "keydown", "pointerdown"];
     events.forEach((e) => document.addEventListener(e, unlock, { passive: true }));
     return () => events.forEach((e) => document.removeEventListener(e, unlock));
-  }, []);
+  }, [markInteracted]);
 
-  // Poll room session from backend
+  // ---- Backend polling -----------------------------------------------------
   useEffect(() => {
     if (!roomId) return;
-
     let mounted = true;
-    let pollInterval;
-    // In-flight guard — prevents overlapping polls when the backend is slow.
-    // Without this, a 3 s fetch under setInterval(1000) would stack up state
-    // updates from stale responses arriving after newer ones.
-    let pollInFlight = false;
+    let inFlight = false;
 
-    const pollRoomStatus = async () => {
-      if (pollInFlight) return;
-      pollInFlight = true;
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        // Use GET /rooms/{id}/session endpoint (reads from room_sessions)
-        const sessionData = await api(`/rooms/${roomId}/session`);
+        const data = await api(`/rooms/${roomId}/session`);
         if (!mounted) return;
+        const session = data.session;
+        const queue = data.queue || [];
 
-        const session = sessionData.session;
-        // Update the queue-length snapshot every poll so transition retries
-        // and idle auto-restart can make accurate decisions.
-        const queueSnapshot = sessionData.queue || [];
-        latestQueueLengthRef.current = queueSnapshot.length;
-
-        // If no session, show idle
+        // No session at all -> idle logo.
         if (!session) {
-          setIsActive(false);
+          if (stageRef.current !== "LOGO") goToLogo();
+          finalizedRef.current = false;
+          hasPlayedRef.current = false;
           setTimeLeft(null);
-          setSessionEnded(true);
-          hasPlayedSongRef.current = false;
-          setHasPlayedSong(false);
-          resetToHomeLogo();
           return;
         }
 
-        // Reset session-end locks the moment a new session id appears so the
-        // next session's end-of-song / timer / cancel flow can fire normally.
+        // New session id -> clear end locks so the next session runs normally.
         if (session.id && session.id !== lastSessionIdRef.current) {
-          if (lastSessionIdRef.current) {
-            sessionFinalizedRef.current = false;
-            sessionEndRequestedRef.current = false;
-            pendingSessionEndRef.current = false;
-            backendConfirmedEndedRef.current = false;
-            consecutiveAdvanceRetriesRef.current = 0;
-            preloadedSongIdRef.current = null;
-          }
-          lastSongIdRef.current = null;
           lastSessionIdRef.current = session.id;
-        }
-
-        // Waiting for first song — logo only, never transitions
-        if (!hasPlayedSongRef.current) {
-          if (betweenSongsRef.current || betweenSongs || sessionEndPhaseRef.current) {
-            resetToHomeLogo();
+          finalizedRef.current = false;
+          endRequestedRef.current = false;
+          if (stageRef.current === "LOGO") {
+            currentSongIdRef.current = null;
           }
         }
 
-        // Check if session is active (not ended or finished)
-        const isSessionEnded = session.status === "ended" || session.status === "finished";
-        const active = !isSessionEnded && (session.status === "playing" || session.status === "idle" || session.status === "active");
-        setIsActive(active);
+        const isEnded = session.status === "ended" || session.status === "finished";
+        const active =
+          !isEnded &&
+          (session.status === "playing" ||
+            session.status === "idle" ||
+            session.status === "active");
 
-        // Recover from the session-end finalization lock when the backend
-        // restarts the session in-place (same session.id, status flipped
-        // from ended/finished back to playing/active). Gated by
-        // backendConfirmedEndedRef so a stale "active" read from before the
-        // backend has processed our /end POST can't clear the lock and
-        // re-load the just-ended song.
-        if (
-          !isSessionEnded &&
-          sessionFinalizedRef.current &&
-          backendConfirmedEndedRef.current
-        ) {
-          console.log("[POLL] session restarted in-place — clearing finalization lock");
-          sessionFinalizedRef.current = false;
-          sessionEndRequestedRef.current = false;
-          pendingSessionEndRef.current = false;
-          backendConfirmedEndedRef.current = false;
-          consecutiveAdvanceRetriesRef.current = 0;
-          preloadedSongIdRef.current = null;
-        }
-
-        // Session ended on backend — cut immediately to logo, regardless of
-        // whether a song or transition is currently playing. User wants a
-        // hard stop the moment the session time runs out.
-        if (isSessionEnded) {
-          // Mark that the backend has acknowledged the end at least once.
-          // The recovery block above requires this before it will clear the
-          // finalization lock on a subsequent "active" read.
-          backendConfirmedEndedRef.current = true;
-          if (sessionFinalizedRef.current) {
-            return; // already finalized; ignore stale "ended" reads from backend
+        // Scenario 4 (backend side): session ended -> hard cut to logo.
+        if (isEnded) {
+          if (!finalizedRef.current) {
+            if (hasPlayedRef.current) hardCutToLogo();
+            else goToLogo();
           }
-          if (hasPlayedSongRef.current) {
-            startSessionEndSequence();
-          } else {
-            resetToHomeLogo();
-            setHasSessionStarted(false);
-            setSessionEnded(true);
-          }
+          setTimeLeft(null);
           return;
         }
+        if (finalizedRef.current) return; // wait for a fresh session id
 
-        // Get current song ID from session
-        const currentSongId = session.current_song_id;
-
-        // Calculate timer from session_start_time + total_minutes
-        // Timer only shows when session_start_time exists (first song played)
-        if (session.session_start_time) {
-          setHasSessionStarted(true);
-        }
-
+        // ---- Timer ----------------------------------------------------------
         if (session.session_start_time && session.total_minutes) {
-          try {
-            const startedAt = new Date(session.session_start_time);
-            const now = new Date();
-            // Use the total_minutes from the session (set by admin)
-            const totalMinutes = session.total_minutes;
-            const totalSeconds = totalMinutes * 60;
-            const elapsedSeconds = Math.floor((now - startedAt) / 1000);
-            const remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
-            const remainingMs = remainingSeconds * 1000;
+          const startedAt = new Date(session.session_start_time);
+          const totalSeconds = session.total_minutes * 60;
+          const elapsed = Math.floor((Date.now() - startedAt.getTime()) / 1000);
+          const remaining = Math.max(0, totalSeconds - elapsed);
+          setTimeLeft(remaining * 1000);
 
-            // Show timer (session has started)
-            setTimeLeft(remainingMs);
-
-            // Timer ran out — auto-cancel the backend session once and hard-
-            // cut to logo immediately. Whatever is playing (karaoke or a
-            // random transition) is stopped on the spot.
-            if (remainingSeconds === 0) {
-              if (sessionFinalizedRef.current) {
-                // Already finalized — but the backend may still be
-                // reporting the old current_song_id because /end hasn't
-                // been processed yet. Bail out of this poll so the
-                // song-change branch below cannot re-load the just-ended
-                // song.
-                return;
+          // Scenario 4: timer hit zero -> hard cut to logo, cancel everything.
+          if (remaining === 0) {
+            if (hasPlayedRef.current) {
+              if (!endRequestedRef.current) {
+                endRequestedRef.current = true;
+                api(`/rooms/${roomId}/end`, { method: "POST" }).catch((err) =>
+                  console.warn("[SESSION] /end failed:", err)
+                );
               }
-              if (hasPlayedSongRef.current) {
-                if (!sessionEndRequestedRef.current) {
-                  sessionEndRequestedRef.current = true;
-                  console.log("[POLL] timer hit 0 — auto-cancelling backend session");
-                  api(`/rooms/${roomId}/end`, { method: "POST" }).catch((err) =>
-                    console.warn("[SESSION] /end POST failed:", err)
-                  );
-                }
-                startSessionEndSequence();
-                // Critical: bail out NOW. Without this return, the song-
-                // change branch further down would see the still-stale
-                // current_song_id from the backend (no /end processed
-                // yet) and re-fetch + setCurrentSong, restarting the
-                // song we just stopped.
-                return;
-              }
-              resetToHomeLogo();
-              setSessionEnded(true);
-              return;
+              hardCutToLogo();
+            } else {
+              goToLogo();
             }
-            setSessionEnded(false);
-          } catch (e) {
-            console.error("Error calculating timer:", e);
-            setTimeLeft(null);
+            return;
           }
         } else {
-          // Session ready but idle - no timer yet (session_start_time is NULL)
           setTimeLeft(null);
-          setSessionEnded(false);
-          // Don't clear currentSong here - might be waiting for first song
         }
 
-        // Song changes from backend — never interrupt transition or session-end sequence
-        if (sessionEndPhaseRef.current) {
-          /* wait for final transition → logo */
-        } else if (currentSongId && currentSongId !== lastSongIdRef.current) {
-          setHasSessionStarted(true);
-          const escapeTransition = betweenSongsRef.current;
-          if (escapeTransition) {
-          } else if (currentSongRef.current?.videoUrl && lastSongIdRef.current != null) {
+        // ---- Next-song banner (only re-render when it actually changes) ------
+        const head = queue[0];
+        if (head) {
+          const title = head.title || head.song?.title || "Unknown";
+          const artist =
+            head.artist ||
+            head.artist_name ||
+            head.song?.artist ||
+            head.song?.artist_name ||
+            "";
+          const key = `${title}|${artist}`;
+          if (bannerKeyRef.current !== key) {
+            bannerKeyRef.current = key;
+            setNextSongBanner({ title, artist });
           }
-          await promoteSongFromBackend(currentSongId, { escapeTransition });
-        } else if (!currentSongId) {
-          if (lastSongIdRef.current && !betweenSongsRef.current) {
-            // If backend clears current_song_id while session is still active,
-            // preserve smooth UX: run one transition before dropping to logo.
-            if (active && hasPlayedSongRef.current && !sessionEndPhaseRef.current) {
-              enterBetweenSongs();
-            } else {
-              setCurrentSong(null);
-            }
-          }
-          if (!betweenSongsRef.current) {
-            lastSongIdRef.current = null;
-          }
-          if (session.status === "finished" || session.status === "ended" || !session) {
-            setCurrentSong(null);
-            setNextSong(null);
-          }
+        } else if (bannerKeyRef.current !== "") {
+          bannerKeyRef.current = "";
+          setNextSongBanner(null);
         }
 
-        // Get next song from queue (from sessionData.queue)
-        try {
-          if (queueSnapshot.length > 0) {
-            const nextSongData = queueSnapshot[0];
-            setNextSong({
-              title: nextSongData.title || (nextSongData.song && nextSongData.song.title) || "Unknown",
-              artist:
-                nextSongData.artist ||
-                nextSongData.artist_name ||
-                (nextSongData.song && nextSongData.song.artist) ||
-                (nextSongData.song && nextSongData.song.artist_name) ||
-                ""
-            });
-          } else {
-            setNextSong(null);
-          }
-        } catch (err) {
-          console.error("Error getting queue:", err);
-          setNextSong(null);
-        }
+        const backendSongId = session.current_song_id;
 
-        // Proactive preload of the queue head while the current song is
-        // playing. Primes the browser HTTP cache so the swap from
-        // transition → next karaoke is near-instant instead of waiting
-        // 1–5 s for S3 to deliver the new file. Big win for back-to-back
-        // playback timing.
-        if (
-          active &&
-          currentSongRef.current?.videoUrl &&
-          !betweenSongsRef.current &&
-          !sessionEndPhaseRef.current &&
-          !sessionFinalizedRef.current &&
-          !pendingSessionEndRef.current &&
-          queueSnapshot.length > 0
-        ) {
-          const head = queueSnapshot[0] || {};
-          const nextId =
-            head.song_id ||
-            (head.song && head.song.id) ||
-            head.id ||
-            null;
-          if (nextId && nextId !== preloadedSongIdRef.current) {
-            preloadedSongIdRef.current = nextId;
-            (async () => {
-              try {
-                const loaded = await fetchSongWithUrl(nextId);
-                if (!loaded?.videoUrl) return;
-                // Bail if state moved on while we were fetching (e.g.
-                // session ended, queue head changed, song already started).
-                if (
-                  preloadedSongIdRef.current !== nextId ||
-                  sessionFinalizedRef.current ||
-                  sessionEndPhaseRef.current
-                ) {
-                  return;
-                }
-                setPreloadUrl(loaded.videoUrl);
-              } catch (err) {
-                console.warn("[PRELOAD] queue-head prefetch failed:", err);
-                if (preloadedSongIdRef.current === nextId) {
-                  preloadedSongIdRef.current = null;
-                }
+        // Gate: do not drive any playback until the user has interacted, so we
+        // never fire a play() the browser will silently reject.
+        if (!interactedRef.current) return;
+
+        // ---- Drive the state machine ---------------------------------------
+        // CRITICAL: playback operations are fired in the background via drive()
+        // and never awaited here. A slow/stalled video call must never block
+        // this loop, or backend state (skip / session-stop / queue) stops being
+        // read — which froze the TV build while Chrome (honoring fetch abort)
+        // kept working.
+        if (stageRef.current === "LOGO") {
+          if (driveLockRef.current) return;
+          if (backendSongId) {
+            // Cold start: load + play the first song directly from the logo.
+            drive(async () => {
+              const loaded = await fetchSongWithUrl(backendSongId);
+              if (loaded?.videoUrl && stageRef.current === "LOGO" && !finalizedRef.current) {
+                await enterSong(backendSongId, loaded.videoUrl);
               }
-            })();
+            });
+          } else if (active && queue.length > 0) {
+            // Queued items but nothing current -> ask backend to promote one.
+            void nudgeAdvance();
           }
+          return;
         }
 
-        // Auto-restart from idle: if the display landed on the logo while
-        // queued items exist, nudge the backend to promote the next item.
-        // The very next poll will see a fresh current_song_id and the
-        // existing new-song branch loads it directly from logo (no transition).
-        const isOnLogoIdle =
-          !currentSongId &&
-          !currentSongRef.current?.videoUrl &&
-          !betweenSongsRef.current &&
-          !sessionEndPhaseRef.current &&
-          !sessionFinalizedRef.current &&
-          !pendingSessionEndRef.current &&
-          !queueAdvancingRef.current;
-        if (active && isOnLogoIdle && queueSnapshot.length > 0) {
-          console.log(
-            `[POLL] idle on logo with ${queueSnapshot.length} queued item(s) — nudging backend to advance`
-          );
-          void triggerBackendQueueAdvance();
+        if (stageRef.current === "SONG") {
+          // Scenario 2: skip. The tablet POSTs start_next, so the backend's
+          // current_song_id changes mid-song -> instant cut, no transition.
+          if (
+            backendSongId &&
+            backendSongId !== currentSongIdRef.current &&
+            !driveLockRef.current
+          ) {
+            drive(async () => {
+              console.log("[STATE] skip detected -> instant next");
+              const armed = armedNextRef.current;
+              if (armed?.id === backendSongId && armed.url) {
+                await enterSong(backendSongId, armed.url);
+              } else {
+                const loaded = await fetchSongWithUrl(backendSongId);
+                if (loaded?.videoUrl) await enterSong(backendSongId, loaded.videoUrl);
+              }
+            });
+            return;
+          }
+          // Keep transition + next song armed during the song (non-blocking).
+          void armAssets(queue);
+          return;
         }
 
-      } catch (error) {
-        console.error("Error polling room status:", error);
-        if (!mounted) return;
+        // stageRef === TRANSITION: let the clip finish; ignore skip detection
+        // here to avoid racing the backend's queue advance.
+      } catch (err) {
+        console.error("[POLL] error:", err);
       } finally {
-        pollInFlight = false;
+        inFlight = false;
       }
     };
 
-    // Poll immediately and then every 1 second for faster autoplay
-    pollRoomStatus();
-    pollInterval = setInterval(pollRoomStatus, 1000);
-
+    poll();
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
       mounted = false;
-      if (pollInterval) clearInterval(pollInterval);
+      clearInterval(interval);
     };
-  }, [roomId]);
+  }, [roomId, goToLogo, hardCutToLogo, enterSong, armAssets, nudgeAdvance, drive]);
 
-  // Update timer every second.
-  // Important: keep the dependency list EMPTY so the interval is created
-  // exactly once and not torn down + recreated on every tick. The poll's
-  // setTimeLeft from backend remains the source of truth; this local timer
-  // is just for sub-poll smoothness.
+  // Keyboard (TV remote OK/Enter) also dismisses the interaction gate.
+  useEffect(() => {
+    if (!needsInteraction) return;
+    const onKey = () => markInteracted();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [needsInteraction, markInteracted]);
+
+  // Wire VideoPlayer callbacks to stable refs (they read live state via refs).
+  const onSongEnded = useCallback(() => void handleSongEnded(), [handleSongEnded]);
+  const onTransitionEnded = useCallback(
+    () => void handleTransitionEnded(),
+    [handleTransitionEnded]
+  );
+
+  // ---- Local 1s timer tick (sub-poll smoothness) ---------------------------
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
@@ -764,107 +526,67 @@ export default function Display({ roomId }) {
     return () => clearInterval(timer);
   }, []);
 
-  // Karaoke finished — play transition; advance backend queue only after the clip ends.
-  const handleVideoEnded = () => {
-    // Ignore any late-firing ended event after we've already hard-cut to
-    // logo (session-end finalized).
-    if (sessionFinalizedRef.current) return;
-    if (betweenSongsRef.current || sessionEndPhaseRef.current) return;
-    if (songEndedLockRef.current) return;
-    songEndedLockRef.current = true;
-    resetMediaRecovery();
-    console.log("[STATE] SONG_ENDED");
-    pendingSongRef.current = null;
-    skipPendingSongIdRef.current = null;
-    enterBetweenSongs();
-  };
-
-  const handleVideoError = (videoError) => {
-    console.error("❌ Video failed to load (will retry, not skipping):", videoError);
-    if (sessionFinalizedRef.current || sessionEndPhaseRef.current || betweenSongsRef.current) return;
-
-    const activeSong = currentSongRef.current;
-    if (!activeSong?.videoUrl) return;
-
-    const key = String(activeSong.id || activeSong.videoUrl);
-    if (mediaRecoveryRef.current.key !== key) {
-      mediaRecoveryRef.current.key = key;
-      mediaRecoveryRef.current.attempts = 0;
-    }
-
-    clearMediaRecoveryTimeout();
-    mediaRecoveryRef.current.attempts += 1;
-    const attempt = mediaRecoveryRef.current.attempts;
-
-    if (attempt <= MAX_MEDIA_RECOVERY_RETRIES) {
-      const delayMs = 600 * attempt;
-      mediaRecoveryRef.current.timeoutId = window.setTimeout(() => {
-        mediaRecoveryRef.current.timeoutId = null;
-        // Force a fresh load attempt for the same song URL.
-        setCurrentSong((prev) => (prev?.videoUrl ? { ...prev } : prev));
-      }, delayMs);
-      return;
-    }
-
-    console.warn("[VIDEO] retries exhausted, moving to transition to avoid stuck state");
-    mediaRecoveryRef.current.attempts = 0;
-    songEndedLockRef.current = false;
-    enterBetweenSongs();
-  };
-
+  // ---- Transition watchdog -------------------------------------------------
+  // A transition clip that never fires "ended" (decode/network hiccup) must
+  // still resolve so we never stall on it. ~9s covers the longest clip.
   useEffect(() => {
-    return () => {
-      clearMediaRecoveryTimeout();
-    };
-  }, [clearMediaRecoveryTimeout]);
+    const timer = setInterval(() => {
+      if (stageRef.current !== "TRANSITION") return;
+      const startedAt = transitionStartedAtRef.current;
+      if (!startedAt) return;
+      if (Date.now() - startedAt < 15000) return;
+      console.warn("[WATCHDOG] transition timed out -> resolving");
+      transitionStartedAtRef.current = 0;
+      void handleTransitionEnded();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [handleTransitionEnded]);
 
-  // Format timeLeft ms -> "HH:MM:SS" or "MM:SS"
   const fmt = (ms) => {
     if (ms == null || ms <= 0) return "--:--:--";
     const totalSec = Math.floor(ms / 1000);
     const hrs = Math.floor(totalSec / 3600);
     const mins = Math.floor((totalSec % 3600) / 60);
     const secs = totalSec % 60;
-    
     if (hrs > 0) {
-      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      return `${String(hrs).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
     }
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
-  // Last 5 minutes: from 04:59 (299 999 ms) down to 00:01 the timer renders
-  // red as a visual warning. 00:00 / null / placeholder show neutral.
   const timeUrgent = timeLeft != null && timeLeft > 0 && timeLeft < 5 * 60 * 1000;
 
   return (
     <div className="display-root" style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSong} timeUrgent={timeUrgent} />
+      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSongBanner} timeUrgent={timeUrgent} />
 
       <div className="display-content" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        {/* Center: Video or Default Background - Fullscreen excluding navbar */}
-        <div className="display-center" style={{ 
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          width: "100%",
-          height: "100%"
-        }}>
+        <div
+          className="display-center"
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }}
+        >
           <VideoPlayer
             ref={videoRef}
-            song={currentSong}
-            preloadUrl={preloadUrl}
-            transitionVideoUrls={transitionVideoUrls}
-            idleMode={hasPlayedSong && (betweenSongs || sessionEndPhase) ? "transition" : "logo"}
-            endWithLogo={sessionEndPhase}
             logoSrc="/logo_noraebox.png"
-            onEnded={handleVideoEnded}
-            onTransitionClipEnded={handleTransitionClipEnded}
-            onError={handleVideoError}
+            onSongEnded={onSongEnded}
+            onTransitionEnded={onTransitionEnded}
+            onSongError={handleSongError}
           />
         </div>
       </div>
+
+      {needsInteraction ? (
+        <div
+          className="interaction-gate"
+          role="button"
+          tabIndex={0}
+          onClick={markInteracted}
+          onTouchStart={markInteracted}
+        >
+          <img src="/logo_noraebox.png" alt="Norebox" className="interaction-gate__logo" />
+          <div className="interaction-gate__text">Tap anywhere to start</div>
+        </div>
+      ) : null}
     </div>
   );
 }

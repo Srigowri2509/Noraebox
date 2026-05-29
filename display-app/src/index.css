@@ -276,6 +276,38 @@ video::-internal-media-controls-overlay-cast-button {
   border: none;
 }
 
+/* Interaction gate — satisfies the browser autoplay gesture requirement.
+   Covers everything until a single click / tap / key. */
+.interaction-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: #000;
+  cursor: pointer;
+  user-select: none;
+}
+.interaction-gate__logo {
+  max-width: 40vw;
+  max-height: 40vh;
+  object-fit: contain;
+}
+.interaction-gate__text {
+  color: #fff;
+  font-size: clamp(18px, 3vw, 34px);
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  animation: gatePulse 1.8s ease-in-out infinite;
+}
+@keyframes gatePulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
+}
+
 /* Android TV WebView: hide giant center play overlay on paused/ended videos */
 .video-dual-stack video::-webkit-media-controls-overlay-play-button,
 .video-dual-stack video::-webkit-media-controls-start-playback-button {

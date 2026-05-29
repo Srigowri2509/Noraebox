@@ -202,3 +202,38 @@ def list_devices(db: Session = Depends(get_db)):
         return devices
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/unassigned")
+def delete_unassigned_devices(db: Session = Depends(get_db)):
+    """Delete all devices that are not assigned to a room (clears test junk)."""
+    try:
+        deleted = (
+            db.query(Device)
+            .filter(Device.room_id.is_(None))
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        print(f"DELETE /devices/unassigned: removed {deleted} device(s)")
+        return {"success": True, "deleted": int(deleted)}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting unassigned devices: {str(e)}")
+
+
+@router.delete("/{device_id}")
+def delete_device(device_id: str, db: Session = Depends(get_db)):
+    """Delete a single device by id."""
+    try:
+        device = db.query(Device).filter(Device.id == device_id).first()
+        if not device:
+            raise HTTPException(status_code=404, detail="Device not found")
+        db.delete(device)
+        db.commit()
+        print(f"DELETE /devices/{device_id}: removed")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting device: {str(e)}")

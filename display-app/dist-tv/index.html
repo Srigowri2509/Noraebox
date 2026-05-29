@@ -207,6 +207,27 @@ video::-internal-media-controls-overlay-cast-button {
   -webkit-appearance: none !important;
 }
 
+.video-tap-to-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.88);
+  color: #fff;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.85rem 1.5rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.video-tap-to-play:hover {
+  background: rgba(30, 41, 59, 0.95);
+}
+
 /* Third upcoming clip — in-tree buffer (opacity 0, full-bleed; no visibility:hidden for TV) */
 .video-layer-preload-buddy {
   position: absolute;
@@ -259,6 +280,38 @@ video::-internal-media-controls-overlay-cast-button {
   background: #000;
   border-radius: 0;
   border: none;
+}
+
+/* Interaction gate — satisfies the browser autoplay gesture requirement.
+   Covers everything until a single click / tap / key. */
+.interaction-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  background: #000;
+  cursor: pointer;
+  user-select: none;
+}
+.interaction-gate__logo {
+  max-width: 40vw;
+  max-height: 40vh;
+  object-fit: contain;
+}
+.interaction-gate__text {
+  color: #fff;
+  font-size: clamp(18px, 3vw, 34px);
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+  animation: gatePulse 1.8s ease-in-out infinite;
+}
+@keyframes gatePulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
 }
 
 /* Android TV WebView: hide giant center play overlay on paused/ended videos */

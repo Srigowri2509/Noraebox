@@ -13,8 +13,10 @@ S3_PUBLIC_BUCKET = os.getenv("S3_PUBLIC_BUCKET", "true").lower() == "true"  # De
 if not S3_BUCKET_NAME:
     raise RuntimeError("S3_BUCKET_NAME environment variable is not set")
 
-# Construct base URL for public bucket
-S3_BASE_URL = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com"
+# Construct base URL for public bucket.
+# Prefer CloudFront when configured; fall back to the direct S3 URL.
+S3_DIRECT_BASE_URL = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com"
+S3_BASE_URL = os.getenv("CLOUDFRONT_URL", S3_DIRECT_BASE_URL) or S3_DIRECT_BASE_URL
 
 # Only create S3 client if bucket is private (for presigned URLs)
 s3_client = None

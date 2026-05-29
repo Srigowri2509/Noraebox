@@ -1,15 +1,14 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 
 const BLACK_POSTER =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
-// Cut from 350 → 150 ms. waitPlaying already gates on the "playing" event
-// (video is actively advancing), so this extra buffer was overcautious and
-// added up to ~200 ms of dead time on every karaoke / transition swap.
-const SWAP_STABILIZE_MS = 150;
-const PRELOAD_WARM_MS = 150;
-const HIDDEN_KARAOKE_RETRY_MS = 600;
-const UNSUPPORTED_MEDIA_CODES = new Set([4]);
 
 function normalizeMediaUrl(u) {
   if (!u) return "";
@@ -20,27 +19,8 @@ function normalizeMediaUrl(u) {
   }
 }
 
-function isUnsupportedMediaError(code, message) {
-  const msg = String(message || "").toLowerCase();
-  if (UNSUPPORTED_MEDIA_CODES.has(Number(code))) return true;
-  return (
-    msg.includes("format error") ||
-    msg.includes("no supported sources") ||
-    msg.includes("notsupportederror") ||
-    msg.includes("media_element_error")
-  );
-}
-
-function pickRandomTransition(paths, avoidUrl) {
-  if (!paths?.length) return "";
-  const pool = avoidUrl ? paths.filter((p) => normalizeMediaUrl(p) !== normalizeMediaUrl(avoidUrl)) : paths;
-  const list = pool.length ? pool : paths;
-  return list[Math.floor(Math.random() * list.length)] || "";
-}
-
 function configureVideo(video) {
   if (!video) return;
-  video.muted = true;
   video.defaultMuted = true;
   video.controls = false;
   video.removeAttribute("controls");
@@ -49,35 +29,46 @@ function configureVideo(video) {
   video.playsInline = true;
 }
 
-function waitReady(video, timeoutMs = 12000) {
+/** Wait two animation frames so a just-played frame is actually painted
+ *  before we toggle its layer visible (prevents a flash of the old/black
+ *  frame on slow GPUs/CPUs). */
+function nextPaint() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+/** Resolve once the element has enough buffered data to start playing. */
+function waitCanPlay(video, timeoutMs = 15000) {
   return new Promise((resolve) => {
     if (!video) {
-      resolve();
+      resolve(false);
       return;
     }
     if (video.readyState >= 3) {
-      resolve();
+      resolve(true);
       return;
     }
     let done = false;
-    const finish = () => {
+    const finish = (ok) => {
       if (done) return;
       done = true;
       window.clearTimeout(tid);
       video.removeEventListener("canplaythrough", onReady);
       video.removeEventListener("canplay", onReady);
       video.removeEventListener("loadeddata", onReady);
-      resolve();
+      resolve(ok);
     };
-    const onReady = () => finish();
+    const onReady = () => finish(true);
     video.addEventListener("canplaythrough", onReady);
     video.addEventListener("canplay", onReady);
     video.addEventListener("loadeddata", onReady);
-    const tid = window.setTimeout(finish, timeoutMs);
+    const tid = window.setTimeout(() => finish(video.readyState >= 2), timeoutMs);
   });
 }
 
-function waitPlaying(video, timeoutMs = 8000) {
+/** Resolve once the element is actually advancing (the "playing" event). */
+function waitPlaying(video, timeoutMs = 12000) {
   return new Promise((resolve) => {
     if (!video) {
       resolve(false);
@@ -102,677 +93,410 @@ function waitPlaying(video, timeoutMs = 8000) {
 }
 
 /**
- * Dual permanently mounted <video> elements (videoA / videoB).
- * Hidden slot loads + plays + stabilizes, then opacity swap — never reload visible slot.
+ * Playback stage with three permanently-mounted <video> elements and a logo.
+ *
+ *   - songA / songB : the two song slots (ping-pong). One is the visible
+ *                     "current song", the other holds the PRELOADED next song.
+ *   - transition    : holds the PRELOADED transition clip.
+ *   - logo          : idle image.
+ *
+ * Every element exists in the DOM at all times. State changes are pure
+ * visibility toggles + .play() on already-loaded media. We never add/remove
+ * elements and never load media at the moment of a transition.
+ *
+ * Imperative API (see useImperativeHandle):
+ *   armNext(url)        preload a song into the hidden next slot
+ *   armTransition(url)  preload the transition clip
+ *   playSong(url)       show + play a song (instant if it was armed)
+ *   playTransition()    show + play the armed transition (muted)
+ *   cutToLogo()         hard stop everything, show the logo
+ *   retryActive()       re-attempt play()/unmute on the visible song
+ *   getActiveVideo()    the currently visible song element (or null)
  */
 const VideoPlayer = forwardRef(
   (
     {
-      song,
-      preloadUrl = null,
-      transitionVideoUrls = [],
-      idleMode = "transition",
-      endWithLogo = false,
       logoSrc = "/logo_noraebox.png",
-      onEnded,
-      onError,
-      onTransitionClipEnded,
+      onSongEnded,
+      onTransitionEnded,
+      onSongError,
     },
     ref
   ) => {
-    const videoARef = useRef(null);
-    const videoBRef = useRef(null);
-    const onEndedRef = useRef(onEnded);
-    const onErrorRef = useRef(onError);
-    const onTransitionClipEndedRef = useRef(onTransitionClipEnded);
-    const transitionUrlsRef = useRef(transitionVideoUrls);
-    const activeSlotRef = useRef("a");
-    const loadTokenRef = useRef(0);
-    const slotModeRef = useRef({ a: "idle", b: "idle" });
-    const lastTransitionRef = useRef("");
-    const karaokeStartedAtRef = useRef(0);
-    const preloadTokenRef = useRef(0);
-    const hiddenKaraokeRetryRef = useRef(null);
-    const pendingKaraokeUrlRef = useRef(null);
-    const userInteractedRef = useRef(sessionStorage.getItem("video_autoplay_enabled") === "true");
-    const [activeSlot, setActiveSlot] = useState("a");
-    const suppressPauseRecoveryRef = useRef(false);
-    const activeKaraokeUrlRef = useRef("");
-    const lastProgressTimeRef = useRef(0);
-    const lastProgressWallClockRef = useRef(0);
-    const lastRecoveryAtRef = useRef(0);
-    const unsupportedKaraokeUrlRef = useRef("");
+    const songARef = useRef(null);
+    const songBRef = useRef(null);
+    const transRef = useRef(null);
 
-    const slotEl = useCallback((slot) => (slot === "a" ? videoARef.current : videoBRef.current), []);
-    const hiddenSlot = useCallback(() => (activeSlotRef.current === "a" ? "b" : "a"), []);
-    const activeEl = useCallback(() => slotEl(activeSlotRef.current), [slotEl]);
-    useEffect(() => {
-      onEndedRef.current = onEnded;
-      onErrorRef.current = onError;
-      onTransitionClipEndedRef.current = onTransitionClipEnded;
-      transitionUrlsRef.current = transitionVideoUrls;
-    }, [onEnded, onError, onTransitionClipEnded, transitionVideoUrls]);
+    // Which physical element currently holds the song vs the preloaded next.
+    const roleRef = useRef({ song: "a", next: "b" });
+    // Visible layer: 'a' | 'b' | 't' | 'logo'.
+    const [front, setFront] = useState("logo");
+    const frontRef = useRef("logo");
+    // Coarse stage used by event handlers to ignore stale media events.
+    const stageRef = useRef("logo"); // 'logo' | 'song' | 'transition'
 
+    const armedNextUrlRef = useRef("");
+    const armedTransUrlRef = useRef("");
+    const userInteractedRef = useRef(
+      sessionStorage.getItem("video_autoplay_enabled") === "true"
+    );
+
+    const cbRef = useRef({});
     useEffect(() => {
-      configureVideo(videoARef.current);
-      configureVideo(videoBRef.current);
+      cbRef.current = { onSongEnded, onTransitionEnded, onSongError };
+    }, [onSongEnded, onTransitionEnded, onSongError]);
+
+    const elById = useCallback((id) => {
+      if (id === "a") return songARef.current;
+      if (id === "b") return songBRef.current;
+      if (id === "t") return transRef.current;
+      return null;
     }, []);
 
+    const songEl = useCallback(() => elById(roleRef.current.song), [elById]);
+    const nextEl = useCallback(() => elById(roleRef.current.next), [elById]);
+
     useEffect(() => {
-      return () => {
-        if (hiddenKaraokeRetryRef.current) {
-          window.clearTimeout(hiddenKaraokeRetryRef.current);
-        }
-      };
+      configureVideo(songARef.current);
+      configureVideo(songBRef.current);
+      configureVideo(transRef.current);
     }, []);
 
-    const silenceSlot = useCallback((slot) => {
-      const video = slotEl(slot);
-      if (!video) return;
-      suppressPauseRecoveryRef.current = true;
+    const setVisible = useCallback((id) => {
+      frontRef.current = id;
+      setFront(id);
+    }, []);
+
+    /** Pause + release an element's decoder without disturbing the visible layer. */
+    const silence = useCallback((el) => {
+      if (!el) return;
       try {
-        video.pause();
-        video.muted = true;
-        video.volume = 0;
-      } catch {
-        /* ignore */
-      }
-      slotModeRef.current[slot] = "idle";
-      // 24/7 hygiene + snap-pic fix:
-      // - removeAttribute('src') + load() releases the decoder/audio buffer
-      //   so the WebView doesn't accumulate media-pipeline state across
-      //   hundreds of clips per day.
-      // - It also clears the last-frame "snap pic" the user would otherwise
-      //   see while the next clip loads on the hidden slot; the slot falls
-      //   back to BLACK_POSTER and the #000 video-stage-base shows through.
-      try {
-        if (video.currentSrc || video.getAttribute("src")) {
-          video.removeAttribute("src");
-          video.load();
+        el.pause();
+        el.muted = true;
+        el.volume = 0;
+        if (el.currentSrc || el.getAttribute("src")) {
+          el.removeAttribute("src");
+          el.load();
         }
       } catch {
         /* ignore */
       }
-      suppressPauseRecoveryRef.current = false;
-    }, [slotEl]);
-
-    const silenceAllSlots = useCallback(() => {
-      loadTokenRef.current += 1;
-      activeKaraokeUrlRef.current = "";
-      silenceSlot("a");
-      silenceSlot("b");
-    }, [silenceSlot]);
-
-    const showSlot = useCallback(
-      (slot) => {
-        const other = slot === "a" ? "b" : "a";
-        silenceSlot(other);
-        activeSlotRef.current = slot;
-        setActiveSlot(slot);
-      },
-      [silenceSlot]
-    );
-
-    const tryUnmuteKaraoke = useCallback((video, slot) => {
-      if (!video || slotModeRef.current[slot] !== "karaoke") return;
-      video.volume = 1;
-      if (userInteractedRef.current) {
-        video.muted = false;
-        return;
-      }
-      video.muted = false;
-      if (!video.muted) {
-        userInteractedRef.current = true;
-        sessionStorage.setItem("video_autoplay_enabled", "true");
-      }
     }, []);
 
-    const playOnSlot = useCallback(
-      async (slot, url, mode, token) => {
-        const video = slotEl(slot);
-        if (!video || !url) return false;
-
-        configureVideo(video);
-        video.loop = false;
-        slotModeRef.current[slot] = mode;
-        if (mode === "karaoke") {
-          video.volume = 1;
+    /** Load a url into an element and wait until it can play. Never shows it. */
+    const loadInto = useCallback(async (el, url) => {
+      if (!el || !url) return false;
+      configureVideo(el);
+      el.loop = false;
+      el.muted = true;
+      el.volume = 0;
+      el.preload = "auto";
+      if (normalizeMediaUrl(el.src) !== normalizeMediaUrl(url)) {
+        el.src = url;
+        try {
+          el.load();
+        } catch {
+          /* ignore */
         }
-
-        if (normalizeMediaUrl(video.src) !== normalizeMediaUrl(url)) {
-          video.src = url;
-          try {
-            video.load();
-          } catch {
-            /* ignore */
-          }
-        }
-
-        await waitReady(video);
-        if (loadTokenRef.current !== token) return false;
-
-        let played = false;
-        for (let attempt = 0; attempt < 4; attempt += 1) {
-          if (loadTokenRef.current !== token) return false;
-          video.muted = true;
-          try {
-            await video.play();
-          } catch (err) {
-            if (attempt === 3) {
-              console.warn("[VIDEO] play failed", url, err);
-              onErrorRef.current?.({ videoUrl: url, message: String(err) });
-              return false;
-            }
-            await new Promise((r) => window.setTimeout(r, 200 * (attempt + 1)));
-            continue;
-          }
-          const isPlaying = await waitPlaying(video);
-          if (isPlaying) {
-            played = true;
-            break;
-          }
-        }
-
-        if (!played || loadTokenRef.current !== token) {
-          try {
-            video.pause();
-            video.muted = true;
-          } catch {
-            /* ignore */
-          }
-          return false;
-        }
-
-        await new Promise((r) => window.setTimeout(r, SWAP_STABILIZE_MS));
-
-        if (loadTokenRef.current !== token) {
-          try {
-            video.pause();
-            video.muted = true;
-          } catch {
-            /* ignore */
-          }
-          return false;
-        }
-
-        // Karaoke: if the decoder is advancing, swap in — don't reject for low readyState.
-        if (mode === "karaoke") {
-          if (video.paused) {
-            // Some browsers briefly flip paused=true between autoplay retries.
-            // Nudge once more before giving up this swap.
-            try {
-              await video.play();
-            } catch {
-              /* ignore */
-            }
-            const resumed = await waitPlaying(video, 1500);
-            if (!resumed) {
-              console.warn("[VIDEO] karaoke still paused before swap", url);
-              return false;
-            }
-          }
-        } else if (video.paused || video.readyState < 2) {
-          console.warn("[VIDEO] transition unstable before swap — pausing", url);
-          try {
-            video.pause();
-            video.muted = true;
-          } catch {
-            /* ignore */
-          }
-          return false;
-        }
-
-        showSlot(slot);
-
-        if (mode === "karaoke") {
-          activeKaraokeUrlRef.current = normalizeMediaUrl(url);
-          karaokeStartedAtRef.current = Date.now();
-          tryUnmuteKaraoke(video, slot);
-        }
-        return true;
-      },
-      [slotEl, showSlot, tryUnmuteKaraoke]
-    );
-
-    const swapToUrlRef = useRef(null);
-
-    const scheduleKaraokeRetry = useCallback((url) => {
-      if (
-        unsupportedKaraokeUrlRef.current &&
-        normalizeMediaUrl(url) === unsupportedKaraokeUrlRef.current
-      ) {
-        console.warn("[VIDEO] unsupported karaoke URL — retry disabled", url);
-        return;
       }
-      pendingKaraokeUrlRef.current = url;
-      if (hiddenKaraokeRetryRef.current) {
-        window.clearTimeout(hiddenKaraokeRetryRef.current);
-      }
-      hiddenKaraokeRetryRef.current = window.setTimeout(() => {
-        hiddenKaraokeRetryRef.current = null;
-        const retryUrl = pendingKaraokeUrlRef.current;
-        if (!retryUrl) return;
-        console.log("[VIDEO] retry karaoke load", retryUrl);
-        void swapToUrlRef.current?.(retryUrl, "karaoke");
-      }, HIDDEN_KARAOKE_RETRY_MS);
+      return waitCanPlay(el, 15000);
     }, []);
 
-    const bothSlotsIdle = useCallback(() => {
-      return (
-        slotModeRef.current.a === "idle" &&
-        slotModeRef.current.b === "idle"
-      );
+    /**
+     * Start an element playing using the muted-first pattern. Muted autoplay is
+     * always permitted by the browser, so we always start muted, then unmute
+     * once playback is confirmed AND the user has interacted (unmuting without
+     * a gesture pauses the element on some browsers). Every play() is wrapped
+     * in try/catch with a single retry so a rejected play() can never silently
+     * stall the state machine.
+     */
+    const startPlayback = useCallback(async (el, { withSound }) => {
+      if (!el) return false;
+      el.volume = withSound ? 1 : 0;
+      el.muted = true; // muted-first: always allowed to autoplay
+      try {
+        await el.play();
+      } catch (err) {
+        console.error("[PLAY FAILED]", err);
+        try {
+          await el.play(); // retry once
+        } catch (err2) {
+          console.error("[PLAY FAILED] retry", err2);
+          return false;
+        }
+      }
+      const ok = await waitPlaying(el, 12000);
+      if (ok && withSound && userInteractedRef.current) {
+        try {
+          el.muted = false;
+          el.volume = 1;
+        } catch (err) {
+          console.error("[UNMUTE FAILED]", err);
+        }
+      }
+      return ok;
     }, []);
 
-    const swapToUrl = useCallback(
-      async (url, mode) => {
-        if (!url) return;
-        if (
-          mode === "karaoke" &&
-          unsupportedKaraokeUrlRef.current &&
-          normalizeMediaUrl(url) === unsupportedKaraokeUrlRef.current
-        ) {
-          console.warn("[VIDEO] unsupported karaoke URL — swap blocked", url);
-          return;
-        }
-        const token = ++loadTokenRef.current;
-        const hidden = hiddenSlot();
-        const visible = activeSlotRef.current;
-        const visibleMode = slotModeRef.current[visible];
+    // ---- Imperative API -------------------------------------------------
 
-        // Tablet skip during transition: load karaoke on the visible slot instead of
-        // silencing the visible transition and loading hidden (hidden load can fail on
-        // web and leaves a blank/white frame with no recovery).
-        if (mode === "karaoke" && visibleMode === "transition") {
-          if (hiddenKaraokeRetryRef.current) {
-            window.clearTimeout(hiddenKaraokeRetryRef.current);
-            hiddenKaraokeRetryRef.current = null;
-          }
-          pendingKaraokeUrlRef.current = null;
-          silenceSlot(hidden);
-          const ok = await playOnSlot(visible, url, mode, token);
-          if (ok) return;
-          if (loadTokenRef.current !== token) return;
-          console.warn("[VIDEO] visible karaoke swap failed — trying hidden slot", url);
-          const okHidden = await playOnSlot(hidden, url, mode, token);
-          if (okHidden) return;
-          if (loadTokenRef.current !== token) return;
-          scheduleKaraokeRetry(url);
-          return;
-        }
-
-        // First song / cold start: load on visible slot (works better with browser autoplay).
-        if (mode === "karaoke" && bothSlotsIdle()) {
-          if (hiddenKaraokeRetryRef.current) {
-            window.clearTimeout(hiddenKaraokeRetryRef.current);
-            hiddenKaraokeRetryRef.current = null;
-          }
-          pendingKaraokeUrlRef.current = null;
-          const okVisible = await playOnSlot(visible, url, mode, token);
-          if (okVisible) return;
-          if (loadTokenRef.current !== token) return;
-          console.warn("[VIDEO] visible cold-start failed — trying hidden slot", url);
-          const okHidden = await playOnSlot(hidden, url, mode, token);
-          if (okHidden) return;
-          if (loadTokenRef.current !== token) return;
-          scheduleKaraokeRetry(url);
-          return;
-        }
-
-        // Stop karaoke audio on the visible slot before transition/karaoke loads on hidden.
-        if (mode === "transition" || mode === "karaoke") {
-          silenceSlot(visible);
-        }
-
-        const ok = await playOnSlot(hidden, url, mode, token);
-        if (ok) {
-          pendingKaraokeUrlRef.current = null;
-          if (hiddenKaraokeRetryRef.current) {
-            window.clearTimeout(hiddenKaraokeRetryRef.current);
-            hiddenKaraokeRetryRef.current = null;
-          }
-          return;
-        }
-        if (loadTokenRef.current !== token) return;
-
-        if (mode === "karaoke") {
-          console.warn("[VIDEO] hidden karaoke swap failed — trying visible slot", url);
-          const okVisible = await playOnSlot(visible, url, mode, token);
-          if (okVisible) return;
-          if (loadTokenRef.current !== token) return;
-          scheduleKaraokeRetry(url);
-        }
-      },
-      [hiddenSlot, playOnSlot, scheduleKaraokeRetry, silenceSlot, bothSlotsIdle]
-    );
-
-    swapToUrlRef.current = swapToUrl;
-
-    const warmPreloadOnHiddenSlot = useCallback(
+    const armTransition = useCallback(
       async (url) => {
         if (!url) return;
-        const token = ++preloadTokenRef.current;
-        const hidden = hiddenSlot();
-        const video = slotEl(hidden);
-        if (!video) return;
-
-        if (normalizeMediaUrl(video.src) === normalizeMediaUrl(url)) return;
-
-        configureVideo(video);
-        video.muted = true;
-        video.volume = 0;
-        video.preload = "auto";
-        slotModeRef.current[hidden] = "preload";
-
-        if (normalizeMediaUrl(video.src) !== normalizeMediaUrl(url)) {
-          video.src = url;
+        if (normalizeMediaUrl(armedTransUrlRef.current) === normalizeMediaUrl(url)) {
+          return;
         }
-
-        try {
-          video.load();
-          await video.play();
-          await new Promise((r) => window.setTimeout(r, PRELOAD_WARM_MS));
-          video.pause();
-          video.currentTime = 0;
-          video.muted = true;
-          slotModeRef.current[hidden] = "idle";
-        } catch (err) {
-          slotModeRef.current[hidden] = "idle";
-          // Ignore expected interruption when another swap pauses preload.
-          if (preloadTokenRef.current === token && String(err?.name || "") !== "AbortError") {
-            console.warn("[VIDEO] Warm preload failed", url, err);
-          }
-        }
+        armedTransUrlRef.current = url;
+        await loadInto(transRef.current, url);
       },
-      [hiddenSlot, slotEl]
+      [loadInto]
     );
 
-    const startTransition = useCallback(() => {
-      const paths = transitionUrlsRef.current || [];
-      if (!paths.length) return;
-      const next = pickRandomTransition(paths, lastTransitionRef.current);
-      if (!next) return;
-      lastTransitionRef.current = normalizeMediaUrl(next);
-      void swapToUrl(next, "transition");
-    }, [swapToUrl]);
-
-    useEffect(() => {
-      if (!preloadUrl) return;
-      // Allow preload whenever a song or transition is on screen — the hidden
-      // slot is free, so primng the browser cache here makes the next swap
-      // near-instant. We only skip when the active slot is in "logo" mode
-      // (nothing queued / between sessions) since there's no song coming.
-      const activeMode = slotModeRef.current[activeSlotRef.current];
-      if (activeMode !== "karaoke" && activeMode !== "transition") return;
-      const hidden = hiddenSlot();
-      const hiddenMode = slotModeRef.current[hidden];
-      if (hiddenMode === "karaoke" || hiddenMode === "preload") return;
-      void warmPreloadOnHiddenSlot(preloadUrl);
-    }, [preloadUrl, warmPreloadOnHiddenSlot]);
-
-    useEffect(() => {
-      const url = song?.videoUrl ? String(song.videoUrl) : "";
-      if (url) {
-        if (
-          unsupportedKaraokeUrlRef.current &&
-          normalizeMediaUrl(url) !== unsupportedKaraokeUrlRef.current
-        ) {
-          unsupportedKaraokeUrlRef.current = "";
+    const armNext = useCallback(
+      async (url) => {
+        if (!url) return;
+        const el = nextEl();
+        if (!el) return;
+        if (normalizeMediaUrl(armedNextUrlRef.current) === normalizeMediaUrl(url)) {
+          return;
         }
-        const norm = normalizeMediaUrl(url);
-        const active = activeSlotRef.current;
-        const video = slotEl(active);
-        const alreadyPlaying =
-          slotModeRef.current[active] === "karaoke" &&
-          norm === activeKaraokeUrlRef.current &&
-          video &&
-          !video.paused;
-        if (alreadyPlaying) return;
-        void swapToUrl(url, "karaoke");
-      } else {
-        activeKaraokeUrlRef.current = "";
-        if (idleMode === "logo") {
-          silenceAllSlots();
-        } else if (
-          idleMode === "transition" &&
-          slotModeRef.current[activeSlotRef.current] !== "transition"
-        ) {
-          silenceAllSlots();
-          startTransition();
+        armedNextUrlRef.current = url;
+        await loadInto(el, url);
+      },
+      [loadInto, nextEl]
+    );
+
+    /**
+     * Show + play a song. If `url` matches the element already preloaded in the
+     * hidden next slot, this is an instant visibility toggle. Otherwise we load
+     * it into the next slot first (skip to a non-preloaded target), then swap.
+     */
+    const playSong = useCallback(
+      async (url) => {
+        if (!url) return false;
+        const incoming = nextEl();
+        if (!incoming) return false;
+
+        const preloaded =
+          normalizeMediaUrl(incoming.src) === normalizeMediaUrl(url) &&
+          incoming.readyState >= 2;
+        if (!preloaded) {
+          const ok = await loadInto(incoming, url);
+          if (!ok && incoming.readyState < 2) {
+            // Last-ditch: still attempt to play; decoder may catch up.
+          }
         }
+
+        const playing = await startPlayback(incoming, { withSound: true });
+        if (!playing) {
+          cbRef.current.onSongError?.({ videoUrl: url, message: "play failed" });
+          return false;
+        }
+
+        const previousSongId = roleRef.current.song;
+        const incomingId = roleRef.current.next;
+        // Promote: the preloaded element becomes the visible song; roles swap so
+        // the old song element is now the free "next" slot for the next preload.
+        roleRef.current = { song: incomingId, next: previousSongId };
+        armedNextUrlRef.current = "";
+        stageRef.current = "song";
+        // Only reveal once the new frame is actually painted, so slow GPUs
+        // never show a black/old frame during the opacity swap.
+        await nextPaint();
+        setVisible(incomingId);
+
+        // Release the element we just swapped away from, after the swap settles.
+        const oldEl = elById(previousSongId);
+        window.setTimeout(() => silence(oldEl), 600);
+        return true;
+      },
+      [nextEl, loadInto, startPlayback, setVisible, elById, silence]
+    );
+
+    const playTransition = useCallback(async () => {
+      const el = transRef.current;
+      if (!el) return false;
+      const armed =
+        armedTransUrlRef.current &&
+        normalizeMediaUrl(el.src) === normalizeMediaUrl(armedTransUrlRef.current) &&
+        el.readyState >= 2;
+      if (!armed && armedTransUrlRef.current) {
+        await loadInto(el, armedTransUrlRef.current);
       }
-    }, [song?.videoUrl, idleMode, swapToUrl, startTransition, silenceAllSlots, slotEl]);
+      try {
+        el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      stageRef.current = "transition";
+      const playing = await startPlayback(el, { withSound: false });
+      // Reveal the transition only after its first frame is painted.
+      await nextPaint();
+      setVisible("t");
+      if (!playing) {
+        // Could not start the clip — resolve immediately so the controller can
+        // advance to the next song or the logo without a black gap.
+        cbRef.current.onTransitionEnded?.();
+        return false;
+      }
+      return true;
+    }, [loadInto, startPlayback, setVisible]);
 
-    const onSlotEnded = useCallback(
-      (slot) => () => {
-        if (activeSlotRef.current !== slot) return;
-        const video = slotEl(slot);
-        const slotMode = slotModeRef.current[slot];
-        const url = video?.currentSrc || video?.src || "";
-
-        if (slotMode === "karaoke") {
-          const playedSec = video?.currentTime || 0;
-          const dur = video?.duration || 0;
-          const elapsed = Date.now() - (karaokeStartedAtRef.current || 0);
-          const nearEnd = dur > 0 && playedSec >= Math.max(2, dur * 0.85);
-          const longEnough = elapsed >= 4000 || nearEnd;
-          if (!longEnough) {
-            console.warn("[VIDEO] ignored spurious ended", url, { playedSec, dur, elapsed });
-            try {
-              void video?.play();
-            } catch {
-              /* ignore */
-            }
-            return;
-          }
-          silenceSlot(slot);
-          onEndedRef.current?.();
-          // Transition is started by Display clearing videoUrl — not here.
-        } else if (slotMode === "transition") {
-          slotModeRef.current[slot] = "idle";
-          void (async () => {
-            const handled = await onTransitionClipEndedRef.current?.();
-            if (handled !== true && !endWithLogo) {
-              startTransition();
-            }
-          })();
+    const cutToLogo = useCallback(() => {
+      stageRef.current = "logo";
+      armedNextUrlRef.current = "";
+      setVisible("logo");
+      // Stop audio immediately; release decoders shortly after the logo paints.
+      [songARef.current, songBRef.current, transRef.current].forEach((el) => {
+        if (!el) return;
+        try {
+          el.pause();
+          el.muted = true;
+          el.volume = 0;
+        } catch {
+          /* ignore */
         }
+      });
+      window.setTimeout(() => {
+        [songARef.current, songBRef.current, transRef.current].forEach(silence);
+      }, 600);
+    }, [setVisible, silence]);
+
+    const retryActive = useCallback(() => {
+      userInteractedRef.current = true;
+      sessionStorage.setItem("video_autoplay_enabled", "true");
+      if (stageRef.current !== "song") return;
+      const el = songEl();
+      if (!el) return;
+      el.muted = false;
+      el.volume = 1;
+      try {
+        Promise.resolve(el.play()).catch((err) =>
+          console.error("[PLAY FAILED] retryActive", err)
+        );
+      } catch (err) {
+        console.error("[PLAY FAILED] retryActive", err);
+      }
+    }, [songEl]);
+
+    useImperativeHandle(ref, () => ({
+      armNext,
+      armTransition,
+      playSong,
+      playTransition,
+      cutToLogo,
+      retryActive,
+      getActiveVideo: () => (stageRef.current === "song" ? songEl() : null),
+    }));
+
+    // ---- Media events ---------------------------------------------------
+
+    const onEndedFor = useCallback(
+      (id) => () => {
+        if (id === "t") {
+          if (stageRef.current !== "transition") return;
+          cbRef.current.onTransitionEnded?.();
+          return;
+        }
+        // Song element: only the visible song slot may signal completion.
+        if (stageRef.current !== "song") return;
+        if (roleRef.current.song !== id) return;
+        cbRef.current.onSongEnded?.();
       },
-      [slotEl, startTransition, silenceSlot, endWithLogo]
+      []
     );
 
-    const onSlotError = useCallback(
-      (slot) => () => {
-        const video = slotEl(slot);
-        if (activeSlotRef.current !== slot) return;
-        // Ignore errors that fire after our intentional silenceSlot() clears src.
-        if (!video?.getAttribute("src") && !video?.currentSrc) return;
-        const url = video?.currentSrc || video?.src || "";
-        const errCode = video?.error?.code;
-        const errMessage = video?.error?.message;
-        console.warn("[VIDEO] error", url, errCode, video?.error?.message);
-        if (String(url).includes("/stream") && errCode === 4) {
-          console.error(
-            "[VIDEO] Media not supported — restart backend and confirm S3 key exists for this song"
-          );
-        }
-        onErrorRef.current?.({
-          videoUrl: url,
-          code: errCode,
-          message: video?.error?.message,
-        });
-
-        if (slotModeRef.current[slot] === "karaoke" && isUnsupportedMediaError(errCode, errMessage)) {
-          const norm = normalizeMediaUrl(url);
-          unsupportedKaraokeUrlRef.current = norm;
-          pendingKaraokeUrlRef.current = null;
-          if (hiddenKaraokeRetryRef.current) {
-            window.clearTimeout(hiddenKaraokeRetryRef.current);
-            hiddenKaraokeRetryRef.current = null;
+    const onErrorFor = useCallback(
+      (id) => () => {
+        const el = elById(id);
+        if (!el?.getAttribute("src") && !el?.currentSrc) return;
+        const url = el?.currentSrc || el?.src || "";
+        const code = el?.error?.code;
+        if (id === "t") {
+          if (stageRef.current === "transition") {
+            cbRef.current.onTransitionEnded?.();
           }
-          console.warn("[VIDEO] marked unsupported karaoke URL, stopped retries", norm);
+          return;
+        }
+        if (stageRef.current === "song" && roleRef.current.song === id) {
+          cbRef.current.onSongError?.({ videoUrl: url, code, message: el?.error?.message });
         }
       },
-      [slotEl]
+      [elById]
     );
 
-    // 24/7 stall recovery: HTML5 `waiting`/`stalled` fire when the decoder
-    // or network buffer underruns mid-playback (common on long-running TVs).
-    // Nudge play() — never skip, only resume the same stream.
-    const onSlotStall = useCallback(
-      (slot) => () => {
-        if (suppressPauseRecoveryRef.current) return;
-        if (activeSlotRef.current !== slot) return;
-        const video = slotEl(slot);
-        const mode = slotModeRef.current[slot];
-        if (!video || mode !== "karaoke") return;
-        const url = normalizeMediaUrl(video.currentSrc || video.src || "");
-        if (unsupportedKaraokeUrlRef.current && url === unsupportedKaraokeUrlRef.current) return;
-        if (video.paused) {
-          console.warn("[VIDEO] stall detected — resuming", video.currentSrc || video.src);
+    // 24/7 stall nudge + end-of-tail completion. If the visible song pauses
+    // unexpectedly, resume it. If it is stuck on the final frame without
+    // firing "ended" (common on some TVs), force completion so the controller
+    // can move on. handleSongEnded is idempotent (lock-guarded) on the
+    // controller side, so a duplicate with the native event is harmless.
+    const tailRef = useRef({ t: 0, at: 0 });
+    useEffect(() => {
+      const interval = window.setInterval(() => {
+        if (stageRef.current !== "song") return;
+        const el = songEl();
+        if (!el) return;
+
+        if (el.paused && el.readyState >= 2) {
           try {
-            Promise.resolve(video.play()).catch(() => {});
-          } catch {
-            /* ignore */
+            Promise.resolve(el.play()).catch((err) =>
+              console.error("[PLAY FAILED] stall nudge", err)
+            );
+          } catch (err) {
+            console.error("[PLAY FAILED] stall nudge", err);
           }
         }
-      },
-      [slotEl]
-    );
 
-    // 24/7 visibility recovery: some Android TV webviews pause background
-    // <video> elements on suspend. Resume the active karaoke when shown.
+        const t = Number(el.currentTime || 0);
+        const dur = Number(el.duration || 0);
+        const now = Date.now();
+        if (dur > 0 && dur - t <= 0.6) {
+          if (tailRef.current.at === 0) {
+            tailRef.current = { t, at: now };
+          } else if (now - tailRef.current.at >= 1200) {
+            tailRef.current = { t: 0, at: 0 };
+            cbRef.current.onSongEnded?.();
+          }
+        } else {
+          tailRef.current = { t, at: 0 };
+        }
+      }, 1000);
+      return () => window.clearInterval(interval);
+    }, [songEl]);
+
+    // Resume the visible song after the TV/webview returns from background.
     useEffect(() => {
       const onVisibility = () => {
         if (document.visibilityState !== "visible") return;
-        const slot = activeSlotRef.current;
-        const video = slotEl(slot);
-        if (!video) return;
-        if (slotModeRef.current[slot] !== "karaoke") return;
-        const url = normalizeMediaUrl(video.currentSrc || video.src || "");
-        if (unsupportedKaraokeUrlRef.current && url === unsupportedKaraokeUrlRef.current) return;
-        if (!video.paused) return;
-        console.warn("[VIDEO] visibility resume — re-playing active karaoke");
-        try {
-          Promise.resolve(video.play()).catch(() => {});
-        } catch {
-          /* ignore */
+        if (stageRef.current !== "song") return;
+        const el = songEl();
+        if (el && el.paused) {
+          try {
+            Promise.resolve(el.play()).catch((err) =>
+              console.error("[PLAY FAILED] visibility resume", err)
+            );
+          } catch (err) {
+            console.error("[PLAY FAILED] visibility resume", err);
+          }
         }
       };
       document.addEventListener("visibilitychange", onVisibility);
       return () => document.removeEventListener("visibilitychange", onVisibility);
-    }, [slotEl]);
+    }, [songEl]);
 
-    // Freeze watchdog:
-    // Only nudge play() when truly stalled. Do NOT reload/swap same URL here,
-    // because that can restart playback from 0 on transient startup jitter.
-    useEffect(() => {
-      const interval = window.setInterval(() => {
-        const slot = activeSlotRef.current;
-        const video = slotEl(slot);
-        if (!video) return;
-        if (slotModeRef.current[slot] !== "karaoke") return;
+    // ---- Render ---------------------------------------------------------
 
-        const now = Date.now();
-        const t = Number(video.currentTime || 0);
+    const cls = (id) =>
+      `video-element video-slot ${front === id ? "video-slot--front" : "video-slot--back"}`;
 
-        if (lastProgressWallClockRef.current === 0) {
-          lastProgressWallClockRef.current = now;
-          lastProgressTimeRef.current = t;
-          return;
-        }
-
-        const dtWall = now - lastProgressWallClockRef.current;
-        const dtPlay = t - lastProgressTimeRef.current;
-
-        // Still moving, keep snapshot fresh.
-        if (dtPlay > 0.2) {
-          lastProgressWallClockRef.current = now;
-          lastProgressTimeRef.current = t;
-          return;
-        }
-
-        // Startup freeze guard:
-        // Some Edge/WebView runs stall around 0-2 s with paused=false and
-        // readyState looking healthy. If progress has been flat for long
-        // enough, treat this as a real freeze even during startup.
-        if (t < 5 && dtWall < 5000) return;
-        // Give it longer before declaring frozen.
-        if (dtWall < 7000) return;
-        // Cooldown between recoveries so we don't thrash.
-        if (now - lastRecoveryAtRef.current < 12000) return;
-
-        const url = video.currentSrc || video.src || "";
-        if (!url) return;
-        const norm = normalizeMediaUrl(url);
-        if (unsupportedKaraokeUrlRef.current && norm === unsupportedKaraokeUrlRef.current) return;
-        // Do not rely only on paused/readyState here — those can look healthy
-        // while currentTime is frozen at startup on some browser builds.
-
-        lastRecoveryAtRef.current = now;
-        lastProgressWallClockRef.current = now;
-        lastProgressTimeRef.current = t;
-
-        console.warn("[VIDEO] freeze watchdog recovery", { url, t });
-        try {
-          Promise.resolve(video.play()).catch(() => {});
-        } catch {
-          /* ignore */
-        }
-      }, 1000);
-
-      return () => window.clearInterval(interval);
-    }, [slotEl]);
-
-    // Immediately stop playback on BOTH slots (audio + video) without
-    // clearing src. Used for hard cut-to-logo on session end so the user
-    // doesn't hear a stale audio tail; the React commit that flips both
-    // slots to opacity 0 then handles the visual hide atomically.
-    const pauseAllSlots = useCallback(() => {
-      // Abort any in-flight load/play loops first.
-      loadTokenRef.current += 1;
-      // Mark both slots idle BEFORE pausing — the karaoke onPause stall-
-      // recovery would otherwise see mode === "karaoke" and immediately
-      // call play() to undo our pause.
-      if (slotModeRef.current.a === "karaoke") slotModeRef.current.a = "idle";
-      if (slotModeRef.current.b === "karaoke") slotModeRef.current.b = "idle";
-      try {
-        const va = videoARef.current;
-        if (va) {
-          va.muted = true;
-          va.volume = 0;
-          va.pause();
-        }
-      } catch {
-        /* ignore */
-      }
-      try {
-        const vb = videoBRef.current;
-        if (vb) {
-          vb.muted = true;
-          vb.volume = 0;
-          vb.pause();
-        }
-      } catch {
-        /* ignore */
-      }
-      console.log("[AUDIO] all slots paused (no src clear)");
-    }, []);
-
-    useImperativeHandle(ref, () => ({
-      play: () => activeEl()?.play(),
-      pause: () => activeEl()?.pause(),
-      getActiveVideo: activeEl,
-      warmPreload: (url) => warmPreloadOnHiddenSlot(url),
-      stopKaraokeAudio: () => silenceAllSlots(),
-      pauseAllSlots,
-    }));
-
-    const showLogo = idleMode === "logo" && !song?.videoUrl;
-    const slotClass = (slot) => {
-      const base = "video-element video-slot";
-      if (showLogo) return `${base} video-slot--back`;
-      return `${base} ${activeSlot === slot ? "video-slot--front" : "video-slot--back"}`;
+    const videoProps = {
+      poster: BLACK_POSTER,
+      muted: true,
+      preload: "auto",
+      playsInline: true,
+      disablePictureInPicture: true,
+      disableRemotePlayback: true,
+      controls: false,
+      controlsList: "nodownload noplaybackrate nofullscreen noremoteplayback",
     };
 
     return (
@@ -780,46 +504,35 @@ const VideoPlayer = forwardRef(
         <div className="video-stage-base" aria-hidden="true" />
 
         <video
-          ref={videoARef}
+          ref={songARef}
           id="videoA"
-          className={slotClass("a")}
-          poster={BLACK_POSTER}
-          muted
-          preload="auto"
-          playsInline
-          disablePictureInPicture
-          disableRemotePlayback
-          controls={false}
-          controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
-          onEnded={onSlotEnded("a")}
-          onError={onSlotError("a")}
-          onWaiting={onSlotStall("a")}
-          onStalled={onSlotStall("a")}
+          className={cls("a")}
+          {...videoProps}
+          onEnded={onEndedFor("a")}
+          onError={onErrorFor("a")}
         />
         <video
-          ref={videoBRef}
+          ref={songBRef}
           id="videoB"
-          className={slotClass("b")}
-          poster={BLACK_POSTER}
-          muted
-          preload="auto"
-          playsInline
-          disablePictureInPicture
-          disableRemotePlayback
-          controls={false}
-          controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
-          onEnded={onSlotEnded("b")}
-          onError={onSlotError("b")}
-          onWaiting={onSlotStall("b")}
-          onStalled={onSlotStall("b")}
+          className={cls("b")}
+          {...videoProps}
+          onEnded={onEndedFor("b")}
+          onError={onErrorFor("b")}
+        />
+        <video
+          ref={transRef}
+          id="videoT"
+          className={cls("t")}
+          {...videoProps}
+          onEnded={onEndedFor("t")}
+          onError={onErrorFor("t")}
         />
 
-        {showLogo ? (
+        {front === "logo" ? (
           <div className="video-placeholder">
             <img src={logoSrc} alt="Norebox logo" className="logo-fallback" />
           </div>
         ) : null}
-
       </div>
     );
   }

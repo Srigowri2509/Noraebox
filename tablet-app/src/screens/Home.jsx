@@ -568,7 +568,7 @@ const filteredSongs = useMemo(() => {
       } else if (response.status === "playing") {
         setSkipLocked(true);
         if (skipUnlockTimerRef.current) clearTimeout(skipUnlockTimerRef.current);
-        skipUnlockTimerRef.current = setTimeout(() => setSkipLocked(false), 5000);
+        skipUnlockTimerRef.current = setTimeout(() => setSkipLocked(false), 1500);
 
         console.log("✅ Successfully skipped to next song:", response.song_title);
         try {
@@ -618,7 +618,6 @@ const filteredSongs = useMemo(() => {
     };
   }, [roomId, room?.id]);
 
-  const playDisabled = !queue || queue.length === 0 || isSongPlaying;
   const skipDisabled = !queue || queue.length === 0 || skipLocked;
 
   // Poll queue to check for changes and auto-play next song
@@ -831,27 +830,6 @@ const filteredSongs = useMemo(() => {
               <div className="row-1-right flex min-h-0 min-w-0 flex-col overflow-x-visible">
                 <div className="playback-rail-height flex w-full shrink-0 flex-col items-center justify-center gap-1 overflow-x-visible overflow-y-hidden rounded-2xl border border-white/[0.08] bg-slate-900/75 px-4 py-1.5 shadow-lg md:gap-1.5 md:px-5 md:py-2 lg:px-6">
                   <div className="flex min-w-0 max-w-full shrink-0 flex-nowrap flex-row items-center justify-center gap-1 md:gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleReadyToSing}
-                      disabled={playDisabled}
-                      className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-5 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[6rem] md:min-h-[44px] md:min-w-[8rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[9rem] lg:px-9 lg:text-base
-                      ${(playDisabled)
-                        ? "cursor-not-allowed opacity-45"
-                        : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
-                    `}
-                      style={{
-                        backgroundColor: (playDisabled) ? "#475569" : "#ff4081",
-                        borderRadius: 9999,
-                        boxShadow:
-                          playDisabled
-                            ? "inset 0 1px 0 rgba(255,255,255,0.08)"
-                            : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(255,64,129,0.8), 0 0 48px rgba(255,64,129,0.38)",
-                      }}
-                    >
-                      <span className="text-lg leading-none drop-shadow-sm md:text-xl">▶</span>
-                      <span className="leading-none drop-shadow-sm">Play</span>
-                    </button>
                     <button
                       type="button"
                       onClick={handleSkip}

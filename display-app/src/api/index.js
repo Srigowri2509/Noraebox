@@ -1,21 +1,43 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000";
 
 export async function api(path, options = {}) {
-  // Add timeout to prevent hanging
+  const TIMEOUT_MS = 8000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
-  
+  const timeoutId = setTimeout(() => {
+    try {
+      controller.abort();
+    } catch {
+      /* ignore */
+    }
+  }, TIMEOUT_MS);
+
+  // Hard timeout that settles the promise even if the WebView ignores
+  // AbortController. Older Android TV WebViews don't always honor fetch abort,
+  // which would otherwise hang the request — and any poll loop awaiting it —
+  // forever. Promise.race guarantees api() always resolves or rejects.
+  let hardTimer;
+  const hardTimeout = new Promise((_, reject) => {
+    hardTimer = setTimeout(
+      () => reject(new Error("Request timeout - backend may be down or unreachable")),
+      TIMEOUT_MS + 1000
+    );
+  });
+
   try {
-    const res = await fetch(`${API_BASE}${path}`, {
-      signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {})
-      },
-      ...options
-    });
+    const res = await Promise.race([
+      fetch(`${API_BASE}${path}`, {
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        },
+        ...options
+      }),
+      hardTimeout
+    ]);
     clearTimeout(timeoutId);
-    
+    clearTimeout(hardTimer);
+
     const text = await res.text();
     try {
       const data = text ? JSON.parse(text) : null;
@@ -33,6 +55,7 @@ export async function api(path, options = {}) {
     }
   } catch (error) {
     clearTimeout(timeoutId);
+    clearTimeout(hardTimer);
     // Handle different error types
     if (error.name === 'AbortError') {
       throw new Error('Request timeout - backend may be down or unreachable');
@@ -49,4 +72,3 @@ export async function api(path, options = {}) {
     throw error;
   }
 }
-
