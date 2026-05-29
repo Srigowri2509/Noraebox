@@ -126,19 +126,26 @@ export default function App() {
   useEffect(() => {
     if (isRegistering) return undefined;
     let mounted = true;
+    // Require two consecutive "unassigned" reads before dropping a running
+    // display back to the selector, so a single transient blip can never pull
+    // the display offline mid-show.
+    let unassignedStrikes = 0;
 
     const checkAssignment = async () => {
       const result = await ensureDeviceRegistered();
-      if (!mounted || !result || result.error) return;
+      if (!mounted || !result || result.error) return; // ignore transient errors
 
       if (result.assigned && result.room_id) {
+        unassignedStrikes = 0;
         localStorage.setItem("room_id", result.room_id);
         localStorage.setItem("roomId", result.room_id);
         setRoomId((prev) => (prev !== result.room_id ? result.room_id : prev));
         setShowRoomSelect(false);
       } else {
-        // Unassigned by the admin -> forget the cached room and return to the
-        // selector. Clearing roomId unmounts Display and stops playback.
+        unassignedStrikes += 1;
+        if (unassignedStrikes < 2) return; // wait for confirmation
+        // Confirmed unassigned by the admin -> forget the cached room and
+        // return to the selector. Clearing roomId unmounts Display + stops play.
         localStorage.removeItem("room_id");
         localStorage.removeItem("roomId");
         if (Array.isArray(result.rooms)) setRooms(result.rooms);
