@@ -5,6 +5,7 @@ import AppErrorBoundary from "./components/AppErrorBoundary";
 import { ensureDeviceRegistered } from "./init/registerDevice";
 import { api, API_BASE } from "./api";
 import updateService from "./services/updateService";
+import { safeGet, safeSet, safeRemove } from "./utils/safeStorage";
 
 const STARTUP_TIMEOUT_MS = 20000;
 
@@ -77,13 +78,13 @@ export default function App() {
         }
 
         if (result.assigned && result.room_id) {
-          localStorage.setItem("room_id", result.room_id);
-          localStorage.setItem("roomId", result.room_id);
+          safeSet("room_id", result.room_id);
+          safeSet("roomId", result.room_id);
           setRoomId(result.room_id);
           setShowRoomSelect(false);
         } else {
           const savedRoom =
-            localStorage.getItem("room_id") || localStorage.getItem("roomId");
+            safeGet("room_id") || safeGet("roomId");
           if (savedRoom) {
             setRoomId(savedRoom);
             setShowRoomSelect(false);
@@ -96,7 +97,7 @@ export default function App() {
         console.error("Error in device registration:", error);
         if (!isMounted) return;
         const savedRoom =
-          localStorage.getItem("room_id") || localStorage.getItem("roomId");
+          safeGet("room_id") || safeGet("roomId");
         if (savedRoom) {
           setRoomId(savedRoom);
           setShowRoomSelect(false);
@@ -137,8 +138,8 @@ export default function App() {
 
       if (result.assigned && result.room_id) {
         unassignedStrikes = 0;
-        localStorage.setItem("room_id", result.room_id);
-        localStorage.setItem("roomId", result.room_id);
+        safeSet("room_id", result.room_id);
+        safeSet("roomId", result.room_id);
         setRoomId((prev) => (prev !== result.room_id ? result.room_id : prev));
         setShowRoomSelect(false);
       } else {
@@ -146,8 +147,8 @@ export default function App() {
         if (unassignedStrikes < 2) return; // wait for confirmation
         // Confirmed unassigned by the admin -> forget the cached room and
         // return to the selector. Clearing roomId unmounts Display + stops play.
-        localStorage.removeItem("room_id");
-        localStorage.removeItem("roomId");
+        safeRemove("room_id");
+        safeRemove("roomId");
         if (Array.isArray(result.rooms)) setRooms(result.rooms);
         setRoomId(null);
         setShowRoomSelect(true);
@@ -164,8 +165,8 @@ export default function App() {
   /** RoomSelectModal already calls assign-room API — only update local state (no reload). */
   const handleRoomSelect = (selectedRoomId) => {
     if (!selectedRoomId) return;
-    localStorage.setItem("roomId", selectedRoomId);
-    localStorage.setItem("room_id", selectedRoomId);
+    safeSet("roomId", selectedRoomId);
+    safeSet("room_id", selectedRoomId);
     setRoomId(selectedRoomId);
     setShowRoomSelect(false);
   };

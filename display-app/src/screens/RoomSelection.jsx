@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, API_BASE } from '../api';
+import { safeGet, safeSet } from '../utils/safeStorage';
 
 export default function RoomSelection({ onRoomSelect }) {
   const [rooms, setRooms] = useState([]);
@@ -14,7 +15,7 @@ export default function RoomSelection({ onRoomSelect }) {
 
     try {
       // Try to assign via backend (with locking)
-      const deviceUuid = localStorage.getItem("device_uuid");
+      const deviceUuid = safeGet("device_uuid");
       if (deviceUuid) {
         await api("/devices/assign-room", {
           method: "POST",
@@ -24,8 +25,8 @@ export default function RoomSelection({ onRoomSelect }) {
           }),
         });
       }
-      localStorage.setItem("roomId", roomId);
-      localStorage.setItem("room_id", roomId);
+      safeSet("roomId", roomId);
+      safeSet("room_id", roomId);
       onRoomSelect(roomId);
     } catch (err) {
       const msg = err.message || "Unknown error";
@@ -35,8 +36,8 @@ export default function RoomSelection({ onRoomSelect }) {
         fetchRooms();
       } else {
         // Fallback: still assign locally
-        localStorage.setItem("roomId", roomId);
-        localStorage.setItem("room_id", roomId);
+        safeSet("roomId", roomId);
+        safeSet("room_id", roomId);
         onRoomSelect(roomId);
       }
     } finally {
@@ -52,7 +53,7 @@ export default function RoomSelection({ onRoomSelect }) {
 
   async function fetchRooms() {
     try {
-      const deviceUuid = localStorage.getItem("device_uuid");
+      const deviceUuid = safeGet("device_uuid");
       const url = deviceUuid
         ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
         : "/rooms/available";

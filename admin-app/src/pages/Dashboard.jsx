@@ -137,13 +137,13 @@ export default function Dashboard() {
         return;
       }
       
-      // Use the extend endpoint to set total minutes for current session
-      console.log(`Setting session time for room ${selectedRoom.id} to ${minutes} minutes`);
+      // Add minutes to the active session (backend adds to remaining time).
+      console.log(`Adding ${minutes} minutes to room ${selectedRoom.id}`);
       await api(`/rooms/${selectedRoom.id}/extend`, {
         method: "POST",
         body: JSON.stringify({
+          add_minutes: minutes,
           minutes: minutes,
-          total_minutes: minutes  // Also send as total_minutes for clarity
         })
       });
       

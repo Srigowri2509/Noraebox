@@ -7,6 +7,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
   // All state hooks must be declared at the top level (before any early returns)
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
+  const [remainingMinutes, setRemainingMinutes] = useState(null);
   const [hours, setHours] = useState(1);
   const [minutes, setMinutes] = useState(0);
   const [useCustom, setUseCustom] = useState(false);
@@ -27,6 +28,19 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         // Check if there's an active session
         const isActive = session && (session.status === 'active' || session.status === 'playing');
         setHasActiveSession(isActive);
+        if (isActive && session) {
+          if (session.session_end_time) {
+            const rem = Math.max(0, (new Date(session.session_end_time).getTime() - Date.now()) / 60000);
+            setRemainingMinutes(Math.ceil(rem));
+          } else if (session.session_start_time && session.total_minutes) {
+            const elapsed = (Date.now() - new Date(session.session_start_time).getTime()) / 60000;
+            setRemainingMinutes(Math.max(0, Math.ceil(session.total_minutes - elapsed)));
+          } else {
+            setRemainingMinutes(session.total_minutes ?? null);
+          }
+        } else {
+          setRemainingMinutes(null);
+        }
       } catch (error) {
         console.error("Error fetching session:", error);
         setHasActiveSession(false);
@@ -81,9 +95,16 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         </h2>
 
         {/* Subtitle */}
-        <p className="text-xl text-purple-600 text-center mt-2 mb-10 font-medium">
-          {loadingSession ? "Loading..." : (isFree ? "Start room session" : "Extend room time")}
+        <p className="text-xl text-purple-600 text-center mt-2 mb-4 font-medium">
+          {loadingSession ? "Loading..." : (isFree ? "Start room session" : "Add time to session")}
         </p>
+        {!loadingSession && !isFree && remainingMinutes != null ? (
+          <p className="text-center text-gray-500 mb-8 text-lg">
+            Currently <span className="font-semibold text-gray-700">{remainingMinutes} min</span> remaining
+          </p>
+        ) : (
+          <div className="mb-10" />
+        )}
 
         {/* Time Select Mode Toggle */}
         <div className="flex justify-center mb-6">
@@ -117,7 +138,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
             {/* HOURS */}
             <div className="flex flex-col items-center">
               <label className="text-gray-700 font-semibold text-lg mb-2 tracking-wide">
-                HOURS
+                {isFree ? "HOURS" : "ADD HOURS"}
               </label>
               <select
                 value={hours}
@@ -135,7 +156,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
             {/* MINUTES */}
             <div className="flex flex-col items-center">
               <label className="text-gray-700 font-semibold text-lg mb-2 tracking-wide">
-                MINUTES
+                {isFree ? "MINUTES" : "ADD MINUTES"}
               </label>
               <select
                 value={minutes}
@@ -153,7 +174,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         ) : (
           <div className="mb-10 flex flex-col items-center">
             <label className="text-gray-700 font-semibold text-lg mb-4 tracking-wide">
-              TOTAL MINUTES
+              {isFree ? "TOTAL MINUTES" : "MINUTES TO ADD"}
             </label>
             <input
               type="number"
@@ -185,7 +206,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
                      bg-purple-600 hover:bg-purple-700 
                      transition-all shadow-md active:scale-95 cursor-pointer"
         >
-          Confirm
+          {isFree ? "Start Session" : "Add Time"}
         </button>
 
         {/* BUTTON: Cancel Session (only show if there's an active session) */}

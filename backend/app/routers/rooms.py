@@ -963,52 +963,48 @@ def end_room_session(room_id: str, db: Session = Depends(get_db)):
 
 @router.post("/{room_id}/extend")
 def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
-    """Set the total session time to the specified minutes (SET, not ADD)"""
+    """Add minutes to the current session (extends remaining time, never shortens)."""
     try:
-        # Support both "minutes" and "total_minutes" for consistency
-        # When admin sets time, they want to SET the total, not add to it
-        new_total_minutes = payload.get("total_minutes") or payload.get("minutes")
-        if not new_total_minutes or new_total_minutes <= 0:
-            raise HTTPException(status_code=400, detail="total_minutes must be a positive integer")
-        
-        # Verify room exists
+        add_minutes = payload.get("add_minutes") or payload.get("minutes") or payload.get("total_minutes")
+        if not add_minutes or add_minutes <= 0:
+            raise HTTPException(status_code=400, detail="add_minutes must be a positive integer")
+
+        add_minutes = int(add_minutes)
+
         room = db.query(Room).filter(Room.id == room_id).first()
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
-        
-        # Get active session
+
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
             RoomSession.status == 'active'
         ).first()
-        
+
         if not session:
             raise HTTPException(status_code=404, detail="No active session found for this room")
-        
+
         now = datetime.now(timezone.utc)
-        old_total = session.total_minutes
-        
-        # SET the total_minutes to the value provided by admin (not add to it)
-        session.total_minutes = int(new_total_minutes)
-        
-        # Recalculate end time based on whether timer has started
+        old_total = session.total_minutes or 0
+
+        # ADD to total session length — never replace with a smaller value.
+        session.total_minutes = old_total + add_minutes
+
         if session.session_start_time:
-            # Timer has started - recalculate end time from start time with new total
             session.session_end_time = session.session_start_time + timedelta(minutes=session.total_minutes)
             elapsed_minutes = (now - session.session_start_time).total_seconds() / 60
             remaining_minutes = max(0, session.total_minutes - elapsed_minutes)
-            print(f"📝 POST /rooms/{room_id}/extend: Timer running - Setting total to {session.total_minutes} min, Elapsed: {elapsed_minutes:.1f} min, Remaining: {remaining_minutes:.1f} min")
+            print(f"📝 POST /rooms/{room_id}/extend: Added {add_minutes} min — total now {session.total_minutes} min, ~{remaining_minutes:.1f} min remaining")
         else:
-            # Timer hasn't started yet - set end time from now
             session.session_end_time = now + timedelta(minutes=session.total_minutes)
-            print(f"📝 POST /rooms/{room_id}/extend: Timer not started - Setting total to {session.total_minutes} min")
-        
+            print(f"📝 POST /rooms/{room_id}/extend: Timer not started — added {add_minutes} min, total now {session.total_minutes} min")
+
         db.commit()
         db.refresh(session)
-        
-        print(f"✅ POST /rooms/{room_id}/extend: Session time SET successfully. Old total: {old_total}, New total_minutes: {session.total_minutes}")
+
+        print(f"✅ POST /rooms/{room_id}/extend: +{add_minutes} min (was {old_total}, now {session.total_minutes})")
         return {
             "status": "extended",
+            "added_minutes": add_minutes,
             "total_minutes": session.total_minutes,
             "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None
         }

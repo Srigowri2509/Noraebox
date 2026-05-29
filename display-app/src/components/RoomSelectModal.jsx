@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { api, API_BASE } from "../api";
+import { safeGet, safeSet } from "../utils/safeStorage";
 
 export default function RoomSelectModal({ rooms: initialRooms = [], device, onSelect, onClose }) {
   const [selectedRoomId, setSelectedRoomId] = useState("");
@@ -10,7 +11,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
   useEffect(() => {
     (async () => {
       try {
-        const deviceUuid = localStorage.getItem("device_uuid");
+        const deviceUuid = safeGet("device_uuid");
         const url = deviceUuid
           ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
           : "/rooms/available";
@@ -32,7 +33,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
     
     setLoading(true);
     try {
-      const deviceUuid = localStorage.getItem("device_uuid");
+      const deviceUuid = safeGet("device_uuid");
       if (!deviceUuid) {
         alert("Device UUID not found. Please refresh the page.");
         setLoading(false);
@@ -49,8 +50,8 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
       
       console.log("✅ Display device assigned to room in backend");
       
-      localStorage.setItem("room_id", selectedRoomId);
-      localStorage.setItem("roomId", selectedRoomId);
+      safeSet("room_id", selectedRoomId);
+      safeSet("roomId", selectedRoomId);
       
       onSelect(selectedRoomId);
     } catch (error) {
@@ -60,7 +61,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
         alert(errorMsg);
         // Refresh room list
         try {
-          const deviceUuid = localStorage.getItem("device_uuid");
+          const deviceUuid = safeGet("device_uuid");
           const url = deviceUuid
             ? `/rooms/available?device_uuid=${encodeURIComponent(deviceUuid)}`
             : "/rooms/available";

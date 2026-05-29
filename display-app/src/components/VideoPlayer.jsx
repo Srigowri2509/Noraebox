@@ -6,9 +6,20 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { safeSessionGet, safeSessionSet } from "../utils/safeStorage";
 
 const BLACK_POSTER =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+// Android TV / set-top hardware usually exposes only 1–2 simultaneous video
+// decoders, unlike desktop Chrome. Keeping the song + preloaded-next + transition
+// all decoding at once (3) starves the decoder pool, which shows up as a black
+// transition (it loses the decoder race) and stuttering playback (software
+// fallback). On these devices we cap concurrent decoding at two by releasing
+// decoders the moment they're no longer on screen. Desktop keeps the original
+// fully-preloaded, gapless path.
+const LOW_POWER =
+  typeof navigator !== "undefined" && /android/i.test(navigator.userAgent || "");
 
 function normalizeMediaUrl(u) {
   if (!u) return "";
@@ -59,11 +70,16 @@ function waitCanPlay(video, timeoutMs = 15000) {
       video.removeEventListener("loadeddata", onReady);
       resolve(ok);
     };
-    const onReady = () => finish(true);
+    // Android TV WebView sometimes reports a high readyState before it can
+    // actually play; require HAVE_FUTURE_DATA (>=3). Only finish on an event
+    // once that threshold is genuinely reached (loadeddata fires at rs=2).
+    const onReady = () => {
+      if (video.readyState >= 3) finish(true);
+    };
     video.addEventListener("canplaythrough", onReady);
     video.addEventListener("canplay", onReady);
     video.addEventListener("loadeddata", onReady);
-    const tid = window.setTimeout(() => finish(video.readyState >= 2), timeoutMs);
+    const tid = window.setTimeout(() => finish(video.readyState >= 3), timeoutMs);
   });
 }
 
@@ -74,7 +90,7 @@ function waitPlaying(video, timeoutMs = 12000) {
       resolve(false);
       return;
     }
-    if (!video.paused && video.readyState >= 2) {
+    if (!video.paused && video.readyState >= 3) {
       resolve(true);
       return;
     }
@@ -88,7 +104,7 @@ function waitPlaying(video, timeoutMs = 12000) {
     };
     const onPlaying = () => finish(true);
     video.addEventListener("playing", onPlaying);
-    const tid = window.setTimeout(() => finish(!video.paused && video.readyState >= 2), timeoutMs);
+    const tid = window.setTimeout(() => finish(!video.paused && video.readyState >= 3), timeoutMs);
   });
 }
 
@@ -137,8 +153,11 @@ const VideoPlayer = forwardRef(
 
     const armedNextUrlRef = useRef("");
     const armedTransUrlRef = useRef("");
+    // Bumped on skip so a slow in-flight playSong cannot swap layers after a
+    // newer skip has already taken over (common on TV where waitPlaying is slow).
+    const playSeqRef = useRef(0);
     const userInteractedRef = useRef(
-      sessionStorage.getItem("video_autoplay_enabled") === "true"
+      safeSessionGet("video_autoplay_enabled") === "true"
     );
 
     const cbRef = useRef({});
@@ -184,7 +203,7 @@ const VideoPlayer = forwardRef(
     }, []);
 
     /** Load a url into an element and wait until it can play. Never shows it. */
-    const loadInto = useCallback(async (el, url) => {
+    const loadInto = useCallback(async (el, url, timeoutMs = 15000) => {
       if (!el || !url) return false;
       configureVideo(el);
       el.loop = false;
@@ -199,7 +218,7 @@ const VideoPlayer = forwardRef(
           /* ignore */
         }
       }
-      return waitCanPlay(el, 15000);
+      return waitCanPlay(el, timeoutMs);
     }, []);
 
     /**
@@ -210,7 +229,7 @@ const VideoPlayer = forwardRef(
      * in try/catch with a single retry so a rejected play() can never silently
      * stall the state machine.
      */
-    const startPlayback = useCallback(async (el, { withSound }) => {
+    const startPlayback = useCallback(async (el, { withSound, urgent = false }) => {
       if (!el) return false;
       el.volume = withSound ? 1 : 0;
       el.muted = true; // muted-first: always allowed to autoplay
@@ -225,7 +244,7 @@ const VideoPlayer = forwardRef(
           return false;
         }
       }
-      const ok = await waitPlaying(el, 12000);
+      const ok = await waitPlaying(el, urgent ? 4000 : 12000);
       if (ok && withSound && userInteractedRef.current) {
         try {
           el.muted = false;
@@ -271,22 +290,45 @@ const VideoPlayer = forwardRef(
      * it into the next slot first (skip to a non-preloaded target), then swap.
      */
     const playSong = useCallback(
-      async (url) => {
+      async (url, { urgent = false } = {}) => {
         if (!url) return false;
+        const mySeq = ++playSeqRef.current;
+        const stale = () => mySeq !== playSeqRef.current;
+
+        if (urgent) {
+          // Stop the visible song immediately so skip feels instant on TV.
+          const cur = songEl();
+          if (cur) {
+            try {
+              cur.pause();
+              cur.muted = true;
+              cur.volume = 0;
+            } catch {
+              /* ignore */
+            }
+          }
+          if (LOW_POWER) {
+            silence(transRef.current);
+          }
+        }
+
         const incoming = nextEl();
         if (!incoming) return false;
 
+        const minReady = urgent ? 2 : 3;
         const preloaded =
           normalizeMediaUrl(incoming.src) === normalizeMediaUrl(url) &&
-          incoming.readyState >= 2;
+          incoming.readyState >= minReady;
         if (!preloaded) {
-          const ok = await loadInto(incoming, url);
-          if (!ok && incoming.readyState < 2) {
+          const ok = await loadInto(incoming, url, urgent ? 8000 : 15000);
+          if (stale()) return false;
+          if (!ok && incoming.readyState < minReady) {
             // Last-ditch: still attempt to play; decoder may catch up.
           }
         }
 
-        const playing = await startPlayback(incoming, { withSound: true });
+        const playing = await startPlayback(incoming, { withSound: true, urgent });
+        if (stale()) return false;
         if (!playing) {
           cbRef.current.onSongError?.({ videoUrl: url, message: "play failed" });
           return false;
@@ -302,11 +344,18 @@ const VideoPlayer = forwardRef(
         // Only reveal once the new frame is actually painted, so slow GPUs
         // never show a black/old frame during the opacity swap.
         await nextPaint();
+        if (stale()) return false;
         setVisible(incomingId);
 
         // Release the element we just swapped away from, after the swap settles.
         const oldEl = elById(previousSongId);
         window.setTimeout(() => silence(oldEl), 600);
+        // On low-power devices, free the transition decoder once the song is on
+        // screen — before armAssets() asks for a decoder to preload the next
+        // song — so peak concurrent decoders stays at two.
+        if (LOW_POWER) {
+          window.setTimeout(() => silence(transRef.current), 600);
+        }
         return true;
       },
       [nextEl, loadInto, startPlayback, setVisible, elById, silence]
@@ -315,10 +364,17 @@ const VideoPlayer = forwardRef(
     const playTransition = useCallback(async () => {
       const el = transRef.current;
       if (!el) return false;
+      if (LOW_POWER) {
+        // Free the just-ended song's decoder so the transition clip is
+        // guaranteed a hardware decoder (otherwise it renders black on TVs with
+        // a limited decoder pool). The preloaded next song keeps its decoder for
+        // a gapless hand-off when the transition ends.
+        silence(elById(roleRef.current.song));
+      }
       const armed =
         armedTransUrlRef.current &&
         normalizeMediaUrl(el.src) === normalizeMediaUrl(armedTransUrlRef.current) &&
-        el.readyState >= 2;
+        el.readyState >= 3;
       if (!armed && armedTransUrlRef.current) {
         await loadInto(el, armedTransUrlRef.current);
       }
@@ -339,7 +395,7 @@ const VideoPlayer = forwardRef(
         return false;
       }
       return true;
-    }, [loadInto, startPlayback, setVisible]);
+    }, [loadInto, startPlayback, setVisible, silence, elById]);
 
     const cutToLogo = useCallback(() => {
       stageRef.current = "logo";
@@ -363,7 +419,7 @@ const VideoPlayer = forwardRef(
 
     const retryActive = useCallback(() => {
       userInteractedRef.current = true;
-      sessionStorage.setItem("video_autoplay_enabled", "true");
+      safeSessionSet("video_autoplay_enabled", "true");
       if (stageRef.current !== "song") return;
       const el = songEl();
       if (!el) return;
@@ -378,6 +434,20 @@ const VideoPlayer = forwardRef(
       }
     }, [songEl]);
 
+    const interruptForSkip = useCallback(() => {
+      playSeqRef.current += 1;
+      const cur = songEl();
+      if (cur) {
+        try {
+          cur.pause();
+          cur.muted = true;
+          cur.volume = 0;
+        } catch {
+          /* ignore */
+        }
+      }
+    }, [songEl]);
+
     useImperativeHandle(ref, () => ({
       armNext,
       armTransition,
@@ -385,7 +455,19 @@ const VideoPlayer = forwardRef(
       playTransition,
       cutToLogo,
       retryActive,
+      interruptForSkip,
       getActiveVideo: () => (stageRef.current === "song" ? songEl() : null),
+      // Live values for the on-screen debug overlay (no console on TV).
+      getDebug: () => {
+        const el = stageRef.current === "song" ? songEl() : elById(frontRef.current);
+        return {
+          front: frontRef.current,
+          stage: stageRef.current,
+          readyState: el ? el.readyState : -1,
+          paused: el ? el.paused : true,
+          currentTime: el ? Math.round((el.currentTime || 0) * 10) / 10 : 0,
+        };
+      },
     }));
 
     // ---- Media events ---------------------------------------------------

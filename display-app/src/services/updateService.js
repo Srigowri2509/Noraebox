@@ -1,3 +1,5 @@
+import { safeGet, safeSet } from "../utils/safeStorage";
+
 const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000";
 const APP_NAME = "display-app";
 
@@ -15,6 +17,18 @@ const getPlatform = () => {
 };
 
 const PLATFORM = getPlatform();
+
+// Android TV WebView does not reliably honor AbortController, so a stalled
+// fetch can hang forever. Race every fetch against a hard timeout so it always
+// settles. Downloads get a generous window; metadata checks a short one.
+function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Request timeout")), timeoutMs)
+    ),
+  ]);
+}
 
 class UpdateService {
   constructor() {
@@ -42,17 +56,17 @@ class UpdateService {
         const info = await this.App.getInfo();
         return info.version || "0.0.0";
       } else {
-        const storedVersion = localStorage.getItem('app_version') || "0.0.0";
+        const storedVersion = safeGet('app_version') || "0.0.0";
         return storedVersion;
       }
     } catch (error) {
       console.error("Error getting app version:", error);
-      return localStorage.getItem('app_version') || "0.0.0";
+      return safeGet('app_version') || "0.0.0";
     }
   }
 
   setVersion(version) {
-    localStorage.setItem('app_version', version);
+    safeSet('app_version', version);
   }
 
   async checkForUpdate() {
@@ -70,7 +84,7 @@ class UpdateService {
       // Check GitHub Releases
       const releasesUrl = `${GITHUB_API_BASE}/${GITHUB_REPO}/releases/latest`;
       
-      const response = await fetch(releasesUrl, {
+      const response = await fetchWithTimeout(releasesUrl, {
         headers: {
           'Accept': 'application/vnd.github.v3+json'
         }
@@ -122,7 +136,7 @@ class UpdateService {
       console.error("Error checking for update:", error);
       // Fallback to local backend if GitHub check fails
       try {
-        const fallbackResponse = await fetch(
+        const fallbackResponse = await fetchWithTimeout(
           `${API_BASE}/updates/check/${APP_NAME}?current_version=${await this.getCurrentVersion()}&platform=${PLATFORM}`
         );
         if (fallbackResponse.ok) {
@@ -150,7 +164,7 @@ class UpdateService {
         ? downloadUrl 
         : `${API_BASE}${downloadUrl}?platform=${PLATFORM}`;
       
-      const response = await fetch(fullUrl);
+      const response = await fetchWithTimeout(fullUrl, {}, 300000); // 5 min for APK
       
       if (!response.ok) {
         throw new Error(`Download failed: ${response.status}`);

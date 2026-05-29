@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { safeGet, safeSet } from "../utils/safeStorage";
 
 // Simple UUID v4 generator (fallback if uuid package not available)
 function generateUUID() {
@@ -9,14 +10,20 @@ function generateUUID() {
   });
 }
 
+// Keeps the device id stable for the session even if storage is unavailable
+// (Android TV WebView can throw on localStorage), so a single TV never spams
+// the backend with a brand-new UUID on every poll/restart.
+let sessionDeviceId = null;
+
 export async function ensureDeviceRegistered() {
-  let deviceId = localStorage.getItem("device_uuid");
+  let deviceId = safeGet("device_uuid") || sessionDeviceId;
   if (!deviceId) {
     deviceId = generateUUID();
-    localStorage.setItem("device_uuid", deviceId);
+    safeSet("device_uuid", deviceId);
   }
+  sessionDeviceId = deviceId;
 
-  const deviceName = localStorage.getItem("device_name") || "Display Device";
+  const deviceName = safeGet("device_name") || "Display Device";
   
   try {
     // First, try to register device with device_type
@@ -35,8 +42,8 @@ export async function ensureDeviceRegistered() {
     // Registration endpoint already returns assigned status and rooms
     // No need to call /devices/me - use the registration response directly
     if (registerRes.assigned && registerRes.room_id) {
-      localStorage.setItem("room_id", registerRes.room_id);
-      localStorage.setItem("roomId", registerRes.room_id);
+      safeSet("room_id", registerRes.room_id);
+      safeSet("roomId", registerRes.room_id);
       return { assigned: true, room_id: registerRes.room_id, device: registerRes.device };
     } else {
       // Device not assigned - use rooms from registration response or fetch them
