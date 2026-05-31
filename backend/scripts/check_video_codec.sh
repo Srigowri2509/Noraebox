@@ -2,7 +2,7 @@
 # Check whether a karaoke MP4 is browser-safe (h264) or likely to fail (hevc).
 # Usage:
 #   ./check_video_codec.sh path/to/video.mp4
-#   ./check_video_codec.sh "https://bucket.s3.region.amazonaws.com/English/song.mp4"
+#   ./check_video_codec.sh "https://bucket.s3.region.amazonaws.com/fixed_English/song.mp4"
 
 set -euo pipefail
 
