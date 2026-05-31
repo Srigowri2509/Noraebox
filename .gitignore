@@ -65,6 +65,7 @@ wheels/
 # Backend environment
 backend/.env
 backend/.env.local
+lambda/.build/
 
 # Frontend environment
 tablet-app/.env

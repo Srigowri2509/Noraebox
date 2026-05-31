@@ -1,0 +1,39 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SourceBucketRead",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:ListBucket"],
+      "Resource": [
+        "arn:aws:s3:::noraebox-audio-storage",
+        "arn:aws:s3:::noraebox-audio-storage/*"
+      ]
+    },
+    {
+      "Sid": "DestBucketWrite",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:HeadObject", "s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::noraebox-audio-storage-fixed",
+        "arn:aws:s3:::noraebox-audio-storage-fixed/*"
+      ]
+    },
+    {
+      "Sid": "InvokeWorker",
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:ap-south-2:*:function:fix-mp4-h264"
+    },
+    {
+      "Sid": "CloudWatchLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:ap-south-2:*:*"
+    }
+  ]
+}

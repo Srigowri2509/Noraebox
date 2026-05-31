@@ -496,7 +496,7 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
         # and the language prefix will be automatically added based on row.language
         s3_key_for_signing = row.file_url or ""
         
-        # Use the song's language to determine the S3 prefix (e.g., "Telugu" -> "fixed_Telugu/")
+        # Use the song's language to determine the S3 prefix (e.g., "Telugu" -> "Telugu/")
         song_language = row.language or None
         
         # Generate signed URL for playback

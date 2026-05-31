@@ -58,37 +58,6 @@ def _presign_get_params(full_key: str):
     }
 
 
-# S3 language folders use a fixed_ prefix (e.g. fixed_Telugu/song.mp4).
-LANGUAGE_FOLDER_PREFIX = "fixed_"
-KNOWN_LANGUAGE_ROOTS = frozenset(
-    {"Telugu", "Hindi", "Korean", "Punjabi", "English"}
-)
-
-
-def _language_s3_folder(language: str) -> str:
-    """Map DB language name to the S3 folder segment (e.g. Telugu -> fixed_Telugu)."""
-    lang = language.strip().strip("/")
-    if lang.startswith(LANGUAGE_FOLDER_PREFIX):
-        return lang
-    return f"{LANGUAGE_FOLDER_PREFIX}{lang}"
-
-
-def _upgrade_legacy_language_folder(s3_key: str) -> str:
-    """
-    Rewrite legacy keys (Telugu/song.mp4) to the new layout (fixed_Telugu/song.mp4).
-    Leaves non-language paths (e.g. updates/tablet-app/...) unchanged.
-    """
-    key = s3_key.lstrip("/")
-    if "/" not in key:
-        return key
-    folder, remainder = key.split("/", 1)
-    if folder.startswith(LANGUAGE_FOLDER_PREFIX):
-        return key
-    if folder in KNOWN_LANGUAGE_ROOTS:
-        return f"{_language_s3_folder(folder)}/{remainder}"
-    return key
-
-
 def resolve_full_s3_key(s3_key: str, language: str = None):
     """
     Resolve DB file_url + language into the full S3 object key.
@@ -113,7 +82,7 @@ def resolve_full_s3_key(s3_key: str, language: str = None):
 
     prefix = None
     if language:
-        prefix = _language_s3_folder(language)
+        prefix = language.strip().strip("/")
     elif S3_KEY_PREFIX:
         prefix = S3_KEY_PREFIX.strip().strip("/")
 
@@ -130,8 +99,6 @@ def resolve_full_s3_key(s3_key: str, language: str = None):
             full_key = s3_key.lstrip("/")
     else:
         full_key = s3_key.lstrip("/")
-
-    full_key = _upgrade_legacy_language_folder(full_key)
 
     _, key_ext = os.path.splitext(full_key.rsplit("/", 1)[-1])
     if not key_ext:
@@ -156,7 +123,7 @@ def get_file_url(s3_key: str, language: str = None):
     For private buckets: Returns a presigned URL (with signature and expiry)
     
     Args:
-        s3_key: The S3 object key (e.g. 'Undipova.mp4' or 'fixed_Telugu/song.mp4')
+        s3_key: The S3 object key (e.g. 'Undipova.mp4' or 'Telugu/song.mp4')
         language: Optional language name (e.g. 'Telugu', 'Hindi', 'English') to use as prefix.
                   If provided, will be used instead of S3_KEY_PREFIX.
                   If not provided, falls back to S3_KEY_PREFIX if set.
@@ -164,7 +131,7 @@ def get_file_url(s3_key: str, language: str = None):
     s3_key can be:
     - Just the object key (e.g. 'Undipova.mp4')
     - A full S3 URL (will be returned as-is if it's already a URL)
-    - Already prefixed (e.g. 'fixed_Telugu/song.mp4') - will be used as-is
+    - Already prefixed (e.g. 'Telugu/song.mp4') - will be used as-is
     
     The language prefix will be automatically added if the key doesn't already have it.
     """
@@ -196,7 +163,7 @@ def get_file_url(s3_key: str, language: str = None):
         #
         # If we encode '+' as '%2B', it won't match your actual object key
         # and S3 will return 404, which is exactly what was causing
-        # "Failed to load video" for keys like 'fixed_Telugu/Some+Song.mp4'.
+        # "Failed to load video" for keys like 'Telugu/Some+Song.mp4'.
         # Encode each segment separately to preserve forward slashes
         # Allow typical safe characters used in S3 keys
         SAFE_CHARS = "-_.~+"
