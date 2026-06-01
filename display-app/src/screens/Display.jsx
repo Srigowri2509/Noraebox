@@ -51,6 +51,19 @@ function sid(id) {
   return String(id);
 }
 
+/** Milliseconds until session end from API fields (works without remaining_seconds). */
+function remainingMsFromSession(session) {
+  if (!session) return null;
+  if (session.remaining_seconds != null) {
+    return Math.max(0, session.remaining_seconds) * 1000;
+  }
+  if (session.session_end_time) {
+    const endMs = Date.parse(session.session_end_time);
+    if (!Number.isNaN(endMs)) return Math.max(0, endMs - Date.now());
+  }
+  return null;
+}
+
 /** Fetch song metadata and resolve a directly-playable (S3) media URL. */
 async function fetchSongWithUrl(songId) {
   try {
@@ -122,6 +135,7 @@ export default function Display({ roomId }) {
 
   // Session / timer coordination.
   const lastSessionIdRef = useRef(null);
+  const sessionEndMsRef = useRef(null); // absolute deadline synced from backend each poll
   const finalizedRef = useRef(false); // hard-cut lock until backend confirms session ended
   const queueAdvancingRef = useRef(false);
 
@@ -404,6 +418,7 @@ export default function Display({ roomId }) {
           if (stageRef.current !== "LOGO") goToLogo();
           finalizedRef.current = false;
           hasPlayedRef.current = false;
+          sessionEndMsRef.current = null;
           setTimeLeft(null);
           return;
         }
@@ -430,6 +445,7 @@ export default function Display({ roomId }) {
             if (hasPlayedRef.current) hardCutToLogo();
             else goToLogo();
           }
+          sessionEndMsRef.current = null;
           setTimeLeft(null);
           return;
         }
@@ -439,10 +455,13 @@ export default function Display({ roomId }) {
           finalizedRef.current = false;
         }
 
-        // Timer display: use remaining_seconds from backend (null = timer not started yet).
-        if (session.remaining_seconds != null) {
-          setTimeLeft(Math.max(0, session.remaining_seconds) * 1000);
+        // Timer display: remaining_seconds from backend, or derive from session_end_time.
+        const remainingMs = remainingMsFromSession(session);
+        if (remainingMs != null) {
+          sessionEndMsRef.current = Date.now() + remainingMs;
+          setTimeLeft(remainingMs);
         } else {
+          sessionEndMsRef.current = null;
           setTimeLeft(null);
         }
 
@@ -542,6 +561,16 @@ export default function Display({ roomId }) {
       clearInterval(interval);
     };
   }, [roomId, goToLogo, hardCutToLogo, enterSong, armAssets, nudgeAdvance, drive]);
+
+  // Smooth 1s countdown between backend polls.
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const endMs = sessionEndMsRef.current;
+      if (endMs == null) return;
+      setTimeLeft(Math.max(0, endMs - Date.now()));
+    }, 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   // Keyboard (TV remote OK/Enter) also dismisses the interaction gate.
   useEffect(() => {

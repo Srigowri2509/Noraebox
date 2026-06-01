@@ -1,32 +1,21 @@
 export const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000";
 
 export async function api(path, options = {}) {
-  const TIMEOUT_MS = 8000;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => {
-    try {
-      controller.abort();
-    } catch {
-      /* ignore */
-    }
-  }, TIMEOUT_MS);
+  // Android TV WebViews often break fetch() when AbortController/signal is used.
+  // Use a plain fetch with a single Promise.race timeout instead.
+  const TIMEOUT_MS = 20000;
 
-  // Hard timeout that settles the promise even if the WebView ignores
-  // AbortController. Older Android TV WebViews don't always honor fetch abort,
-  // which would otherwise hang the request — and any poll loop awaiting it —
-  // forever. Promise.race guarantees api() always resolves or rejects.
   let hardTimer;
   const hardTimeout = new Promise((_, reject) => {
     hardTimer = setTimeout(
       () => reject(new Error("Request timeout - backend may be down or unreachable")),
-      TIMEOUT_MS + 1000
+      TIMEOUT_MS
     );
   });
 
   try {
     const res = await Promise.race([
       fetch(`${API_BASE}${path}`, {
-        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           ...(options.headers || {})
@@ -35,7 +24,6 @@ export async function api(path, options = {}) {
       }),
       hardTimeout
     ]);
-    clearTimeout(timeoutId);
     clearTimeout(hardTimer);
 
     const text = await res.text();
@@ -54,7 +42,6 @@ export async function api(path, options = {}) {
       throw e;
     }
   } catch (error) {
-    clearTimeout(timeoutId);
     clearTimeout(hardTimer);
     // Handle different error types
     if (error.name === 'AbortError') {

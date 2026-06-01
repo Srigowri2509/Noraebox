@@ -61,9 +61,9 @@ export default function App() {
         const result = await ensureDeviceRegistered();
         if (!isMounted) return;
 
+        // Registration can fail transiently on TV WebView; still allow room pick / retry.
         if (result && result.error) {
-          handleStartupFailure("Device registration failed.", result.error);
-          return;
+          console.warn("Device registration failed (continuing):", result.error);
         }
 
         setDeviceInfo(result.device);
