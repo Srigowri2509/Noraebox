@@ -15,6 +15,29 @@ router = APIRouter()
 DEFAULT_SESSION_MINUTES = 15
 
 
+def _start_session_timer_if_needed(session: RoomSession, now: datetime) -> None:
+    """Start the session countdown when the first song plays."""
+    if session.session_start_time:
+        return
+    session.session_start_time = now
+    if not session.total_minutes or session.total_minutes <= 0:
+        print(f"⚠️ WARNING: Session has no total_minutes set, using default {DEFAULT_SESSION_MINUTES}")
+        session.total_minutes = DEFAULT_SESSION_MINUTES
+    session.session_end_time = session.session_start_time + timedelta(minutes=session.total_minutes)
+    print(
+        f"Session timer started: {session.total_minutes} minutes "
+        f"(ends at {session.session_end_time.isoformat()})"
+    )
+
+
+def _session_remaining_seconds(session: RoomSession):
+    """Seconds left on the session timer, or None if the timer has not started."""
+    if not session.session_end_time:
+        return None
+    remaining = int((session.session_end_time - datetime.now(timezone.utc)).total_seconds())
+    return max(0, remaining)
+
+
 @router.get("/", response_model=List[RoomResponse])
 def list_rooms(db: Session = Depends(get_db)):
     """List all rooms"""
@@ -116,6 +139,7 @@ def get_room_session(room_id: str, db: Session = Depends(get_db)):
             "session_created_at": session.session_created_at.isoformat() if session.session_created_at else None,
             "session_start_time": session.session_start_time.isoformat() if session.session_start_time else None,
             "session_end_time": session.session_end_time.isoformat() if session.session_end_time else None,
+            "remaining_seconds": _session_remaining_seconds(session),
             "current_song_id": session.current_song_id,
             "current_song_start_time": session.current_song_start_time.isoformat() if session.current_song_start_time else None
         }
@@ -483,9 +507,12 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
                 detail="No active session. Admin must start a session for this room first."
             )
         
+        now = datetime.now(timezone.utc)
+        _start_session_timer_if_needed(session, now)
+
         # Update existing session
         session.current_song_id = current_song_id
-        session.current_song_start_time = datetime.now(timezone.utc)
+        session.current_song_start_time = now
         
         db.commit()
         db.refresh(session)
@@ -534,17 +561,7 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
                 "message": "No active session. Admin must start a session for this room first."
             }
         else:
-            # If admin already created a session but timer hasn't started yet, start it now
-            if not session.session_start_time:
-                session.session_start_time = now
-                # ALWAYS use the total_minutes set by admin - never use default
-                # If total_minutes is not set, that's an error (admin should have set it)
-                if not session.total_minutes or session.total_minutes <= 0:
-                    print(f"⚠️ WARNING: Session has no total_minutes set, using default {DEFAULT_SESSION_MINUTES}")
-                    session.total_minutes = DEFAULT_SESSION_MINUTES
-                total_minutes = session.total_minutes
-                session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
-                print(f"POST /rooms/{room_id}/playback/start_next: Starting timer now for existing session ({total_minutes} minutes)")
+            _start_session_timer_if_needed(session, now)
             # Update existing session with next song
             # DO NOT reset session_start_time if it already exists - timer should continue
             session.current_song_id = next_item.song_id
@@ -620,17 +637,7 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
                 print(f"POST /rooms/{room_id}/playback/ended: No active session, cannot auto-play next song")
                 return {"status": "no_session", "message": "No active session. Admin must start a session for this room first."}
             else:
-                # If admin already created a session but timer hasn't started yet, start it now
-                if not session.session_start_time:
-                    session.session_start_time = now
-                    # ALWAYS use the total_minutes set by admin - never use default
-                    # If total_minutes is not set, that's an error (admin should have set it)
-                    if not session.total_minutes or session.total_minutes <= 0:
-                        print(f"⚠️ WARNING: Session has no total_minutes set, using default {DEFAULT_SESSION_MINUTES}")
-                        session.total_minutes = DEFAULT_SESSION_MINUTES
-                    total_minutes = session.total_minutes
-                    session.session_end_time = session.session_start_time + timedelta(minutes=total_minutes)
-                    print(f"POST /rooms/{room_id}/playback/ended: Starting timer now for existing session ({total_minutes} minutes)")
+                _start_session_timer_if_needed(session, now)
                 # Update existing session with next song
                 # DO NOT reset session_start_time if it already exists - timer should continue
                 session.current_song_id = next_item.song_id
@@ -717,9 +724,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             existing_session.total_minutes = minutes
             # IMPORTANT: Do NOT start the timer here.
             # Timer should start only when the first song actually starts playing.
-            # Keep existing session_start_time as-is (usually None until first song).
-            existing_session.session_start_time = existing_session.session_start_time
-            # Clear end time so it can be recalculated when timer starts
+            existing_session.session_start_time = None
             existing_session.session_end_time = None
             existing_session.current_song_id = None
             existing_session.current_song_start_time = None
@@ -804,8 +809,7 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
             existing_session.total_minutes = minutes
             # IMPORTANT: Do NOT start the timer here.
             # Timer should start only when the first song actually starts playing.
-            existing_session.session_start_time = existing_session.session_start_time
-            # Clear end time so it can be recalculated when timer starts
+            existing_session.session_start_time = None
             existing_session.session_end_time = None
             existing_session.current_song_id = None
             existing_session.current_song_start_time = None

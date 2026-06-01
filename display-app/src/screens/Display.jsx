@@ -122,11 +122,8 @@ export default function Display({ roomId }) {
 
   // Session / timer coordination.
   const lastSessionIdRef = useRef(null);
-  const finalizedRef = useRef(false); // hard-cut lock until a new session appears
-  const endRequestedRef = useRef(false);
+  const finalizedRef = useRef(false); // hard-cut lock until backend confirms session ended
   const queueAdvancingRef = useRef(false);
-  // Authoritative session end instant (ms) from backend session_end_time.
-  const timerDeadlineRef = useRef(null);
 
   // Guards.
   const busyRef = useRef(false); // a swap/transition op is in flight
@@ -204,8 +201,8 @@ export default function Display({ roomId }) {
     videoRef.current?.cutToLogo();
   }, []);
 
-  // HARD cut to logo on timer expiry / session end. Cancels everything,
-  // never plays a transition, and locks until a new session starts.
+  // HARD cut to logo when the backend reports session ended. Cancels everything
+  // and locks until a new session starts or the backend session becomes active again.
   const hardCutToLogo = useCallback(() => {
     if (finalizedRef.current) return;
     finalizedRef.current = true;
@@ -407,7 +404,6 @@ export default function Display({ roomId }) {
           if (stageRef.current !== "LOGO") goToLogo();
           finalizedRef.current = false;
           hasPlayedRef.current = false;
-          timerDeadlineRef.current = null;
           setTimeLeft(null);
           return;
         }
@@ -416,7 +412,6 @@ export default function Display({ roomId }) {
         if (session.id && session.id !== lastSessionIdRef.current) {
           lastSessionIdRef.current = session.id;
           finalizedRef.current = false;
-          endRequestedRef.current = false;
           if (stageRef.current === "LOGO") {
             currentSongIdRef.current = null;
           }
@@ -429,43 +424,26 @@ export default function Display({ roomId }) {
             session.status === "idle" ||
             session.status === "active");
 
-        // Scenario 4 (backend side): session ended -> hard cut to logo.
+        // Backend is the source of truth for session end — never self-lock on local clock.
         if (isEnded) {
           if (!finalizedRef.current) {
             if (hasPlayedRef.current) hardCutToLogo();
             else goToLogo();
           }
-          timerDeadlineRef.current = null;
           setTimeLeft(null);
           return;
         }
-        if (finalizedRef.current) return; // wait for a fresh session id
 
-        // ---- Timer (deadline from backend — poll updates ref, 1s tick renders) -
-        if (session.session_end_time) {
-          timerDeadlineRef.current = new Date(session.session_end_time).getTime();
-        } else if (session.session_start_time && session.total_minutes) {
-          timerDeadlineRef.current =
-            new Date(session.session_start_time).getTime() + session.total_minutes * 60 * 1000;
-        } else {
-          timerDeadlineRef.current = null;
+        // Recover from a stale finalized lock if the backend session is still active.
+        if (finalizedRef.current && active) {
+          finalizedRef.current = false;
         }
 
-        // Natural expiry: only when backend deadline has passed while session
-        // is still marked active (not on a transient local miscalculation).
-        if (timerDeadlineRef.current && Date.now() >= timerDeadlineRef.current) {
-          if (hasPlayedRef.current) {
-            if (!endRequestedRef.current) {
-              endRequestedRef.current = true;
-              api(`/rooms/${roomId}/end`, { method: "POST" }).catch((err) =>
-                console.warn("[SESSION] /end failed:", err)
-              );
-            }
-            hardCutToLogo();
-          } else {
-            goToLogo();
-          }
-          return;
+        // Timer display: use remaining_seconds from backend (null = timer not started yet).
+        if (session.remaining_seconds != null) {
+          setTimeLeft(Math.max(0, session.remaining_seconds) * 1000);
+        } else {
+          setTimeLeft(null);
         }
 
         // ---- Next-song banner (only re-render when it actually changes) ------
@@ -579,20 +557,6 @@ export default function Display({ roomId }) {
     () => void handleTransitionEnded(),
     [handleTransitionEnded]
   );
-
-  // ---- Session timer tick (single source — reads backend deadline ref) -------
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const deadline = timerDeadlineRef.current;
-      if (!deadline) {
-        setTimeLeft(null);
-        return;
-      }
-      const remaining = Math.max(0, deadline - Date.now());
-      setTimeLeft(remaining);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   // ---- Transition watchdog -------------------------------------------------
   // A transition clip that never fires "ended" (decode/network hiccup) must

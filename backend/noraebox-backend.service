@@ -1,0 +1,18 @@
+[Unit]
+Description=Noraebox Backend
+After=network.target
+
+[Service]
+User=ec2-user
+WorkingDirectory=/home/ec2-user/Noraebox/backend
+Environment="PATH=/home/ec2-user/Noraebox/backend/venv/bin"
+
+ExecStartPre=/bin/sleep 60
+
+ExecStart=/home/ec2-user/Noraebox/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
