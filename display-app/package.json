@@ -1,7 +1,7 @@
 {
   "name": "display-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,17 +9,19 @@
     "build:tv": "node build-tv.cjs",
     "android:sync": "npm run build:tv && npx cap sync android",
     "android:debug:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-debug-apk.ps1",
-    "lint": "eslint .",
+    "android:release:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1",
+    "lint": "eslint src",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor-community/http": "^1.4.1",
     "@capacitor/android": "^8.0.0",
+    "@capacitor/filesystem": "^8.0.0",
     "@capacitor/app": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/ios": "^8.0.0",
     "core-js": "^3.49.0",
-    "esbuild": "^0.28.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "regenerator-runtime": "^0.14.1"
@@ -35,6 +37,7 @@
     "@vitejs/plugin-legacy": "^5.4.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.22",
+    "esbuild": "^0.28.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",

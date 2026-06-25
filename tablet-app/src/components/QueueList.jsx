@@ -10,7 +10,7 @@ import { formatSongSubtitle } from "./SongRow";
   - Works on both touch (mobile/tablet) and mouse (desktop).
 */
 
-export default function QueueList({ queue = [], onRemove, onReorder, onClear, clearing = false }) {
+export default function QueueList({ queue = [], onRemove, onReorder }) {
   const scrollContainerRef = useRef(null);
 
   // Drag state
@@ -190,16 +190,6 @@ export default function QueueList({ queue = [], onRemove, onReorder, onClear, cl
             <span className="text-lg text-sky-300 md:text-xl">🎵</span>
             <h4 className="text-base font-semibold text-white sm:text-lg md:text-xl">Queue</h4>
           </div>
-          {queue.length > 0 && onClear && (
-            <button
-              type="button"
-              onClick={onClear}
-              disabled={clearing}
-              className="queue-clear-btn"
-            >
-              {clearing ? "Clearing…" : "Clear"}
-            </button>
-          )}
         </div>
         {queue.length > 0 && (
           <p className="queue-panel-hint">Long press to reorder</p>

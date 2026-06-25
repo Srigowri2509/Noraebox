@@ -155,7 +155,8 @@ export default function App() {
       }
     };
 
-    const interval = window.setInterval(checkAssignment, 8000);
+    const checkMs = /android/i.test(navigator.userAgent || "") ? 15000 : 8000;
+    const interval = window.setInterval(checkAssignment, checkMs);
     return () => {
       mounted = false;
       window.clearInterval(interval);

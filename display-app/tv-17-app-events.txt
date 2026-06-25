@@ -1,0 +1,43 @@
+﻿
+06-04 19:10:41.344 I/katniss_search_PackageCache( 7531): Apps for Intent { act=android.intent.action.MAIN 
+cat=[android.intent.category.LEANBACK_LAUNCHER] }: [AppInfo(enabled=true, longVersionCode=1, 
+packageName=com.android.tv.settings, versionCode=1, versionName=1.0), AppInfo(enabled=true, longVersionCode=85162118, 
+packageName=com.android.vending, versionCode=85162118, versionName=51.6.21-31 [8] [PR] 923107750), 
+AppInfo(enabled=true, longVersionCode=2170, packageName=com.cltv.hybrid, versionCode=2170, 
+versionName=3.6.0_202603131106), AppInfo(enabled=true, longVersionCode=530320320, 
+packageName=com.google.android.youtube.tv, versionCode=530320320, versionName=5.30.320), AppInfo(enabled=true, 
+longVersionCode=112007300, packageName=com.google.android.youtube.tvmusic, versionCode=112007300, 
+versionName=1.12.07), AppInfo(enabled=true, longVersionCode=663905470, packageName=com.google.android.play.games, 
+versionCode=663905470, versionName=2025.09.66390 (902601108.902601108-040700)), AppInfo(enabled=true, 
+longVersionCode=24023, packageName=com.netflix.ninja, versionCode=24023, versionName=12.2.3 build 24023), 
+AppInfo(enabled=true, longVersionCode=34, packageName=com.realtek.miracast, versionCode=34, versionName=14), 
+AppInfo(enabled=true, longVersionCode=4, packageName=com.rtk.mediabrowser, versionCode=4, versionName=2.0), 
+AppInfo(enabled=true, longVersionCode=2103072, packageName=com.alphainventor.filemanager, versionCode=2103072, 
+versionName=3.7.2), AppInfo(enabled=true, longVersionCode=606023231, packageName=com.amazon.amazonvideo.livingroom, 
+versionCode=606023231, versionName=6.23.23+v15.5.0.70-armv7a), AppInfo(enabled=true, longVersionCode=203230853, 
+packageName=com.graymatrix.did, versionCode=203230853, versionName=5.77.2), AppInfo(enabled=true, longVersionCode=187, 
+packageName=com.mxtech.videoplayer.television, versionCode=187, versionName=1.55.0G), AppInfo(enabled=true, 
+longVersionCode=1, packageName=com.norebox.display, versionCode=1, versionName=1.0), AppInfo(enabled=true, 
+longVersionCode=10901, packageName=com.sonyliv, versionCode=10901, versionName=6.23.1)]
+06-04 19:10:41.391 I/katniss_interactor_PackageCache( 1549): Apps for Intent { act=android.intent.action.MAIN 
+cat=[android.intent.category.LEANBACK_LAUNCHER] }: [AppInfo(enabled=true, longVersionCode=1, 
+packageName=com.android.tv.settings, versionCode=1, versionName=1.0), AppInfo(enabled=true, longVersionCode=85162118, 
+packageName=com.android.vending, versionCode=85162118, versionName=51.6.21-31 [8] [PR] 923107750), 
+AppInfo(enabled=true, longVersionCode=2170, packageName=com.cltv.hybrid, versionCode=2170, 
+versionName=3.6.0_202603131106), AppInfo(enabled=true, longVersionCode=530320320, 
+packageName=com.google.android.youtube.tv, versionCode=530320320, versionName=5.30.320), AppInfo(enabled=true, 
+longVersionCode=112007300, packageName=com.google.android.youtube.tvmusic, versionCode=112007300, 
+versionName=1.12.07), AppInfo(enabled=true, longVersionCode=663905470, packageName=com.google.android.play.games, 
+versionCode=663905470, versionName=2025.09.66390 (902601108.902601108-040700)), AppInfo(enabled=true, 
+longVersionCode=24023, packageName=com.netflix.ninja, versionCode=24023, versionName=12.2.3 build 24023), 
+AppInfo(enabled=true, longVersionCode=34, packageName=com.realtek.miracast, versionCode=34, versionName=14), 
+AppInfo(enabled=true, longVersionCode=4, packageName=com.rtk.mediabrowser, versionCode=4, versionName=2.0), 
+AppInfo(enabled=true, longVersionCode=2103072, packageName=com.alphainventor.filemanager, versionCode=2103072, 
+versionName=3.7.2), AppInfo(enabled=true, longVersionCode=606023231, packageName=com.amazon.amazonvideo.livingroom, 
+versionCode=606023231, versionName=6.23.23+v15.5.0.70-armv7a), AppInfo(enabled=true, longVersionCode=203230853, 
+packageName=com.graymatrix.did, versionCode=203230853, versionName=5.77.2), AppInfo(enabled=true, longVersionCode=187, 
+packageName=com.mxtech.videoplayer.television, versionCode=187, versionName=1.55.0G), AppInfo(enabled=true, 
+longVersionCode=1, packageName=com.norebox.display, versionCode=1, versionName=1.0), AppInfo(enabled=true, 
+longVersionCode=10901, packageName=com.sonyliv, versionCode=10901, versionName=6.23.1)]
+
+

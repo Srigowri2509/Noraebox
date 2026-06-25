@@ -1,0 +1,468 @@
+﻿
+06-04 19:06:37.571 I/keystore2(  259): system/security/keystore2/src/watchdog.rs:319 - Watchdog thread idle -> 
+terminating. Have a great day.
+06-04 19:09:27.999 W/RTW     (  971): RM: wait busy timeout
+06-04 19:09:35.956 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:35.956 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.google.android.ext.services, android, com.android.providers.media.module]
+06-04 19:09:35.956 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:35.956 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:35.957 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:35.957 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:35.965 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.003 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.019 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.024 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:36.461 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.461 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:36.461 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.461 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.461 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.482 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.482 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.482 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:36.482 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.482 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.483 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.504 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.504 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.506 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.507 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:36.529 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.530 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.android.networkstack]
+06-04 19:09:36.530 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.530 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.530 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.543 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.548 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.549 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.549 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.google.android.permissioncontroller]
+06-04 19:09:36.549 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.549 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.550 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.550 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.552 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.578 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:36.675 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.675 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:36.675 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.675 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.675 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.702 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.707 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.707 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.708 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:36.749 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.749 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:36.749 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.749 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.749 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.764 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.770 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.770 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.771 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:36.841 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.842 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.android.tv.settings, com.android.systemui]
+06-04 19:09:36.842 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.842 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.842 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.860 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:36.860 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.860 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:36.860 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:36.860 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:36.860 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:36.868 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.868 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:36.873 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:36.875 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:37.038 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.038 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.038 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.038 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.038 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.038 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.061 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.073 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:37.085 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.086 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:37.117 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.118 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.118 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.118 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.118 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.121 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.125 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:37.125 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.126 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:37.278 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.279 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.279 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.279 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.280 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.285 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.285 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:37.285 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.286 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:37.289 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.846 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.846 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.846 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.847 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.847 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.850 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.855 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:37.855 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.856 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:37.909 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.910 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.910 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.910 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.910 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.915 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.926 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.927 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.927 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.927 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.927 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.939 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.939 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:37.942 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:37.943 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:37.943 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:37.943 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:37.943 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:37.951 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:37.952 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:38.055 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.056 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.056 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.056 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.056 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.070 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.070 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.070 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android, 
+com.google.android.permissioncontroller, com.android.systemui]
+06-04 19:09:38.070 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.070 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.070 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.092 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.092 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:38.093 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.094 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:38.103 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.103 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.google.android.ext.services, android, com.android.systemui]
+06-04 19:09:38.103 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.103 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.104 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.117 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.119 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.124 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.124 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.124 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.129 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:38.145 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.146 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:38.206 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.207 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.207 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.207 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.207 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.545 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.545 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.547 E/SettingsToPropertiesMapper(  778): 
+key=persist.device_config.configuration.AdbWritableFlags__adb_writable_flags_list value=adservices/disable_sdk_sandbox,
+adservices/enforce_broadcast_receiver_restrictions,adservices/fledge_ad_selection_enforce_foreground_status_custom_audi
+ence,adservices/fledge_custom_audience_max_count,adservices/fledge_custom_audience_max_num_ads,adservices/fledge_custom
+_audience_max_owner_count,adservices/fledge_custom_audience_per_app_max_count,adservices/fledge_js_isolate_enforce_max_
+heap_size,adservices/fledge_js_isolate_max_heap_size_bytes,adservices/sdk_request_permits_per_second,adservices/sdksand
+box_customized_sdk_context_enabled,configuration/namespace_to_package_mapping,constrain_display_apis/always_constrain_d
+isplay_apis,constrain_display_apis/never_constrain_display_apis,constrain_display_apis/never_constrain_display_apis_all
+_packages,device_policy_manager/disable_resources_updatability,flipendo/default_savings_mode_launch,flipendo/essential_
+apps,flipendo/flipendo_enabled_launch,flipendo/grayscale_enabled_launch,flipendo/lever_ble_scanning_enabled_launch,flip
+endo/lever_hotspot_enabled_launch,flipendo/lever_work_profile_enabled_launch,flipendo/resuspend_delay_minutes,namespace
+/key,namespace1/key1,namespace1/key2,namespace2/key1,namespace2/key2,package_manager_service/incfs_default_timeouts,pac
+kage_manager_service/known_digesters_list,privacy/location_access_check_periodic_interval_millis,rollback/enable_rollba
+ck_timeout,rollback/watchdog_explicit_health_check_enabled,rollback/watchdog_request_timeout_millis,rollback/watchdog_t
+rigger_failure_count,rollback/watchdog_trigger_failure_duration_millis,rollback_boot/rollback_lifetime_in_millis,system
+ui/nas_generate_actions,systemui/nas_generate_replies,systemui/nas_max_messages_to_extract,systemui/nas_max_suggestions
+,testspace/another,testspace/flagname,textclassifier/config_updater_model_enabled,textclassifier/key,textclassifier/key
+2,textclassifier/manifest_url_annotator_en,textclassifier/manifest_url_annotator_ru,textclassifier/model_download_backo
+ff_delay_in_millis,textclassifier/model_download_manager_enabled,textclassifier/multi_language_support_enabled,textclas
+sifier/testing_locale_list_override,textclassifier/textclassifier_service_package_override,window_manager/enable_defaul
+t_rescind_bal_privileges_from_pending_intent_sender,wrong/nas_generate_replies, exceeds system property max length.
+06-04 19:09:38.550 W/Looper  (  778): Slow dispatch took 341ms main h=android.os.Handler 
+c=com.android.server.PackageWatchdog$$ExternalSyntheticLambda10@39a5870 m=0
+06-04 19:09:38.554 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.android.tv.settings, android]
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android, 
+com.android.systemui]
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android, 
+com.android.bluetooth]
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.555 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.555 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.555 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.556 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.556 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.556 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor [android]
+06-04 19:09:38.556 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.556 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.556 I/PackageWatchdog(  778): Syncing state, reason: observing new packages
+06-04 19:09:38.556 I/PackageWatchdog(  778): Not pruning observers, elapsed time: 0ms
+06-04 19:09:38.556 D/PackageWatchdog(  778): rescue-party-observer added the following packages to monitor 
+[com.android.networkstack, android]
+06-04 19:09:38.556 I/PackageWatchdog(  778): Syncing state, reason: updated observers
+06-04 19:09:38.561 I/PackageWatchdog(  778): Saving observer state to file
+06-04 19:09:38.733 I/ExplicitHealthCheckController(  778): Explicit health check service is connected 
+ComponentInfo{com.google.android.ext.services/android.ext.services.watchdog.ExplicitHealthCheckServiceImpl}
+06-04 19:09:38.760 I/PackageWatchdog(  778): Syncing health check requests for packages: {}
+06-04 19:09:38.762 D/PackageWatchdog(  778): Received supported packages [PackageConfig{com.android.networkstack, 
+86400000}]
+06-04 19:09:45.993 W/RTW     ( 1068): cfg80211_rtw_set_power_mgmt(wlan0) enabled:0, timeout:-1
+06-04 19:09:49.164 W/RTW     ( 1068): cfg80211_rtw_set_power_mgmt(wlan0) enabled:1, timeout:-1
+06-04 19:10:12.517 I/keystore2(  259): system/security/keystore2/src/watchdog.rs:319 - Watchdog thread idle -> 
+terminating. Have a great day.
+06-04 19:10:37.013 I/cr_CronetUrlRequestContext( 7307): destroyNativeStreamLocked 
+android.net.connectivity.org.chromium.net.impl.CronetBidirectionalStream@af3d1c9
+06-04 19:10:38.757 I/cr_CronetUrlRequestContext( 7307): destroyNativeStreamLocked 
+android.net.connectivity.org.chromium.net.impl.CronetBidirectionalStream@dc30fbf
+06-04 19:10:39.821 I/cr_CronetUrlRequestContext( 7307): destroyNativeStreamLocked 
+android.net.connectivity.org.chromium.net.impl.CronetBidirectionalStream@f6c57c9
+06-04 19:10:41.344 I/katniss_search_PackageCache( 7531): Apps for Intent { act=android.intent.action.MAIN 
+cat=[android.intent.category.LEANBACK_LAUNCHER] }: [AppInfo(enabled=true, longVersionCode=1, 
+packageName=com.android.tv.settings, versionCode=1, versionName=1.0), AppInfo(enabled=true, longVersionCode=85162118, 
+packageName=com.android.vending, versionCode=85162118, versionName=51.6.21-31 [8] [PR] 923107750), 
+AppInfo(enabled=true, longVersionCode=2170, packageName=com.cltv.hybrid, versionCode=2170, 
+versionName=3.6.0_202603131106), AppInfo(enabled=true, longVersionCode=530320320, 
+packageName=com.google.android.youtube.tv, versionCode=530320320, versionName=5.30.320), AppInfo(enabled=true, 
+longVersionCode=112007300, packageName=com.google.android.youtube.tvmusic, versionCode=112007300, 
+versionName=1.12.07), AppInfo(enabled=true, longVersionCode=663905470, packageName=com.google.android.play.games, 
+versionCode=663905470, versionName=2025.09.66390 (902601108.902601108-040700)), AppInfo(enabled=true, 
+longVersionCode=24023, packageName=com.netflix.ninja, versionCode=24023, versionName=12.2.3 build 24023), 
+AppInfo(enabled=true, longVersionCode=34, packageName=com.realtek.miracast, versionCode=34, versionName=14), 
+AppInfo(enabled=true, longVersionCode=4, packageName=com.rtk.mediabrowser, versionCode=4, versionName=2.0), 
+AppInfo(enabled=true, longVersionCode=2103072, packageName=com.alphainventor.filemanager, versionCode=2103072, 
+versionName=3.7.2), AppInfo(enabled=true, longVersionCode=606023231, packageName=com.amazon.amazonvideo.livingroom, 
+versionCode=606023231, versionName=6.23.23+v15.5.0.70-armv7a), AppInfo(enabled=true, longVersionCode=203230853, 
+packageName=com.graymatrix.did, versionCode=203230853, versionName=5.77.2), AppInfo(enabled=true, longVersionCode=187, 
+packageName=com.mxtech.videoplayer.television, versionCode=187, versionName=1.55.0G), AppInfo(enabled=true, 
+longVersionCode=1, packageName=com.norebox.display, versionCode=1, versionName=1.0), AppInfo(enabled=true, 
+longVersionCode=10901, packageName=com.sonyliv, versionCode=10901, versionName=6.23.1)]
+06-04 19:10:41.391 I/katniss_interactor_PackageCache( 1549): Apps for Intent { act=android.intent.action.MAIN 
+cat=[android.intent.category.LEANBACK_LAUNCHER] }: [AppInfo(enabled=true, longVersionCode=1, 
+packageName=com.android.tv.settings, versionCode=1, versionName=1.0), AppInfo(enabled=true, longVersionCode=85162118, 
+packageName=com.android.vending, versionCode=85162118, versionName=51.6.21-31 [8] [PR] 923107750), 
+AppInfo(enabled=true, longVersionCode=2170, packageName=com.cltv.hybrid, versionCode=2170, 
+versionName=3.6.0_202603131106), AppInfo(enabled=true, longVersionCode=530320320, 
+packageName=com.google.android.youtube.tv, versionCode=530320320, versionName=5.30.320), AppInfo(enabled=true, 
+longVersionCode=112007300, packageName=com.google.android.youtube.tvmusic, versionCode=112007300, 
+versionName=1.12.07), AppInfo(enabled=true, longVersionCode=663905470, packageName=com.google.android.play.games, 
+versionCode=663905470, versionName=2025.09.66390 (902601108.902601108-040700)), AppInfo(enabled=true, 
+longVersionCode=24023, packageName=com.netflix.ninja, versionCode=24023, versionName=12.2.3 build 24023), 
+AppInfo(enabled=true, longVersionCode=34, packageName=com.realtek.miracast, versionCode=34, versionName=14), 
+AppInfo(enabled=true, longVersionCode=4, packageName=com.rtk.mediabrowser, versionCode=4, versionName=2.0), 
+AppInfo(enabled=true, longVersionCode=2103072, packageName=com.alphainventor.filemanager, versionCode=2103072, 
+versionName=3.7.2), AppInfo(enabled=true, longVersionCode=606023231, packageName=com.amazon.amazonvideo.livingroom, 
+versionCode=606023231, versionName=6.23.23+v15.5.0.70-armv7a), AppInfo(enabled=true, longVersionCode=203230853, 
+packageName=com.graymatrix.did, versionCode=203230853, versionName=5.77.2), AppInfo(enabled=true, longVersionCode=187, 
+packageName=com.mxtech.videoplayer.television, versionCode=187, versionName=1.55.0G), AppInfo(enabled=true, 
+longVersionCode=1, packageName=com.norebox.display, versionCode=1, versionName=1.0), AppInfo(enabled=true, 
+longVersionCode=10901, packageName=com.sonyliv, versionCode=10901, versionName=6.23.1)]
+06-04 19:10:47.224 I/RemoteProvisionSysSvc(  778): 
+getRegistration(android.hardware.security.keymint.IRemotelyProvisionedComponent/default)
+06-04 19:10:47.349 I/RegistrationProxy(  778): onServiceConnected: 
+com.android.rkpdapp.service.RemoteProvisioningService
+06-04 19:10:47.360 I/RegistrationProxy(  778): IGetRegistrationCallback.onSuccess
+06-04 19:10:47.363 I/RegistrationProxy(  778): getKeyAsync operation started with callback 47010960
+06-04 19:10:47.364 I/RkpdRegistrationBinder(  512): Key requested for : 
+android.hardware.security.keymint.IRemotelyProvisionedComponent/default, clientUid: 1017, keyId: 10068, callback: 
+254221023
+06-04 19:10:47.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:47.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:47.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:47.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 502.699667ms Overdue 2.701036ms
+06-04 19:10:47.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:48.718 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:48.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:48.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:48.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 1.503023963s Overdue 1.003025073s
+06-04 19:10:48.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:49.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:49.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:49.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:49.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 2.503343666s Overdue 2.003344998s
+06-04 19:10:49.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:50.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:50.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:50.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:50.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 3.503592406s Overdue 3.003593442s
+06-04 19:10:50.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:51.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:51.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:51.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:51.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 4.503820813s Overdue 4.003821886s
+06-04 19:10:51.719 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 2 records below.
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 6.000402959s Overdue 1.000405367s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 6.000188701s Overdue 5.500189774s
+06-04 19:10:53.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 2 records below.
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 7.000731366s Overdue 2.000733773s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 7.000486885s Overdue 6.500487884s
+06-04 19:10:54.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 2 records below.
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 8.000989699s Overdue 3.000992106s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 8.000743996s Overdue 7.500745032s
+06-04 19:10:55.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:56.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:56.216 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:56.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 2 records below.
+06-04 19:10:56.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 9.001267402s Overdue 4.001269846s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:56.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 9.001025069s Overdue 8.501026105s
+06-04 19:10:56.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 2 records below.
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 10.001578698s Overdue 5.001581105s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:164 - ThreadId(9) Calling 
+get_rkpd_attestation_key() Pending: 10.001338735s Overdue 9.501339771s
+06-04 19:10:57.217 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:57.365 I/RegistrationProxy(  778): Attempting to cancel getKeyAsync for 47010960
+06-04 19:10:57.373 E/RegistrationProxy(  778): Error cancelling getKey operation
+06-04 19:10:57.373 E/RegistrationProxy(  778): android.os.DeadObjectException
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at android.os.BinderProxy.transactNative(Native Method)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at android.os.BinderProxy.transact(BinderProxy.java:584)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+com.android.rkpdapp.IRegistration$Stub$Proxy.cancelGetKey(IRegistration.java:224)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+android.security.rkp.service.RegistrationProxy.lambda$getKeyAsync$1(RegistrationProxy.java:284)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+android.security.rkp.service.RegistrationProxy.$r8$lambda$bo0jbYZpod251F2iass7z0yRPBU(Unknown Source:0)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+android.security.rkp.service.RegistrationProxy$$ExternalSyntheticLambda1.onCancel(D8$$SyntheticClass:0)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at android.os.CancellationSignal.cancel(CancellationSignal.java:81)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+com.android.server.security.rkp.RemoteProvisioningRegistration.cancelGetKey(RemoteProvisioningRegistration.java:145)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at 
+android.security.rkp.IRegistration$Stub.onTransact(IRegistration.java:169)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at android.os.Binder.execTransactInternal(Binder.java:1344)
+06-04 19:10:57.373 E/RegistrationProxy(  778): 	at android.os.Binder.execTransact(Binder.java:1275)
+06-04 19:10:57.375 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:57.375 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:57.375 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:57.375 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 10.159953105s Overdue 5.159955697s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:57.375 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:10:57.544 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:114 - ### Keystore Watchdog report - 
+BEGIN ###
+06-04 19:10:57.544 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:123 - When extracting from a bug 
+report, please include this header
+06-04 19:10:57.544 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:124 - and all 1 records below.
+06-04 19:10:57.544 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:154 - ThreadId(9) 
+IKeystoreSecurityLevel::generateKey Pending: 10.328650549s Overdue 5.328653216s: SecurityLevel r#TRUSTED_ENVIRONMENT
+06-04 19:10:57.544 W/keystore2(  259): system/security/keystore2/src/watchdog.rs:175 - ### Keystore Watchdog report - 
+END ###
+06-04 19:11:08.044 I/keystore2(  259): system/security/keystore2/src/watchdog.rs:319 - Watchdog thread idle -> 
+terminating. Have a great day.
+
+

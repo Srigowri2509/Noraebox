@@ -238,8 +238,9 @@ const filteredSongs = useMemo(() => {
     fetchMostPlayed();
   }, [room?.id]);
 
+  const MAX_QUEUE_SIZE = 20;
+
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
-  const [isClearingQueue, setIsClearingQueue] = useState(false);
   const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
   // Helper function to check if a song is already in the queue (by song_id only)
@@ -286,6 +287,11 @@ const filteredSongs = useMemo(() => {
       console.log("ℹ️ Song already in queue (frontend check):", song.title, "song_id:", songId);
       console.log("Current queue:", queue);
       alert("This song is already in the queue.");
+      return;
+    }
+
+    if ((queue?.length || 0) >= MAX_QUEUE_SIZE) {
+      alert(`Queue is full (max ${MAX_QUEUE_SIZE} songs). Remove a song to add another.`);
       return;
     }
     
@@ -381,34 +387,6 @@ const filteredSongs = useMemo(() => {
     }
   };
 
-
-  const handleClearQueue = async () => {
-    const currentRoomId = roomId || room?.id;
-    if (!currentRoomId) {
-      console.warn("Cannot clear queue: No room ID");
-      return;
-    }
-    if (!queue?.length) return;
-
-    if (!window.confirm("Clear all songs from the queue?")) return;
-
-    const previousQueue = queue;
-    setIsClearingQueue(true);
-    setQueue([]);
-
-    try {
-      await api(`/rooms/${currentRoomId}/queue/clear`, { method: "POST" });
-      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
-      setQueue(Array.isArray(queueRes) ? queueRes : []);
-      console.log("✅ Queue cleared");
-    } catch (error) {
-      console.error("Error clearing queue:", error);
-      setQueue(previousQueue);
-      alert("Failed to clear queue. Please try again.");
-    } finally {
-      setIsClearingQueue(false);
-    }
-  };
 
   const handleReorderQueue = async (fromIndex, toIndex) => {
     const currentRoomId = roomId || room?.id;
@@ -937,8 +915,6 @@ const filteredSongs = useMemo(() => {
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
                 onReorder={handleReorderQueue}
-                onClear={handleClearQueue}
-                clearing={isClearingQueue}
               />
             </div>
           </div>

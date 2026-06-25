@@ -14,6 +14,8 @@ if (Test-Path $jbr) {
   Write-Warning "JAVA_HOME not set and Android Studio JBR not found. Install JDK 17+ or Android Studio, then re-run."
 }
 
+& (Join-Path $PSScriptRoot "patch-http-plugin.ps1")
+
 npm run build:tv
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 npx cap sync android

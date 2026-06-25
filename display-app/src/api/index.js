@@ -3,7 +3,10 @@ export const API_BASE = import.meta.env.VITE_API_URL || "http://16.112.20.5:8000
 export async function api(path, options = {}) {
   // Android TV WebViews often break fetch() when AbortController/signal is used.
   // Use a plain fetch with a single Promise.race timeout instead.
-  const TIMEOUT_MS = 20000;
+  const TIMEOUT_MS =
+    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent || "")
+      ? 30000
+      : 20000;
 
   let hardTimer;
   const hardTimeout = new Promise((_, reject) => {

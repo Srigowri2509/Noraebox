@@ -23,6 +23,8 @@ build({
     "import.meta.env": JSON.stringify({
       VITE_API_URL: process.env.VITE_API_URL || "http://16.112.20.5:8000",
       VITE_GITHUB_REPO: process.env.VITE_GITHUB_REPO || "Srigowri2509/Noraebox",
+      VITE_LOW_POWER: process.env.VITE_LOW_POWER || "false",
+      VITE_CACHE_ENABLED: process.env.VITE_CACHE_ENABLED || "true",
     }),
   },
   loader: {
