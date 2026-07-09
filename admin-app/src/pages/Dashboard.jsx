@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import RoomSquare from "../components/RoomSquare";
 import RoomModal from "../components/RoomModal";
 import DeviceRoomPanel from "../components/DeviceRoomPanel";
+import { useNotifications } from "../hooks/useNotifications";
+import { useWebSocket } from "../hooks/useWebSocket";
 
 /**
  * Sort rooms for display. Rooms named with a number ("Room 3") sort
@@ -29,28 +31,27 @@ export default function Dashboard() {
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [devices, setDevices] = useState([]);
   const [connectionError, setConnectionError] = useState(null);
+  const [finishedSessionsByRoom, setFinishedSessionsByRoom] = useState({});
 
   const gridRooms = useMemo(() => sortRooms(rooms), [rooms]);
 
-  // Fetch rooms from database
-  const loadRooms = async () => {
-    console.log("📡 Fetching rooms...");
+  const loadRooms = useCallback(async () => {
+    console.log("Fetching rooms...");
     try {
       const res = await api('/rooms');
       const data = res.data || res;
       const roomsArray = sortRooms(Array.isArray(data) ? data : []);
-      console.log("📦 Rooms fetched:", roomsArray);
+      console.log("Rooms fetched:", roomsArray);
       setRooms(roomsArray);
-      setConnectionError(null); // Clear error on success
+      setConnectionError(null);
     } catch (error) {
-      console.log("❌ Error:", error);
+      console.log("Error loading rooms:", error);
       setRooms([]);
       setConnectionError(error.message || "Failed to connect to backend");
     }
-  };
+  }, []);
 
-  // Load devices
-  const loadDevices = async () => {
+  const loadDevices = useCallback(async () => {
     try {
       const res = await api('/devices');
       const data = res.data || res;
@@ -59,30 +60,60 @@ export default function Dashboard() {
       console.error("Error loading devices:", error);
       setDevices([]);
     }
-  };
-
-  useEffect(() => {
-    loadRooms();
-    loadDevices();
-    // Poll for updates every 2 seconds
-    const interval = setInterval(() => {
-      loadRooms();
-      loadDevices();
-    }, 2000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Auto end room when timer hits 0
-  const autoEndRoom = async (room) => {
-    try {
-      await api(`/rooms/${room.id}/end`, {
-        method: "POST"
-      });
-      loadRooms();
-    } catch (err) {
-      console.error("Error ending room:", err);
+  const markSessionFinished = useCallback((event) => {
+    setFinishedSessionsByRoom((current) => ({
+      ...current,
+      [event.roomId]: event,
+    }));
+  }, []);
+
+  const { handleSessionFinished, acknowledgeSessionNotification } =
+    useNotifications(markSessionFinished);
+
+  useWebSocket(
+    useCallback(
+      (event) => {
+        if (event.type === "session_finished") {
+          handleSessionFinished(event);
+          loadRooms();
+        }
+      },
+      [handleSessionFinished, loadRooms]
+    )
+  );
+
+  const clearFinishedSession = useCallback((roomId) => {
+    setFinishedSessionsByRoom((current) => {
+      if (!current[roomId]) return current;
+      const next = { ...current };
+      delete next[roomId];
+      return next;
+    });
+  }, []);
+
+  const acknowledgeFinishedSession = useCallback((roomId) => {
+    const finishedSession = finishedSessionsByRoom[roomId];
+    if (finishedSession?.sessionId) {
+      acknowledgeSessionNotification(finishedSession.sessionId);
     }
-  };
+    clearFinishedSession(roomId);
+  }, [acknowledgeSessionNotification, clearFinishedSession, finishedSessionsByRoom]);
+
+
+  useEffect(() => {
+    const refresh = () => {
+      loadRooms();
+      loadDevices();
+    };
+    const timeout = setTimeout(refresh, 0);
+    const interval = setInterval(refresh, 2000);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [loadDevices, loadRooms]);
 
   // Open modal
   const openRoom = (room) => {
@@ -105,6 +136,7 @@ export default function Dashboard() {
       });
       console.log("Session started successfully");
       setSelectedRoom(null);
+      clearFinishedSession(selectedRoom.id);
       loadRooms();
     } catch (err) {
       console.error("Error starting room:", err);
@@ -149,6 +181,7 @@ export default function Dashboard() {
       
       console.log("Session time updated successfully");
       setSelectedRoom(null);
+      clearFinishedSession(selectedRoom.id);
       // Force refresh rooms immediately
       await loadRooms();
       // Also refresh after a short delay to ensure backend has committed
@@ -175,6 +208,7 @@ export default function Dashboard() {
       });
       console.log("Session canceled successfully");
       setSelectedRoom(null);
+      clearFinishedSession(selectedRoom.id);
       loadRooms();
     } catch (err) {
       console.error("Error canceling session:", err);
@@ -250,7 +284,7 @@ export default function Dashboard() {
     <>
       {connectionError && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg max-w-2xl">
-          <div className="font-bold text-lg mb-2">⚠️ Backend Connection Failed</div>
+          <div className="font-bold text-lg mb-2">Backend Connection Failed</div>
           <div className="text-sm mb-2">{connectionError}</div>
           <div className="text-xs bg-red-600/50 p-2 rounded mt-2">
             <div className="font-semibold mb-1">To fix this:</div>
@@ -274,7 +308,8 @@ export default function Dashboard() {
                 key={room.id}
                 room={room}
                 onClick={() => openRoom(room)}
-                onAutoEnd={autoEndRoom}
+                finishedSession={finishedSessionsByRoom[room.id]}
+                onAcknowledge={() => acknowledgeFinishedSession(room.id)}
               />
             ))}
           </div>
@@ -285,7 +320,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Devices — one compact card per room */}
+      {/* Devices - one compact card per room */}
       <div className="w-full flex justify-center mt-10 mb-16 px-4">
         <div className="device-panel-wrap">
           {devices.length > 0 ? (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
 export default function RoomCard({ room, onExtend, onEnd }) {
@@ -26,11 +26,12 @@ export default function RoomCard({ room, onExtend, onEnd }) {
       const interval = setInterval(fetchSession, 2000);
       return () => clearInterval(interval);
     } else {
-      setSession(null);
+      const timeout = setTimeout(() => setSession(null), 0);
+      return () => clearTimeout(timeout);
     }
-  }, [room.id, room.is_active]);
+  }, [room.id, room.is_active, room.name]);
 
-  const compute = () => {
+  const compute = useCallback(() => {
     // Timer only shows when session_start_time exists (first song played)
     if (!session || !session.session_start_time || !session.total_minutes) {
       return null; // Session ready but idle - no timer yet
@@ -43,23 +44,33 @@ export default function RoomCard({ room, onExtend, onEnd }) {
     const remaining = Math.max(0, session.total_minutes - elapsed);
     console.log(`⏱️ Admin RoomCard: Elapsed: ${elapsed.toFixed(2)} min, Remaining: ${remaining.toFixed(2)} min`);
     return remaining;
-  };
+  }, [session]);
 
   useEffect(() => {
-    const computed = compute();
-    if (computed !== null) {
-      setRemaining(computed);
-      const interval = setInterval(() => {
+    const updateRemaining = () => {
+      const computed = compute();
+      if (computed !== null) {
+        setRemaining(computed);
+      } else {
+        setRemaining(0);
+      }
+    };
+
+    const timeout = setTimeout(updateRemaining, 0);
+    const interval = setInterval(() => {
         const newRemaining = compute();
         if (newRemaining !== null) {
           setRemaining(newRemaining);
+        } else {
+          setRemaining(0);
         }
-      }, 1000);
-      return () => clearInterval(interval);
-    } else {
-      setRemaining(0);
-    }
-  }, [session]);
+    }, 1000);
+
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [compute]);
 
   const mins = Math.floor(remaining);
   const sec = Math.floor((remaining - mins) * 60)

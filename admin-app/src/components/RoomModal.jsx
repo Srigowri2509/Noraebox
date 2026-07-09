@@ -26,7 +26,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         const sessionData = await api(`/rooms/${room.id}/session`);
         const session = sessionData.session;
         // Check if there's an active session
-        const isActive = session && (session.status === 'active' || session.status === 'playing');
+        const isActive = session && (session.status === 'active' || session.status === 'playing' || session.status === 'completed');
         setHasActiveSession(isActive);
         if (isActive && session) {
           if (session.session_end_time) {

@@ -98,10 +98,10 @@ def list_rooms_with_availability(device_uuid: str = None, db: Session = Depends(
 def get_room_session(room_id: str, db: Session = Depends(get_db)):
     """Get room session data - backward compatibility endpoint"""
     try:
-        # Get the most recent ACTIVE session first, then fall back to most recent session
+        # Get the most recent open session first, then fall back to most recent session
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status == 'active'
+            RoomSession.status.in_(['active', 'completed'])
         ).order_by(RoomSession.session_created_at.desc()).first()
         
         # If no active session, get the most recent session of any status
@@ -714,7 +714,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
         # Check if there's already an active session (due to unique constraint)
         existing_session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status == 'active'
+            RoomSession.status.in_(['active', 'completed'])
         ).first()
         
         if existing_session:
@@ -722,6 +722,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             print(f"POST /rooms/{room_id}/start: Updating existing session {existing_session.id}")
             print(f"📝 POST /rooms/{room_id}/start: Updating existing session - setting total_minutes to {minutes}")
             existing_session.total_minutes = minutes
+            existing_session.status = "active"
             # IMPORTANT: Do NOT start the timer here.
             # Timer should start only when the first song actually starts playing.
             existing_session.session_start_time = None
@@ -734,6 +735,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /rooms/{room_id}/start: Session updated with id {existing_session.id}")
@@ -760,6 +762,7 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /rooms/{room_id}/start: Session created with id {new_session.id}")
@@ -800,13 +803,14 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
         # Check if there's already an active session (due to unique constraint)
         existing_session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status == 'active'
+            RoomSession.status.in_(['active', 'completed'])
         ).first()
         
         if existing_session:
             # Update existing session instead of creating new one
             print(f"POST /rooms/{room_id}/sessions/start: Updating existing session {existing_session.id}")
             existing_session.total_minutes = minutes
+            existing_session.status = "active"
             # IMPORTANT: Do NOT start the timer here.
             # Timer should start only when the first song actually starts playing.
             existing_session.session_start_time = None
@@ -818,6 +822,7 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /rooms/{room_id}/sessions/start: Session updated with id {existing_session.id}")
@@ -842,6 +847,7 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /rooms/{room_id}/sessions/start: Session created with id {new_session.id}")
@@ -867,7 +873,7 @@ def update_room_status(room_id: str, payload: dict = Body(...), db: Session = De
         # Get active session
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status == 'active'
+            RoomSession.status.in_(['active', 'completed'])
         ).first()
         
         # Update total_minutes if provided
@@ -981,7 +987,7 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
 
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status == 'active'
+            RoomSession.status.in_(['active', 'completed'])
         ).first()
 
         if not session:
@@ -989,11 +995,20 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
 
         now = datetime.now(timezone.utc)
         old_total = session.total_minutes or 0
+        was_completed = session.status == 'completed'
 
         # ADD to total session length — never replace with a smaller value.
         session.total_minutes = old_total + add_minutes
 
-        if session.session_start_time:
+        if was_completed:
+            session.status = 'active'
+            room.status = 'active'
+            room.is_active = True
+            session.session_start_time = now
+            session.session_end_time = now + timedelta(minutes=add_minutes)
+            session.total_minutes = add_minutes
+            print(f"POST /rooms/{room_id}/extend: Restarted completed session with {add_minutes} min")
+        elif session.session_start_time:
             session.session_end_time = session.session_start_time + timedelta(minutes=session.total_minutes)
             elapsed_minutes = (now - session.session_start_time).total_seconds() / 60
             remaining_minutes = max(0, session.total_minutes - elapsed_minutes)

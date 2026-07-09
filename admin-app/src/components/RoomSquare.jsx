@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
-export default function RoomSquare({ room, onClick, onAutoEnd }) {
+export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge }) {
   const [remaining, setRemaining] = useState(null);
   const [session, setSession] = useState(null);
 
@@ -30,7 +30,7 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
     return () => clearInterval(interval);
   }, [room.id]);
 
-  const updateRemaining = () => {
+  const updateRemaining = useCallback(() => {
     // Timer only shows when session_start_time exists (first song played)
     if (!session || !session.session_start_time || !session.total_minutes) {
       setRemaining(null); // Session ready but idle - no timer yet
@@ -44,26 +44,29 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
 
     setRemaining(newRemaining);
 
-    if (newRemaining <= 0 && room.is_active && onAutoEnd) {
-      onAutoEnd(room);
-    }
-  };
+  }, [session]);
 
   useEffect(() => {
-    updateRemaining();
+    const timeout = setTimeout(updateRemaining, 0);
     const interval = setInterval(updateRemaining, 1000);
-    return () => clearInterval(interval);
-  }, [session, room]);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [updateRemaining]);
 
   const mins = remaining !== null ? Math.floor(remaining) : 0;
   const secs = remaining !== null ? Math.floor((remaining - mins) * 60).toString().padStart(2, "0") : "00";
 
   // Check if there's an active session (even if room.is_active is false initially)
   const hasActiveSession = session && (session.status === 'active' || session.status === 'playing');
+  const hasCompletedSession = Boolean(finishedSession);
   const isFree = !hasActiveSession && !room.is_active;
   
   // Show timer only if session_start_time exists, otherwise show "USING" or "READY"
-  const timerDisplay = isFree 
+  const timerDisplay = hasCompletedSession
+    ? "00:00"
+    : isFree
     ? "FREE" 
     : hasActiveSession && remaining !== null 
       ? `${mins}:${secs}` 
@@ -75,7 +78,10 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
   let bg = "bg-[#e9d5ff] text-purple-900"; // Lavender (FREE)
   let glow = "shadow-purple-300";
 
-  if (!isFree) {
+  if (hasCompletedSession) {
+    bg = "bg-[#fed7aa] text-red-950";
+    glow = "shadow-red-300";
+  } else if (!isFree) {
     if (hasActiveSession && remaining === null) {
       // Session active but no timer yet (just started)
       bg = "bg-[#c7d2fe] text-indigo-900"; // Indigo (USING)
@@ -101,6 +107,7 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
       onClick={() => onClick(room)}
       className={`
         ${bg}
+        ${hasCompletedSession ? "room-session-finished" : ""}
         w-[250px] h-[250px] rounded-2xl
         flex flex-col items-center justify-center
         text-xl font-semibold
@@ -116,6 +123,24 @@ export default function RoomSquare({ room, onClick, onAutoEnd }) {
       <div className="mt-3 text-lg font-medium">
         {timerDisplay}
       </div>
+
+      {hasCompletedSession && (
+        <div className="mt-4 flex flex-col items-center gap-3">
+          <span className="rounded-full bg-red-600 px-3 py-1 text-sm font-bold text-white shadow-sm">
+            Session Finished
+          </span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAcknowledge?.();
+            }}
+            className="rounded-lg bg-white/80 px-3 py-1 text-sm font-semibold text-red-800 shadow hover:bg-white"
+          >
+            Acknowledge
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,12 @@
-from fastapi import FastAPI, Request
+import asyncio
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates
+from app.services.admin_ws import admin_ws_manager
+from app.services.session_expiry import watch_session_expiry
 from pathlib import Path
 import traceback
 import json
@@ -36,6 +40,19 @@ app.include_router(updates.router, prefix="/updates")
 async def create_tables():
     # Import models above ensures all metadata is registered
     Base.metadata.create_all(bind=engine)
+    asyncio.create_task(watch_session_expiry())
+
+
+@app.websocket("/ws/admin")
+async def admin_websocket(websocket: WebSocket):
+    await admin_ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        admin_ws_manager.disconnect(websocket)
+    except Exception:
+        admin_ws_manager.disconnect(websocket)
 
 # Serve web assets for remote updates
 web_assets_path = Path(__file__).parent.parent.parent / "web-assets"
@@ -85,4 +102,3 @@ async def global_exception_handler(request: Request, exc: Exception):
             "Access-Control-Allow-Headers": "*",
         }
     )
-

@@ -39,6 +39,41 @@ body {
   align-items: center;
 }
 
+.room-session-finished {
+  position: relative;
+  overflow: hidden;
+  animation: roomFinishedPulse 1s ease-in-out infinite;
+}
+
+.room-session-finished::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  border: 4px solid rgba(220, 38, 38, 0.72);
+  animation: roomFinishedRing 1s ease-in-out infinite;
+}
+
+@keyframes roomFinishedPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55), 0 14px 30px rgba(248, 113, 113, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 12px rgba(239, 68, 68, 0), 0 18px 38px rgba(234, 88, 12, 0.45);
+    transform: scale(1.025);
+  }
+}
+
+@keyframes roomFinishedRing {
+  0%, 100% {
+    opacity: 0.95;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 /* Device assignments — room grid (display + tablet per room) */
 .device-panel-wrap {
   width: 100%;
