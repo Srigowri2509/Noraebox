@@ -1,29 +1,5 @@
 import React from "react";
-
-export function formatSongSubtitle(song = {}) {
-  let artists = [];
-  if (Array.isArray(song.artists)) {
-    artists = song.artists;
-  } else if (typeof song.artists === "string") {
-    try {
-      const parsed = JSON.parse(song.artists);
-      artists = Array.isArray(parsed) ? parsed : [];
-    } catch {
-      artists = [];
-    }
-  }
-
-  const singers = artists
-    .filter((a) => a.role === "singer")
-    .map((a) => a.name)
-    .join(", ");
-  const composers = artists
-    .filter((a) => a.role === "composer")
-    .map((a) => a.name)
-    .join(", ");
-  const main = singers || composers || song.artist_name || song.artist || "";
-  return `${main}${song.album ? ` • ${song.album}` : ""}`;
-}
+import { formatSongSubtitle } from "../utils/songFormatting";
 
 export default function SongRow({
   song = {},
@@ -46,8 +22,8 @@ export default function SongRow({
         <span>🎵</span>
       </div>
       <div className="song-row-body">
-        <div className="song-row-title">{song.title || "Unknown title"}</div>
-        {subtitle ? <div className="song-row-subtitle">{subtitle}</div> : null}
+        <div className="song-row-title" dir="auto">{song.title || "Unknown title"}</div>
+        {subtitle ? <div className="song-row-subtitle" dir="auto">{subtitle}</div> : null}
       </div>
       {trailing}
     </div>

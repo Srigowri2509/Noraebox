@@ -7,6 +7,13 @@ from app.models import Room, RoomSession, QueueItem, Song
 router = APIRouter()
 
 
+def _increment_song_play_count(db: Session, song_id: int) -> None:
+    db.query(Song).filter(Song.id == song_id).update(
+        {Song.play_count: func.coalesce(Song.play_count, 0) + 1},
+        synchronize_session=False,
+    )
+
+
 @router.post("/add")
 def add_to_queue(room_id: str = Query(...), song_id: int = Query(...), db: Session = Depends(get_db)):
     """Add a song to the queue"""
@@ -66,6 +73,7 @@ def play_next(room_id: str = Query(...), db: Session = Depends(get_db)):
         
         if session:
             session.current_song_id = next_item.song_id
+        _increment_song_play_count(db, next_item.song_id)
         
         # Remove from queue
         db.delete(next_item)

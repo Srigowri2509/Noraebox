@@ -5,6 +5,7 @@ import RoomModal from "../components/RoomModal";
 import DeviceRoomPanel from "../components/DeviceRoomPanel";
 import { useNotifications } from "../hooks/useNotifications";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { requestPermission } from "../services/notificationService";
 
 /**
  * Sort rooms for display. Rooms named with a number ("Room 3") sort
@@ -126,12 +127,20 @@ export default function Dashboard() {
       console.error("Invalid room or minutes");
       return;
     }
+
+    // Ask from the Start Session click so browsers recognize a user gesture.
+    // Do not block the room session if notifications are unavailable or denied.
+    requestPermission().catch((error) => {
+      console.warn("Notification permission request failed.", error);
+    });
+
     try {
       console.log(`Starting session for room ${selectedRoom.id} with ${minutes} minutes`);
-      await api(`/rooms/${selectedRoom.id}/start`, {
+      await api("/sessions/start", {
         method: "POST",
         body: JSON.stringify({
-          total_minutes: minutes
+          room_id: selectedRoom.id,
+          minutes,
         })
       });
       console.log("Session started successfully");

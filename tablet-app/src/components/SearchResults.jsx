@@ -10,6 +10,7 @@ export default function SearchResults({
   onQueue,
   loading,
   languageLabel = null,
+  hideHeader = false,
 }) {
   const songList = songs || results;
   const [currentPage, setCurrentPage] = useState(1);
@@ -28,7 +29,8 @@ export default function SearchResults({
   );
 
   useEffect(() => {
-    setCurrentPage(1);
+    const timeout = setTimeout(() => setCurrentPage(1), 0);
+    return () => clearTimeout(timeout);
   }, [songList, languageLabel]);
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export default function SearchResults({
   };
 
   const resultsHeader =
-    languageLabel || (songList?.length > 0 && !loading) ? (
+    !hideHeader && (languageLabel || (songList?.length > 0 && !loading)) ? (
       <div className="search-results-header shrink-0">
         <p className="search-results-header-label">
           {languageLabel ? (

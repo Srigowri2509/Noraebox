@@ -5,6 +5,8 @@ import "./index.css";
 import { RoomProvider } from "./context/RoomContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
+document.documentElement.lang = navigator.language || "en";
+
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <ErrorBoundary>

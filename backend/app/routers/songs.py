@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import distinct, or_, text
+from sqlalchemy import distinct, text
 from typing import List
 import json
 import re
+import unicodedata
 from botocore.exceptions import ClientError
 from app.db import get_db
 from app.models import Song, SongArtist, Artist, SongSuggestion
@@ -28,22 +29,16 @@ def _parse_artists(value):
 
 
 def _normalize_words(value: str):
-    normalized = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+    # Keep letters and numbers from every Unicode script (Hindi, Telugu,
+    # Tamil, Arabic, CJK, etc.) instead of silently discarding non-English
+    # search terms. NFKC also makes full-width/compatibility forms comparable.
+    source = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    normalized = "".join(
+        character if character.isalnum() or unicodedata.category(character).startswith("M") else " "
+        for character in source
+    )
+    normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized.split() if normalized else []
-
-
-def _starts_with_match(candidate: str, query: str) -> bool:
-    """Check if candidate starts with query (after normalization).
-    'tu' matches 'Tum Hi Ho' but NOT 'Agar Tum Saat Ho'."""
-    norm_candidate = re.sub(r"[^a-z0-9]+", " ", str(candidate or "").lower()).strip()
-    norm_query = re.sub(r"[^a-z0-9]+", " ", str(query or "").lower()).strip()
-
-    if not norm_query:
-        return True
-    if not norm_candidate:
-        return False
-
-    return norm_candidate.startswith(norm_query)
 
 
 def _build_song_response(row, signed_urls: bool = False):
@@ -191,100 +186,405 @@ def list_songs(
 
 @router.get("/search", response_model=List[SongResponse])
 def search_songs(
-    q: str = Query(..., min_length=1, description="Prefix query"),
-    field: str = Query("title", description="Search field: title, artist or album"),
+    q: str = Query(..., min_length=1, description="Search query"),
+    field: str = Query("all", description="Backward-compatible hint: all, title, artist or album"),
+    language: str = Query(None, description="Optional explicit language filter"),
     limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
-    """Prefix autocomplete search for titles, artists or albums."""
+    """Fuzzy combined search across song title, every linked artist and album."""
     try:
         query = q.strip()
         if not query:
             return []
 
-        if field not in {"title", "artist", "album"}:
-            raise HTTPException(status_code=400, detail="field must be 'title', 'artist' or 'album'")
+        if field not in {"all", "title", "artist", "album"}:
+            raise HTTPException(status_code=400, detail="field must be 'all', 'title', 'artist' or 'album'")
 
-        # Use starts-with pattern for SQL pre-filter (query% not %query%)
-        starts_pattern = f"{query}%"
-        if field == "artist":
-            where_clause = """
-                WHERE LOWER(a.name) LIKE LOWER(:search_pattern)
-            """
-        elif field == "album":
-            where_clause = """
-                WHERE LOWER(s.album) LIKE LOWER(:search_pattern)
-            """
-        else:
-            where_clause = """
-                WHERE LOWER(s.title) LIKE LOWER(:search_pattern)
-            """
-
-        query_sql = f"""
-            SELECT 
+        # The indexed candidate CTE avoids ranking every song. It first pulls IDs
+        # from trigram LIKE/% and FTS probes on title, album and every linked artist.
+        query_sql = """
+            WITH params AS (
+                SELECT
+                    public.noraebox_search_normalize(:query) AS q,
+                    replace(public.noraebox_search_normalize(:query), ' ', '') AS q_compact,
+                    :field AS field,
+                    NULLIF(public.noraebox_search_normalize(:language), '') AS language,
+                    websearch_to_tsquery('simple', public.noraebox_search_normalize(:query)) AS tsq
+            ),
+            terms AS (
+                SELECT
+                    term,
+                    replace(term, ' ', '') AS term_compact
+                FROM params p,
+                LATERAL regexp_split_to_table(p.q, ' ') AS term
+                WHERE length(term) > 0
+            ),
+            candidate_song_ids AS (
+                SELECT s.id
+                FROM (
+                    SELECT
+                        id,
+                        public.noraebox_search_normalize(title) AS title_norm,
+                        replace(public.noraebox_search_normalize(title), ' ', '') AS title_compact,
+                        public.noraebox_search_normalize(album) AS album_norm,
+                        replace(public.noraebox_search_normalize(album), ' ', '') AS album_compact
+                    FROM songs
+                ) s
+                CROSS JOIN params p
+                WHERE p.q <> ''
+                  AND (
+                    (
+                      p.field IN ('all', 'title')
+                      AND (
+                        s.title_norm LIKE '%' || p.q || '%'
+                        OR s.title_compact LIKE '%' || p.q_compact || '%'
+                        OR (
+                          length(p.q_compact) <= length(s.title_compact) * 1.35
+                          AND GREATEST(
+                            similarity(s.title_norm, p.q),
+                            similarity(s.title_compact, p.q_compact),
+                            word_similarity(p.q, s.title_norm)
+                          ) >= CASE WHEN length(p.q_compact) >= 8 THEN :long_query_similarity ELSE :min_similarity END
+                        )
+                        OR to_tsvector('simple', s.title_norm) @@ p.tsq
+                      )
+                    )
+                    OR (
+                      p.field IN ('all', 'album')
+                      AND (
+                        s.album_norm LIKE '%' || p.q || '%'
+                        OR s.album_compact LIKE '%' || p.q_compact || '%'
+                        OR (
+                          length(p.q_compact) <= length(s.album_compact) * 1.35
+                          AND GREATEST(
+                            similarity(s.album_norm, p.q),
+                            similarity(s.album_compact, p.q_compact),
+                            word_similarity(p.q, s.album_norm)
+                          ) >= CASE WHEN length(p.q_compact) >= 8 THEN :long_query_similarity ELSE :min_similarity END
+                        )
+                        OR to_tsvector('simple', s.album_norm) @@ p.tsq
+                      )
+                    )
+                    OR (
+                      p.field = 'all'
+                      AND to_tsvector(
+                          'simple',
+                          s.title_norm || ' ' || s.album_norm
+                        ) @@ p.tsq
+                    )
+                    OR (
+                      p.field IN ('all', 'title', 'album')
+                      AND NOT EXISTS (
+                        SELECT 1
+                        FROM terms t
+                        WHERE NOT (
+                          (p.field IN ('all', 'title') AND (s.title_norm LIKE '%' || t.term || '%' OR s.title_compact LIKE '%' || t.term_compact || '%'))
+                          OR (p.field IN ('all', 'album') AND (s.album_norm LIKE '%' || t.term || '%' OR s.album_compact LIKE '%' || t.term_compact || '%'))
+                        )
+                      )
+                    )
+                  )
+                UNION
+                SELECT sa.song_id
+                FROM song_artists sa
+                JOIN (
+                    SELECT
+                        id,
+                        public.noraebox_search_normalize(name) AS name_norm,
+                        replace(public.noraebox_search_normalize(name), ' ', '') AS name_compact
+                    FROM artist
+                ) a ON a.id = sa.artist_id
+                CROSS JOIN params p
+                WHERE p.q <> ''
+                  AND p.field IN ('all', 'artist')
+                  AND (
+                    a.name_norm LIKE '%' || p.q || '%'
+                    OR a.name_compact LIKE '%' || p.q_compact || '%'
+                    OR (
+                      length(p.q_compact) <= length(a.name_compact) * 1.35
+                      AND GREATEST(
+                        similarity(a.name_norm, p.q),
+                        similarity(a.name_compact, p.q_compact),
+                        word_similarity(p.q, a.name_norm)
+                      ) >= CASE WHEN length(p.q_compact) >= 8 THEN :long_query_similarity ELSE :min_similarity END
+                    )
+                    OR (
+                      length(p.q_compact) >= 2
+                      AND (
+                        SELECT string_agg(left(initial_word, 1), '' ORDER BY initial_order)
+                        FROM regexp_split_to_table(a.name_norm, ' ') WITH ORDINALITY AS initials(initial_word, initial_order)
+                        WHERE initial_word <> ''
+                      ) = p.q_compact
+                    )
+                    OR to_tsvector('simple', a.name_norm) @@ p.tsq
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM terms t
+                        WHERE NOT (
+                          a.name_norm LIKE '%' || t.term || '%'
+                          OR a.name_compact LIKE '%' || t.term_compact || '%'
+                        )
+                    )
+                  )
+            ),
+            artist_rollup AS (
+                SELECT
+                    sa.song_id,
+                    string_agg(DISTINCT public.noraebox_search_normalize(a.name), ' ') AS artist_search_text,
+                    string_agg(DISTINCT replace(public.noraebox_search_normalize(a.name), ' ', ''), ' ') AS artist_compact_text,
+                    COALESCE(
+                        json_agg(
+                            DISTINCT jsonb_build_object(
+                                'id', a.id,
+                                'name', a.name,
+                                'role', sa.role
+                            )
+                        ) FILTER (WHERE a.id IS NOT NULL),
+                        '[]'::json
+                    ) AS artists
+                FROM song_artists sa
+                LEFT JOIN artist a ON a.id = sa.artist_id
+                GROUP BY sa.song_id
+            ),
+            scored AS (
+                SELECT
+                    s.id,
+                    s.title,
+                    s.album,
+                    s.language,
+                    s.file_url,
+                    s.play_count,
+                    COALESCE(ar.artists, '[]'::json) AS artists,
+                    public.noraebox_search_normalize(s.title) AS title_norm,
+                    public.noraebox_search_normalize(s.album) AS album_norm,
+                    COALESCE(ar.artist_search_text, '') AS artist_norm,
+                    COALESCE(ar.artist_compact_text, '') AS artist_compact_norm,
+                    p.q AS query_norm,
+                    (
+                        CASE WHEN public.noraebox_search_normalize(s.title) = p.q THEN 1000 ELSE 0 END
+                        + CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM song_artists exact_sa
+                            JOIN artist exact_a ON exact_a.id = exact_sa.artist_id
+                            WHERE exact_sa.song_id = s.id
+                              AND public.noraebox_search_normalize(exact_a.name) = p.q
+                          ) THEN 900 ELSE 0 END
+                        + CASE WHEN public.noraebox_search_normalize(s.title) LIKE '%' || p.q || '%' THEN 800 ELSE 0 END
+                        + CASE WHEN COALESCE(ar.artist_search_text, '') LIKE '%' || p.q || '%' THEN 850 ELSE 0 END
+                        + CASE WHEN COALESCE(ar.artist_compact_text, '') LIKE '%' || p.q_compact || '%' THEN 830 ELSE 0 END
+                        + CASE WHEN EXISTS (
+                            SELECT 1
+                            FROM song_artists acronym_sa
+                            JOIN artist acronym_a ON acronym_a.id = acronym_sa.artist_id
+                            WHERE acronym_sa.song_id = s.id
+                              AND (
+                                SELECT string_agg(left(initial_word, 1), '' ORDER BY initial_order)
+                                FROM regexp_split_to_table(public.noraebox_search_normalize(acronym_a.name), ' ')
+                                  WITH ORDINALITY AS initials(initial_word, initial_order)
+                                WHERE initial_word <> ''
+                              ) = p.q_compact
+                          ) THEN 880 ELSE 0 END
+                        + CASE WHEN public.noraebox_search_normalize(s.album) LIKE '%' || p.q || '%' THEN 450 ELSE 0 END
+                        + GREATEST(similarity(public.noraebox_search_normalize(s.title), p.q), 0) * 300
+                        + GREATEST(similarity(COALESCE(ar.artist_search_text, ''), p.q), 0) * 240
+                        + GREATEST(similarity(COALESCE(ar.artist_compact_text, ''), p.q_compact), 0) * 220
+                        + GREATEST(similarity(public.noraebox_search_normalize(s.album), p.q), 0) * 120
+                        + ts_rank_cd(
+                            to_tsvector(
+                                'simple',
+                                public.noraebox_search_normalize(COALESCE(s.title, '') || ' ' || COALESCE(s.album, ''))
+                            ),
+                            p.tsq
+                          ) * 120
+                        + (
+                            SELECT COUNT(*) * 85
+                            FROM terms t
+                            WHERE public.noraebox_search_normalize(s.title) LIKE '%' || t.term || '%'
+                               OR COALESCE(ar.artist_search_text, '') LIKE '%' || t.term || '%'
+                               OR COALESCE(ar.artist_compact_text, '') LIKE '%' || t.term_compact || '%'
+                               OR public.noraebox_search_normalize(s.album) LIKE '%' || t.term || '%'
+                        )
+                    ) AS match_score
+                FROM candidate_song_ids c
+                JOIN songs s ON s.id = c.id
+                CROSS JOIN params p
+                LEFT JOIN artist_rollup ar ON ar.song_id = s.id
+                WHERE p.language IS NULL
+                   OR p.language = 'all'
+                   OR public.noraebox_search_normalize(s.language) = p.language
+            )
+            SELECT
                 s.id,
                 s.title,
                 s.album,
                 s.language,
                 s.file_url,
                 s.play_count,
-                COALESCE(
-                    json_agg(
-                        DISTINCT jsonb_build_object(
-                            'id', a.id,
-                            'name', a.name,
-                            'role', sa.role
-                        )
-                    ) FILTER (WHERE a.id IS NOT NULL),
-                    '[]'::json
-                ) AS artists
-            FROM songs s
-            LEFT JOIN song_artists sa ON s.id = sa.song_id
-            LEFT JOIN artist a ON sa.artist_id = a.id
-            {where_clause}
-            GROUP BY 
-                s.id,
-                s.title,
-                s.album,
-                s.language,
-                s.file_url,
-                s.play_count
-            ORDER BY s.title
-            LIMIT :candidate_limit
+                s.artists,
+                s.match_score
+            FROM scored s
+            ORDER BY
+                s.match_score DESC,
+                COALESCE(s.play_count, 0) DESC,
+                lower(s.title) ASC
+            LIMIT :limit
         """
 
         rows = db.execute(
             text(query_sql),
             {
-                "search_pattern": starts_pattern,
-                "candidate_limit": max(limit * 4, 80),
+                "query": query,
+                "field": field,
+                "language": language,
+                "min_similarity": 0.30,
+                "long_query_similarity": 0.45,
+                "limit": limit,
             },
         ).fetchall()
 
-        matched_songs = []
-        for row in rows:
-            artists_list = _parse_artists(row.artists)
-
-            if field == "artist":
-                candidates = [artist.get("name") for artist in artists_list if isinstance(artist, dict)]
-            elif field == "album":
-                candidates = [row.album] if row.album else []
-            else:
-                candidates = [row.title]
-
-            if not any(_starts_with_match(candidate, query) for candidate in candidates if candidate):
-                continue
-
-            matched_songs.append(_build_song_response(row, signed_urls=False))
-            if len(matched_songs) >= limit:
-                break
-
-        return matched_songs
+        return [_build_song_response(row, signed_urls=False) for row in rows]
 
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error in search_songs: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search/suggestions")
+def search_suggestions(
+    q: str = Query(..., min_length=2, description="Partial or misspelled song, album, artist or singer name"),
+    language: str = Query(None, description="Only suggest entities linked to this language"),
+    limit: int = Query(8, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    """Return database names whose trigram similarity is at least 30%."""
+    try:
+        query = q.strip()
+        if len(query) < 2:
+            return []
+
+        query_sql = """
+            WITH params AS (
+                SELECT
+                    public.noraebox_search_normalize(:query) AS q,
+                    replace(public.noraebox_search_normalize(:query), ' ', '') AS q_compact,
+                    NULLIF(public.noraebox_search_normalize(:language), '') AS language
+            ),
+            entities AS (
+                SELECT s.title AS value, 'song'::text AS type, 3 AS type_priority, MIN(s.id)::text AS entity_id
+                FROM songs s
+                CROSS JOIN params p
+                WHERE NULLIF(btrim(s.title), '') IS NOT NULL
+                  AND (p.language IS NULL OR p.language = 'all' OR public.noraebox_search_normalize(s.language) = p.language)
+                GROUP BY s.title
+
+                UNION ALL
+
+                SELECT DISTINCT s.album AS value, 'album'::text AS type, 2 AS type_priority, NULL::text AS entity_id
+                FROM songs s
+                CROSS JOIN params p
+                WHERE NULLIF(btrim(s.album), '') IS NOT NULL
+                  AND (p.language IS NULL OR p.language = 'all' OR public.noraebox_search_normalize(s.language) = p.language)
+
+                UNION ALL
+
+                SELECT DISTINCT a.name AS value, 'artist'::text AS type, 1 AS type_priority, NULL::text AS entity_id
+                FROM artist a
+                JOIN song_artists sa ON sa.artist_id = a.id
+                JOIN songs s ON s.id = sa.song_id
+                CROSS JOIN params p
+                WHERE NULLIF(btrim(a.name), '') IS NOT NULL
+                  AND (p.language IS NULL OR p.language = 'all' OR public.noraebox_search_normalize(s.language) = p.language)
+            ),
+            normalized AS (
+                SELECT
+                    e.value,
+                    e.type,
+                    e.type_priority,
+                    e.entity_id,
+                    public.noraebox_search_normalize(e.value) AS value_norm,
+                    replace(public.noraebox_search_normalize(e.value), ' ', '') AS value_compact,
+                    (
+                        SELECT string_agg(left(initial_word, 1), '' ORDER BY initial_order)
+                        FROM regexp_split_to_table(public.noraebox_search_normalize(e.value), ' ')
+                          WITH ORDINALITY AS initials(initial_word, initial_order)
+                        WHERE initial_word <> ''
+                    ) AS value_acronym,
+                    p.q,
+                    p.q_compact
+                FROM entities e
+                CROSS JOIN params p
+                WHERE p.q <> ''
+            ),
+            scored AS (
+                SELECT
+                    n.*,
+                    GREATEST(
+                        CASE WHEN n.value_norm LIKE '%' || n.q || '%' THEN 1.0 ELSE 0.0 END,
+                        CASE WHEN length(n.q_compact) >= 2 AND n.value_acronym = n.q_compact THEN 1.0 ELSE 0.0 END,
+                        similarity(n.value_norm, n.q),
+                        similarity(n.value_compact, n.q_compact),
+                        word_similarity(n.q, n.value_norm)
+                    ) AS similarity_score
+                FROM normalized n
+            ),
+            deduplicated AS (
+                SELECT DISTINCT ON (type, value_norm)
+                    value,
+                    type,
+                    type_priority,
+                    entity_id,
+                    similarity_score,
+                    value_norm,
+                    q
+                FROM scored
+                WHERE similarity_score >= CASE
+                    WHEN length(q_compact) >= 8 THEN :long_query_similarity
+                    ELSE :min_similarity
+                  END
+                  AND (
+                    (length(q_compact) >= 2 AND value_acronym = q_compact)
+                    OR length(q_compact) <= length(value_compact) * 1.35
+                  )
+                ORDER BY type, value_norm, similarity_score DESC
+            )
+            SELECT value, type, entity_id, similarity_score
+            FROM deduplicated
+            ORDER BY
+                CASE WHEN value_norm = q THEN 1 ELSE 0 END DESC,
+                CASE WHEN value_norm LIKE q || '%' THEN 1 ELSE 0 END DESC,
+                similarity_score DESC,
+                type_priority DESC,
+                lower(value) ASC
+            LIMIT :limit
+        """
+
+        rows = db.execute(
+            text(query_sql),
+            {
+                "query": query,
+                "language": language,
+                "min_similarity": 0.30,
+                "long_query_similarity": 0.45,
+                "limit": limit,
+            },
+        ).fetchall()
+
+        return [
+            {
+                "value": row.value,
+                "type": row.type,
+                "id": row.entity_id,
+                "similarity": round(float(row.similarity_score), 3),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        print(f"Error in search_suggestions: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

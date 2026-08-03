@@ -9,6 +9,18 @@ export function isNativeAndroidDisplay() {
   return /android/i.test(navigator.userAgent || "") && href.includes("localhost");
 }
 
+/** Samsung Smart TV web app/browser runtime. */
+export function isSamsungTizenDisplay() {
+  if (typeof window === "undefined") return false;
+  const ua = String(navigator.userAgent || "");
+  return /Tizen|SMART-TV|SamsungBrowser/i.test(ua) || Boolean(window.tizen);
+}
+
+/** Any television runtime that needs the low-decoder APK playback strategy. */
+export function isTelevisionDisplay() {
+  return isNativeAndroidDisplay() || isSamsungTizenDisplay();
+}
+
 /**
  * Emergency fallback: skip transition clips and jump straight to the next song.
  * Off by default — set VITE_LOW_POWER=true only if a device cannot play transitions.

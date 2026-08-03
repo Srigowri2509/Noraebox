@@ -57,6 +57,7 @@ def start_session(
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /sessions/start: Session updated with id {existing_session.id}")
@@ -79,6 +80,7 @@ def start_session(
             
             # Update room status
             room.status = 'active'
+            room.is_active = True
             db.commit()
             
             print(f"POST /sessions/start: Session created with id {new_session.id}")

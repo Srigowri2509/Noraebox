@@ -7,7 +7,7 @@ import React, {
   useState,
 } from "react";
 import { safeSessionGet, safeSessionSet } from "../utils/safeStorage";
-import { isLowPowerDevice, isNativeAndroidDisplay } from "../utils/device";
+import { isLowPowerDevice, isTelevisionDisplay } from "../utils/device";
 
 const BLACK_POSTER =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -51,13 +51,13 @@ function nextPaint() {
 
 /** TVs need a beat after src removal before a new decoder can be allocated. */
 function waitDecoderRelease() {
-  return isNativeAndroidDisplay() || isLowPowerDevice()
+  return isTelevisionDisplay() || isLowPowerDevice()
     ? new Promise((resolve) => window.setTimeout(resolve, 400))
     : Promise.resolve();
 }
 
 function needsNativeDecoderCare() {
-  return isNativeAndroidDisplay() || isLowPowerDevice();
+  return isTelevisionDisplay() || isLowPowerDevice();
 }
 
 function formatPlayError(err) {

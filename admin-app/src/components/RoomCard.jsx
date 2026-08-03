@@ -32,7 +32,7 @@ export default function RoomCard({ room, onExtend, onEnd }) {
   }, [room.id, room.is_active, room.name]);
 
   const compute = useCallback(() => {
-    // Timer only shows when session_start_time exists (first song played)
+    // Timer starts as soon as the admin starts the room session.
     if (!session || !session.session_start_time || !session.total_minutes) {
       return null; // Session ready but idle - no timer yet
     }

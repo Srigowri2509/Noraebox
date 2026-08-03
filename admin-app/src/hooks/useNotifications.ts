@@ -1,8 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
-import {
-  notifySessionFinished,
-  requestPermission,
-} from "../services/notificationService";
+import { useCallback, useRef } from "react";
+import { notifySessionFinished } from "../services/notificationService";
 import { SessionFinishedEvent } from "../services/websocketService";
 
 const NOTIFIED_SESSION_IDS_KEY = "noraebox.notifiedSessionIds";
@@ -35,12 +32,6 @@ export function useNotifications(
   acknowledgeSessionNotification: (sessionId: string) => void;
 } {
   const notifiedSessionIdsRef = useRef<Set<string>>(loadNotifiedSessionIds());
-
-  useEffect(() => {
-    requestPermission().catch((error) => {
-      console.warn("Notification permission request failed.", error);
-    });
-  }, []);
 
   const handleSessionFinished = useCallback(
     (event: SessionFinishedEvent) => {

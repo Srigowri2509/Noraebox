@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates
 from app.services.admin_ws import admin_ws_manager
+from app.services.search_setup import ensure_search_support
 from app.services.session_expiry import watch_session_expiry
 from pathlib import Path
 import traceback
@@ -40,6 +41,7 @@ app.include_router(updates.router, prefix="/updates")
 async def create_tables():
     # Import models above ensures all metadata is registered
     Base.metadata.create_all(bind=engine)
+    ensure_search_support()
     asyncio.create_task(watch_session_expiry())
 
 

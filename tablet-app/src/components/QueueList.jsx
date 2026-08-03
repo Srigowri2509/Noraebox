@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import SongRow from "./SongRow";
-import { formatSongSubtitle } from "./SongRow";
+import { formatSongSubtitle } from "../utils/songFormatting";
 
 /*
   QueueList with long-press drag-to-reorder (like Spotify).
@@ -314,5 +314,4 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
     </div>
   );
 }
-
 

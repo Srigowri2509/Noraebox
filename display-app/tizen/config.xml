@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<widget
+  xmlns="http://www.w3.org/ns/widgets"
+  xmlns:tizen="http://tizen.org/ns/widgets"
+  id="com.norebox.display"
+  version="1.0.0"
+  viewmodes="maximized">
+  <tizen:application id="NoraeboxTV.Display" package="NoraeboxTV" required_version="2.3" />
+  <content src="index.html" />
+  <feature name="http://tizen.org/feature/screen.size.normal.1080.1920" />
+  <tizen:metadata key="http://tizen.org/metadata/app_ui_type/base_screen_resolution" value="extensive" />
+  <icon src="logo_noraebox.png" />
+  <name>Norebox Display</name>
+  <description>Norebox display app for Tizen TV.</description>
+  <tizen:profile name="tv" />
+  <tizen:setting screen-orientation="landscape" context-menu="enable" background-support="disable" encryption="disable" install-location="auto" hwkey-event="enable" />
+  <tizen:privilege name="http://tizen.org/privilege/internet" />
+  <access origin="*" subdomains="true" />
+</widget>

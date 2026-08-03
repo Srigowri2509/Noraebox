@@ -44,7 +44,7 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
   return (
     <section style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <div
-        className="playlists-scroll flex min-h-0 items-stretch gap-3 overflow-x-auto pb-2 md:gap-4"
+        className="playlists-scroll flex min-h-0 items-start gap-3 overflow-x-auto pb-2 md:gap-3.5"
         style={{
           flex: 1,
           scrollbarWidth: "none",
@@ -68,13 +68,13 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
             <div
               key={playlist.id}
               onClick={() => onPlaylistSelect?.(playlist)}
-              className={`flex aspect-square w-[148px] shrink-0 cursor-pointer flex-col rounded-2xl border bg-slate-900/75 p-2.5 shadow-lg transition-transform hover:-translate-y-0.5 sm:w-[160px] md:w-[172px] lg:w-[188px] ${
+              className={`flex aspect-square w-[124px] shrink-0 cursor-pointer flex-col rounded-xl border bg-slate-900/75 p-2 shadow-lg transition-transform hover:-translate-y-0.5 sm:w-[132px] md:w-[142px] lg:w-[152px] ${
                 isSelected
                   ? "border-sky-400/90 shadow-[0_0_0_1px_rgba(56,189,248,0.35),0_12px_28px_rgba(0,0,0,0.45)]"
                   : "border-white/[0.08] hover:border-white/15"
               }`}
             >
-              <div className="relative mb-2 min-h-0 w-full flex-1 overflow-hidden rounded-xl bg-slate-900/90">
+              <div className="relative mb-1.5 min-h-0 w-full flex-1 overflow-hidden rounded-lg bg-slate-900/90">
                 {cover ? (
                   <img
                     src={cover}
@@ -91,7 +91,7 @@ export default function Playlists({ playlists = [], onPlaylistSelect, selectedPl
                   </div>
                 )}
               </div>
-              <div className="truncate px-0.5 text-center text-xs font-bold leading-tight text-white sm:text-sm md:text-base">
+              <div className="truncate px-0.5 text-center text-xs font-bold leading-tight text-white sm:text-[13px] md:text-sm">
                 {playlist.name}
               </div>
             </div>

@@ -90,6 +90,34 @@ select option {
   border-radius: 10px;
 }
 
+.search-suggestions-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.55) rgba(15, 23, 42, 0.45);
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.search-suggestions-scroll::-webkit-scrollbar {
+  width: 11px;
+}
+
+.search-suggestions-scroll::-webkit-scrollbar-track {
+  margin-block: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border-radius: 999px;
+}
+
+.search-suggestions-scroll::-webkit-scrollbar-thumb {
+  background: rgba(125, 211, 252, 0.55);
+  border-radius: 999px;
+}
+
+.search-suggestion-row:hover,
+.search-suggestion-row[aria-selected="true"] {
+  background: #3f3f3f;
+}
+
 /* small animation */
 .fade-in {
   animation: fadeIn .18s ease-out both;
@@ -190,8 +218,20 @@ select option {
 .search-results-list {
   display: flex;
   flex-direction: column;
-  gap: 0.375rem;
+  gap: 0.25rem;
   padding-bottom: 0.25rem;
+}
+
+.search-results-list .song-row {
+  min-height: 2.75rem;
+  padding: 0.375rem 0.625rem;
+  gap: 0.5rem;
+}
+
+.search-results-list .song-row-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1rem;
 }
 
 .search-results-footer {
@@ -306,6 +346,18 @@ select option {
     font-size: 0.8125rem;
   }
 
+  .search-results-list .song-row {
+    min-height: 3rem;
+    padding: 0.375rem 0.75rem;
+    gap: 0.625rem;
+  }
+
+  .search-results-list .song-row-icon {
+    width: 2.375rem;
+    height: 2.375rem;
+    font-size: 1.05rem;
+  }
+
   .queue-panel-hint {
     padding-left: 2rem;
     font-size: 0.6875rem;
@@ -377,6 +429,7 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  unicode-bidi: plaintext;
 }
 
 .song-row-subtitle {
@@ -387,6 +440,7 @@ select option {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  unicode-bidi: plaintext;
 }
 
 @media (min-width: 768px) {
@@ -397,6 +451,7 @@ select option {
   .song-row-subtitle {
     font-size: 0.8125rem;
   }
+
 }
 
 .form-block {
@@ -482,7 +537,7 @@ select option {
     gap: 0.75rem;
     flex: 1 1 auto;
     min-height: 12rem;
-    margin-top: 1.25rem;
+    margin-top: 0.75rem;
     align-items: stretch;
   }
   .row-2-left,
@@ -502,7 +557,7 @@ select option {
 @media (orientation: landscape) and (min-width: 900px) {
   .playlist-cards-container,
   .playback-rail-height {
-    height: 168px;
+    height: 154px;
   }
 
   .row-1-grid,
@@ -518,7 +573,7 @@ select option {
 @media (orientation: landscape) and (min-width: 900px) and (max-width: 1600px) and (min-height: 560px) and (max-height: 1000px) {
   .playlist-cards-container,
   .playback-rail-height {
-    height: 182px;
+    height: 160px;
   }
 
   .row-1-grid,

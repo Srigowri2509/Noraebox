@@ -4,7 +4,7 @@ import VideoPlayer from "../components/VideoPlayer";
 import { api } from "../api";
 import { safeSet, safeSessionGet, safeSessionSet } from "../utils/safeStorage";
 import { unlockAudio } from "../utils/audioUnlock";
-import { isLowPowerDevice, isNativeAndroidDisplay, isCacheEnabled } from "../utils/device";
+import { isLowPowerDevice, isTelevisionDisplay, isCacheEnabled } from "../utils/device";
 import { fetchSongWithUrl } from "../utils/fetchSongWithUrl";
 import { resolvePlayableUrl } from "../cache/resolvePlayableUrl";
 import {
@@ -21,11 +21,11 @@ const TRANSITION_IDS = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
 const TRANSCITIONS_FOLDER = "transcitions";
 // TVs poll less aggressively — 8 rooms × 1 req/s starves the WebView network
 // stack during video playback; backend itself handles load fine at ~3s intervals.
-const POLL_INTERVAL_MS = isNativeAndroidDisplay() ? 3000 : 1000;
+const POLL_INTERVAL_MS = isTelevisionDisplay() ? 3000 : 1000;
 
 // Acer/Android TV APKs: transitions stay on, but we avoid preloading extra
 // decoders during a song. VITE_LOW_POWER=true disables transitions entirely.
-const NATIVE_TV = isNativeAndroidDisplay();
+const NATIVE_TV = isTelevisionDisplay();
 const LOW_POWER = isLowPowerDevice();
 
 function buildTransitionVideoUrls() {
@@ -708,7 +708,7 @@ export default function Display({ roomId }) {
 
   useEffect(() => {
     const unlock = () => markInteracted();
-    const events = ["click", "touchstart", "keydown", "pointerdown"];
+    const events = ["click", "touchstart", "pointerdown"];
     events.forEach((e) => document.addEventListener(e, unlock, { passive: true }));
     return () => events.forEach((e) => document.removeEventListener(e, unlock));
   }, [markInteracted]);
@@ -988,10 +988,15 @@ export default function Display({ roomId }) {
     return () => clearInterval(tick);
   }, [hardCutToLogo]);
 
-  // Keyboard (TV remote OK/Enter) also dismisses the interaction gate.
+  // Samsung/Tizen remotes report OK as Enter (13) or Done (29443).
   useEffect(() => {
     if (!needsInteraction) return;
-    const onKey = () => markInteracted();
+    const onKey = (event) => {
+      if (event.key === "Enter" || event.key === " " || event.keyCode === 13 || event.keyCode === 29443) {
+        event.preventDefault();
+        markInteracted();
+      }
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [needsInteraction, markInteracted]);

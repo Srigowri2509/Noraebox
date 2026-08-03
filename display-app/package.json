@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build --base=./",
     "build:tv": "node build-tv.cjs",
+    "build:tizen": "node scripts/build-tizen-wgt.cjs",
     "android:sync": "npm run build:tv && npx cap sync android",
     "android:debug:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-debug-apk.ps1",
     "android:release:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-release-apk.ps1",

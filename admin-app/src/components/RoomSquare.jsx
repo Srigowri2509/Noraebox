@@ -31,7 +31,7 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
   }, [room.id]);
 
   const updateRemaining = useCallback(() => {
-    // Timer only shows when session_start_time exists (first song played)
+    // Timer starts as soon as the admin starts the room session.
     if (!session || !session.session_start_time || !session.total_minutes) {
       setRemaining(null); // Session ready but idle - no timer yet
       return;

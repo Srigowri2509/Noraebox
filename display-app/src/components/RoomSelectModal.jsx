@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { api, API_BASE } from "../api";
 import { safeGet, safeSet } from "../utils/safeStorage";
 
@@ -6,6 +6,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [loading, setLoading] = useState(false);
   const [rooms, setRooms] = useState(initialRooms);
+  const selectRef = useRef(null);
 
   // Fetch rooms with availability info
   useEffect(() => {
@@ -24,6 +25,33 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
       }
     })();
   }, []);
+
+  // Remote-friendly selection: focus the room picker, use Up/Down to move
+  // through available rooms, and OK/Enter to confirm the highlighted room.
+  useEffect(() => {
+    const focusTimer = window.setTimeout(() => selectRef.current?.focus(), 100);
+    const onKeyDown = (event) => {
+      const code = event.keyCode;
+      const direction = event.key === "ArrowDown" || code === 40 ? 1 : event.key === "ArrowUp" || code === 38 ? -1 : 0;
+      if (direction) {
+        event.preventDefault();
+        const available = rooms.filter((room) => !(room.has_display && !room.my_room));
+        if (!available.length) return;
+        const currentIndex = available.findIndex((room) => String(room.id) === String(selectedRoomId));
+        const nextIndex = currentIndex < 0 ? 0 : (currentIndex + direction + available.length) % available.length;
+        setSelectedRoomId(String(available[nextIndex].id));
+        selectRef.current?.focus();
+      } else if ((event.key === "Enter" || code === 13 || code === 29443) && selectedRoomId) {
+        event.preventDefault();
+        void handleAssign();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [rooms, selectedRoomId]);
 
   const handleAssign = async () => {
     if (!selectedRoomId) {
@@ -97,6 +125,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
             <div className="room-modal-field">
               <label className="room-modal-label">Select Room</label>
               <select
+                ref={selectRef}
                 value={selectedRoomId}
                 onChange={(e) => setSelectedRoomId(e.target.value)}
                 className="room-modal-select"
