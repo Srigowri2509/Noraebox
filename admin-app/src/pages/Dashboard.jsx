@@ -19,8 +19,30 @@ function getRoomNumber(room) {
   return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
 }
 
+const ROOM_DISPLAY_ORDER = [
+  "pop",
+  "rock",
+  "jazz",
+  "indie",
+  "country",
+  "classical",
+  "party hall",
+  "acoustic",
+];
+
 function sortRooms(rooms) {
   return [...rooms].sort((a, b) => {
+    const aName = String(a.name ?? "").trim().toLocaleLowerCase();
+    const bName = String(b.name ?? "").trim().toLocaleLowerCase();
+    const aPriority = ROOM_DISPLAY_ORDER.indexOf(aName);
+    const bPriority = ROOM_DISPLAY_ORDER.indexOf(bName);
+
+    if (aPriority !== -1 || bPriority !== -1) {
+      if (aPriority === -1) return 1;
+      if (bPriority === -1) return -1;
+      return aPriority - bPriority;
+    }
+
     const diff = getRoomNumber(a) - getRoomNumber(b);
     if (diff !== 0) return diff;
     return String(a.name ?? "").localeCompare(String(b.name ?? ""));

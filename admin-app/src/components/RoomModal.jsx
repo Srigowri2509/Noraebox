@@ -8,10 +8,8 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [remainingMinutes, setRemainingMinutes] = useState(null);
-  const [hours, setHours] = useState(1);
-  const [minutes, setMinutes] = useState(0);
   const [useCustom, setUseCustom] = useState(false);
-  const [customMinutes, setCustomMinutes] = useState(30);
+  const [selectedMinutes, setSelectedMinutes] = useState(60);
 
   useEffect(() => {
     if (!room) {
@@ -58,20 +56,8 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
   const isFree = !hasActiveSession;
 
   const handleConfirm = () => {
-    let total;
-    if (useCustom) {
-      total = parseInt(customMinutes) || 0;
-    } else {
-      total = hours * 60 + minutes;
-    }
-    
-    if (total <= 0) {
-      alert("Please enter a valid time (greater than 0 minutes)");
-      return;
-    }
-    
-    if (isFree) onStart(total);
-    else onExtend(total);
+    if (isFree) onStart(selectedMinutes);
+    else onExtend(selectedMinutes);
   };
 
   const handleCancel = () => {
@@ -110,7 +96,10 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         <div className="flex justify-center mb-6">
           <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
             <button
-              onClick={() => setUseCustom(false)}
+              onClick={() => {
+                setUseCustom(false);
+                setSelectedMinutes(60);
+              }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 !useCustom
                   ? "bg-white text-purple-600 shadow-sm"
@@ -120,7 +109,10 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
               Quick Select
             </button>
             <button
-              onClick={() => setUseCustom(true)}
+              onClick={() => {
+                setUseCustom(true);
+                setSelectedMinutes(15);
+              }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 useCustom
                   ? "bg-white text-purple-600 shadow-sm"
@@ -132,72 +124,34 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
           </div>
         </div>
 
-        {/* Time Select */}
-        {!useCustom ? (
-          <div className="grid grid-cols-2 gap-8 mb-10 justify-items-center">
-            {/* HOURS */}
-            <div className="flex flex-col items-center">
-              <label className="text-gray-700 font-semibold text-lg mb-2 tracking-wide">
-                {isFree ? "HOURS" : "ADD HOURS"}
-              </label>
-              <select
-                value={hours}
-                onChange={(e) => setHours(parseInt(e.target.value))}
-                className="p-3 w-32 rounded-xl border border-gray-300 bg-white text-lg text-gray-800 shadow-sm hover:border-purple-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-300 outline-none transition-all cursor-pointer"
+        {/* Tap-only duration choices */}
+        <div className="mb-10 flex flex-col items-center">
+          <label className="mb-4 text-lg font-semibold tracking-wide text-gray-700">
+            {isFree ? "SESSION DURATION" : "TIME TO ADD"}
+          </label>
+          <div className="grid w-full grid-cols-3 gap-3">
+            {(useCustom ? [15, 30, 60] : [60, 90, 120]).map((duration) => (
+              <button
+                type="button"
+                key={duration}
+                onClick={() => setSelectedMinutes(duration)}
+                className={`rounded-xl border px-3 py-4 text-lg font-semibold transition-all ${
+                  selectedMinutes === duration
+                    ? "border-purple-600 bg-purple-600 text-white shadow-md"
+                    : "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100"
+                }`}
               >
-                {[0, 1, 2, 3, 4, 5].map((h) => (
-                  <option key={h} value={h}>
-                    {h}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* MINUTES */}
-            <div className="flex flex-col items-center">
-              <label className="text-gray-700 font-semibold text-lg mb-2 tracking-wide">
-                {isFree ? "MINUTES" : "ADD MINUTES"}
-              </label>
-              <select
-                value={minutes}
-                onChange={(e) => setMinutes(parseInt(e.target.value))}
-                className="p-3 w-32 rounded-xl border border-gray-300 bg-white text-lg text-gray-800 shadow-sm hover:border-purple-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-300 outline-none transition-all cursor-pointer"
-              >
-                {[0, 15, 30, 45].map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
+                {useCustom
+                  ? `${duration} min`
+                  : duration === 60
+                    ? "1 hr"
+                    : duration === 90
+                      ? "1.5 hr"
+                      : "2 hr"}
+              </button>
+            ))}
           </div>
-        ) : (
-          <div className="mb-10 flex flex-col items-center">
-            <label className="text-gray-700 font-semibold text-lg mb-4 tracking-wide">
-              {isFree ? "TOTAL MINUTES" : "MINUTES TO ADD"}
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="600"
-              value={customMinutes}
-              onChange={(e) => setCustomMinutes(e.target.value)}
-              placeholder="Enter minutes"
-              className="p-4 w-48 rounded-xl border border-gray-300 bg-white text-2xl text-gray-800 text-center shadow-sm hover:border-purple-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-300 outline-none transition-all"
-            />
-            <div className="mt-4 flex gap-2 flex-wrap justify-center">
-              {[15, 30, 60, 90, 120, 180].map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setCustomMinutes(m)}
-                  className="px-3 py-1 text-sm rounded-lg bg-purple-100 text-purple-700 hover:bg-purple-200 transition-all"
-                >
-                  {m} min
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
 
         {/* BUTTON: Confirm */}
         <button
