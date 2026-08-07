@@ -223,6 +223,17 @@ export default function Dashboard() {
     }
   };
 
+  const requestExtensionFromGuest = async () => {
+    if (!selectedRoom) return;
+    try {
+      await api(`/rooms/${selectedRoom.id}/extension-prompt`, { method: "POST" });
+    } catch (err) {
+      console.error("Error sending extension prompt:", err);
+      alert(`Failed to send extension prompt: ${err.message || "Unknown error"}`);
+      throw err;
+    }
+  };
+
   // Handle Cancel Session
   const cancelSession = async () => {
     if (!selectedRoom) {
@@ -375,6 +386,7 @@ export default function Dashboard() {
         onStart={startRoom}
         onExtend={extendRoom}
         onCancel={cancelSession}
+        onRequestExtension={requestExtensionFromGuest}
       />
     </>
   );

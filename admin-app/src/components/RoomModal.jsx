@@ -3,13 +3,15 @@ import { api } from "../api";
 
 console.log("🔥 THIS ROOM MODAL IS BEING USED");
 
-export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }) {
+export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, onRequestExtension }) {
   // All state hooks must be declared at the top level (before any early returns)
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [loadingSession, setLoadingSession] = useState(true);
   const [remainingMinutes, setRemainingMinutes] = useState(null);
   const [useCustom, setUseCustom] = useState(false);
   const [selectedMinutes, setSelectedMinutes] = useState(60);
+  const [sendingPrompt, setSendingPrompt] = useState(false);
+  const [promptSent, setPromptSent] = useState(false);
 
   useEffect(() => {
     if (!room) {
@@ -91,6 +93,30 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel }
         ) : (
           <div className="mb-10" />
         )}
+
+        {!loadingSession && !isFree && remainingMinutes > 0 && remainingMinutes <= 10 && onRequestExtension ? (
+          <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="mb-3 text-sm font-medium text-amber-800">
+              This room is in its final 10 minutes.
+            </p>
+            <button
+              type="button"
+              disabled={sendingPrompt || promptSent}
+              onClick={async () => {
+                setSendingPrompt(true);
+                try {
+                  await onRequestExtension();
+                  setPromptSent(true);
+                } finally {
+                  setSendingPrompt(false);
+                }
+              }}
+              className="w-full rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {sendingPrompt ? "Sending..." : promptSent ? "Extension prompt sent" : "Ask guest to extend session"}
+            </button>
+          </div>
+        ) : null}
 
         {/* Time Select Mode Toggle */}
         <div className="flex justify-center mb-6">
