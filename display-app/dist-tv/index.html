@@ -129,27 +129,6 @@ html, body, #root {
   user-select: none;
 }
 
-/* Hide any residual native video UI on TV/WebView */
-video.video-element::-webkit-media-controls,
-video.video-layer-main::-webkit-media-controls,
-video.video-layer-transition::-webkit-media-controls {
-  display: none !important;
-  opacity: 0 !important;
-}
-video.video-element::-webkit-media-controls-enclosure {
-  display: none !important;
-  opacity: 0 !important;
-}
-video.video-element::-webkit-media-controls-panel,
-video.video-element::-webkit-media-controls-overlay-enclosure,
-video.video-element::-webkit-media-controls-overlay-play-button,
-video.video-layer-main::-webkit-media-controls-overlay-play-button,
-video.video-layer-transition::-webkit-media-controls-overlay-play-button {
-  display: none !important;
-  opacity: 0 !important;
-  -webkit-appearance: none;
-}
-
 /* Dual main videos + optional transition (display-app TV) */
 .video-dual-stack {
   position: relative;
@@ -190,33 +169,13 @@ video.video-layer-transition::-webkit-media-controls-overlay-play-button {
   visibility: visible;
 }
 
-/* Block native center play glyph on Android TV / WebView */
-video::-webkit-media-controls {
-  display: none !important;
-  opacity: 0 !important;
+/* Only the currently visible song receives pointer/remote input. Transition
+   clips have no controls, while song A/B use the platform's native controls. */
+#videoA.video-slot--front,
+#videoB.video-slot--front {
+  pointer-events: auto;
 }
 
-video::-webkit-media-controls-panel {
-  display: none !important;
-}
-
-video::-webkit-media-controls-enclosure {
-  display: none !important;
-}
-
-video::-internal-media-controls-overlay-cast-button {
-  display: none !important;
-}
-
-.video-dual-stack video::-webkit-media-controls-overlay-play-button,
-.video-dual-stack video::-webkit-media-controls-start-playback-button,
-.video-dual-stack video::-webkit-media-controls-play-button {
-  display: none !important;
-  opacity: 0 !important;
-  width: 0 !important;
-  height: 0 !important;
-  -webkit-appearance: none !important;
-}
 
 .video-tap-to-play {
   position: absolute;
@@ -442,7 +401,10 @@ video[controls][paused]::-webkit-media-controls-play-button {
 /* Responsive tweaks */
 @media (max-width: 1100px) {
   .display-right { display: none; }
-  .video-wrapper { width: 720px; height: 720px; }
+  /* Samsung TVs can expose a 960px logical CSS viewport even on a 1080p/4K
+     panel. Never switch the player to the old square tablet layout. */
+  .video-wrapper,
+  .video-placeholder { width: 100%; height: 100%; }
 }
 @media (max-width: 760px) {
   .video-wrapper { width: 100%; height: 100%; }
@@ -680,6 +642,214 @@ video[controls][paused]::-webkit-media-controls-play-button {
   font-size: 1rem;
   font-weight: 700;
   cursor: pointer;
+}
+
+.display-modal button {
+  min-height: 46px;
+  border: 1px solid rgba(196, 181, 253, 0.28);
+  border-radius: 12px;
+  padding: 0 17px;
+  background: rgba(124, 58, 237, 0.3);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.display-modal button:focus-visible {
+  outline: 3px solid #f0abfc;
+  outline-offset: 2px;
+}
+
+/* HISTORY AND EXTENSION DIALOGS */
+.display-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(2, 1, 9, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+.display-modal-backdrop--urgent {
+  background: rgba(24, 3, 31, 0.9);
+}
+
+.display-modal {
+  width: min(760px, 92vw);
+  max-height: 82vh;
+  overflow: auto;
+  border: 1px solid rgba(216, 180, 254, 0.32);
+  border-radius: 26px;
+  padding: 30px;
+  background: linear-gradient(155deg, rgba(29, 15, 50, 0.98), rgba(8, 7, 20, 0.98));
+  color: #fff;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65);
+}
+
+.display-modal h2 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+}
+
+.display-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.display-modal__eyebrow {
+  margin: 0 0 7px;
+  color: #c084fc;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.display-modal__message {
+  padding: 22px 4px;
+  color: #cbd5e1;
+  text-align: center;
+}
+
+.display-modal__message--error {
+  color: #fda4af;
+}
+
+.session-history__list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session-history__list li {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.7);
+}
+
+.session-history__number {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #6d28d9;
+  font-weight: 800;
+}
+
+.session-history__list strong,
+.session-history__list span {
+  display: block;
+}
+
+.session-history__list span,
+.session-history__list time {
+  margin-top: 3px;
+  color: #a5b4fc;
+}
+
+.extension-prompt {
+  text-align: center;
+}
+
+.extension-prompt > p:not(.display-modal__eyebrow) {
+  color: #cbd5e1;
+  font-size: 1.15rem;
+}
+
+.extension-prompt__options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin: 28px 0 16px;
+}
+
+.extension-prompt__options button {
+  min-height: 82px;
+  background: linear-gradient(135deg, #a855f7, #6d28d9);
+  font-size: 1.2rem;
+}
+
+.display-modal .extension-prompt__decline {
+  border: 0;
+  background: transparent;
+  color: #cbd5e1;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.display-modal-backdrop--final-history {
+  z-index: 1200;
+  padding: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.display-modal-backdrop--final-history .session-history {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  padding: clamp(32px, 5vw, 84px);
+  background: linear-gradient(145deg, rgba(25, 9, 43, 0.42), rgba(5, 4, 16, 0.6));
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.session-history--final .display-modal__header {
+  justify-content: center;
+  text-align: center;
+}
+
+.session-history--final .session-history__list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+.session-history--final .session-history__list li {
+  grid-template-columns: 54px 1fr;
+  padding: 16px 18px;
+  background: linear-gradient(90deg, rgba(88, 28, 135, 0.72), rgba(30, 41, 59, 0.64));
+}
+
+.session-history--final .session-history__number {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #d946ef, #7c3aed);
+  font-size: 1.1rem;
+}
+
+.session-history--final .session-history__list strong {
+  font-size: 1.2rem;
+}
+
+@media (max-width: 760px) {
+  .session-history--final .session-history__list {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
 </head>

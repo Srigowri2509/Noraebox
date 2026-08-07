@@ -2,16 +2,17 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db import get_db
-from app.models import Room, RoomSession, QueueItem, Song
+from app.models import Room, RoomSession, QueueItem, Song, PlaybackEvent
 
 router = APIRouter()
 
 
-def _increment_song_play_count(db: Session, song_id: int) -> None:
+def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
     db.query(Song).filter(Song.id == song_id).update(
         {Song.play_count: func.coalesce(Song.play_count, 0) + 1},
         synchronize_session=False,
     )
+    db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="started"))
 
 
 @router.post("/add")
@@ -73,7 +74,7 @@ def play_next(room_id: str = Query(...), db: Session = Depends(get_db)):
         
         if session:
             session.current_song_id = next_item.song_id
-        _increment_song_play_count(db, next_item.song_id)
+        _record_song_started(db, room_id, next_item.song_id)
         
         # Remove from queue
         db.delete(next_item)

@@ -6,8 +6,9 @@ from sqlalchemy import func, text
 from typing import List
 from datetime import datetime, timezone, timedelta
 from app.db import get_db
-from app.models import Room, RoomSession, QueueItem, Song, SongArtist, Artist, Device
+from app.models import Room, RoomSession, QueueItem, Song, SongArtist, Artist, Device, PlaybackEvent
 from app.schemas import RoomResponse
+from app.services.display_ws import display_ws_manager
 
 router = APIRouter()
 
@@ -38,12 +39,89 @@ def _session_remaining_seconds(session: RoomSession):
     return max(0, remaining)
 
 
-def _increment_song_play_count(db: Session, song_id: int) -> None:
+def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
     """Record that a song actually started playing."""
     db.query(Song).filter(Song.id == song_id).update(
         {Song.play_count: func.coalesce(Song.play_count, 0) + 1},
         synchronize_session=False,
     )
+    db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="started"))
+
+
+@router.get("/{room_id}/session/history")
+def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
+    """Return songs that started during the room's current session."""
+    session = db.query(RoomSession).filter(
+        RoomSession.room_id == room_id,
+        RoomSession.status.in_(["active", "completed", "ended", "finished"]),
+    ).order_by(RoomSession.session_created_at.desc()).first()
+
+    if not session:
+        return {"session_id": None, "songs": []}
+
+    session_start = session.session_start_time or session.session_created_at
+    query = db.query(PlaybackEvent, Song).join(
+        Song, Song.id == PlaybackEvent.song_id
+    ).filter(
+        PlaybackEvent.room_id == room_id,
+        PlaybackEvent.event_type == "started",
+    )
+    if session_start:
+        query = query.filter(PlaybackEvent.timestamp >= session_start)
+
+    rows = query.order_by(PlaybackEvent.timestamp.asc()).all()
+    song_ids = {song.id for _, song in rows}
+    artists_by_song = defaultdict(list)
+    if song_ids:
+        artist_rows = db.query(SongArtist.song_id, Artist.name).join(
+            Artist, Artist.id == SongArtist.artist_id
+        ).filter(SongArtist.song_id.in_(song_ids)).all()
+        for song_id, artist_name in artist_rows:
+            artists_by_song[song_id].append(artist_name)
+
+    return {
+        "session_id": str(session.id),
+        "songs": [
+            {
+                "event_id": str(event.id),
+                "song_id": song.id,
+                "title": song.title,
+                "album": song.album,
+                "artists": artists_by_song.get(song.id, []),
+                "played_at": event.timestamp.isoformat() if event.timestamp else None,
+            }
+            for event, song in rows
+        ],
+    }
+
+
+@router.post("/{room_id}/extension-prompt")
+async def request_session_extension(room_id: str, db: Session = Depends(get_db)):
+    """Schedule a guest extension choice for the final five minutes."""
+    session = db.query(RoomSession).filter(
+        RoomSession.room_id == room_id,
+        RoomSession.status == "active",
+    ).order_by(RoomSession.session_created_at.desc()).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="No active session for this room")
+
+    remaining_seconds = _session_remaining_seconds(session)
+    if remaining_seconds is None or remaining_seconds <= 0:
+        raise HTTPException(
+            status_code=409,
+            detail="The active session timer is not running",
+        )
+
+    delivered = await display_ws_manager.broadcast(room_id, {
+        "type": "extension_prompt",
+        "roomId": str(room_id),
+        "sessionId": str(session.id),
+        "remainingSeconds": remaining_seconds,
+        "options": [30, 60],
+    })
+    if delivered == 0:
+        raise HTTPException(status_code=409, detail="The room display is not connected")
+    return {"status": "scheduled", "displays_notified": delivered}
 
 
 @router.get("/", response_model=List[RoomResponse])
@@ -521,7 +599,7 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
         # Update existing session
         session.current_song_id = current_song_id
         session.current_song_start_time = now
-        _increment_song_play_count(db, current_song_id)
+        _record_song_started(db, room_id, current_song_id)
         
         db.commit()
         db.refresh(session)
@@ -575,7 +653,7 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             # DO NOT reset session_start_time if it already exists - timer should continue
             session.current_song_id = next_item.song_id
             session.current_song_start_time = now  # Only update current song start time
-            _increment_song_play_count(db, next_item.song_id)
+            _record_song_started(db, room_id, next_item.song_id)
             print(f"POST /rooms/{room_id}/playback/start_next: Continuing session, timer NOT restarted")
         
         # Remove the song from queue
@@ -652,7 +730,7 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
                 # DO NOT reset session_start_time if it already exists - timer should continue
                 session.current_song_id = next_item.song_id
                 session.current_song_start_time = now  # Only update current song start time
-                _increment_song_play_count(db, next_item.song_id)
+                _record_song_started(db, room_id, next_item.song_id)
                 print(f"POST /rooms/{room_id}/playback/ended: Continuing session, timer NOT restarted")
             
             # Remove from queue

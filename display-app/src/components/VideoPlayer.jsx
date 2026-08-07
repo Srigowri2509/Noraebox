@@ -30,11 +30,12 @@ function normalizeMediaUrl(u) {
   }
 }
 
-function configureVideo(video) {
+function configureVideo(video, showControls = false) {
   if (!video) return;
   video.defaultMuted = true;
-  video.controls = false;
-  video.removeAttribute("controls");
+  video.controls = showControls;
+  if (showControls) video.setAttribute("controls", "");
+  else video.removeAttribute("controls");
   video.setAttribute("playsinline", "");
   video.setAttribute("webkit-playsinline", "");
   video.playsInline = true;
@@ -192,6 +193,7 @@ const VideoPlayer = forwardRef(
     const playSeqRef = useRef(0);
     const loadSeqRef = useRef({ a: 0, b: 0, t: 0 });
     const playbackBusyRef = useRef(false);
+    const manualPausedRef = useRef(false);
     const endedFiredRef = useRef(false);
     const transitionEndedFiredRef = useRef(false);
     const songHandoffAtRef = useRef(0);
@@ -226,9 +228,9 @@ const VideoPlayer = forwardRef(
     );
 
     useEffect(() => {
-      configureVideo(songARef.current);
-      configureVideo(songBRef.current);
-      configureVideo(transRef.current);
+      configureVideo(songARef.current, false);
+      configureVideo(songBRef.current, false);
+      configureVideo(transRef.current, false);
 
       const attachDiag = (el, id) => {
         if (!el) return;
@@ -404,6 +406,7 @@ const VideoPlayer = forwardRef(
     const playSong = useCallback(
       async (url, { urgent = false, coldStart = false, afterTransition = false } = {}) => {
         if (!url) return false;
+        manualPausedRef.current = false;
         const mySeq = ++playSeqRef.current;
         const stale = () => mySeq !== playSeqRef.current;
         const loadTimeoutMs = urgent ? 8000 : coldStart ? 10000 : 15000;
@@ -498,6 +501,7 @@ const VideoPlayer = forwardRef(
         armedNextUrlRef.current = "";
         endedFiredRef.current = false;
         stageRef.current = "song";
+        manualPausedRef.current = false;
         songHandoffAtRef.current = Date.now();
         if (afterTransition) {
           setVisible(incomingId);
@@ -754,6 +758,7 @@ const VideoPlayer = forwardRef(
         armedNextUrlRef.current = "";
         endedFiredRef.current = false;
         stageRef.current = "song";
+        manualPausedRef.current = false;
         songHandoffAtRef.current = Date.now();
         setVisible(incomingId);
         await nextPaint();
@@ -786,6 +791,7 @@ const VideoPlayer = forwardRef(
 
     const cutToLogo = useCallback(() => {
       stageRef.current = "logo";
+      manualPausedRef.current = false;
       armedNextUrlRef.current = "";
       endedFiredRef.current = false;
       setVisible("logo");
@@ -811,6 +817,7 @@ const VideoPlayer = forwardRef(
       if (stageRef.current !== "song" || playbackBusyRef.current) return;
       const el = songEl();
       if (!el || el.readyState < 2) return;
+      manualPausedRef.current = false;
       el.muted = false;
       el.volume = 1;
       videoLog("PLAY_ATTEMPT", { id: slotId(el), label: "retryActive", rs: el.readyState });
@@ -818,6 +825,71 @@ const VideoPlayer = forwardRef(
         .then(() => videoLog("PLAY_SUCCESS", { id: slotId(el), label: "retryActive" }))
         .catch((err) => videoLog("PLAY_FAILED", { id: slotId(el), ...formatPlayError(err), label: "retryActive" }));
     }, [songEl, slotId]);
+
+    const pauseActive = useCallback(() => {
+      if (stageRef.current !== "song") return false;
+      const el = songEl();
+      if (!el) return false;
+      manualPausedRef.current = true;
+      el.pause();
+      return true;
+    }, [songEl]);
+
+    const resumeActive = useCallback(async () => {
+      if (stageRef.current !== "song") return false;
+      const el = songEl();
+      if (!el || el.readyState < 2) return false;
+      manualPausedRef.current = false;
+      userInteractedRef.current = true;
+      safeSessionSet("video_autoplay_enabled", "true");
+      el.muted = false;
+      el.volume = 1;
+      try {
+        await el.play();
+        return true;
+      } catch (err) {
+        videoLog("PLAY_FAILED", { label: "manual-resume", ...formatPlayError(err) });
+        return false;
+      }
+    }, [songEl]);
+
+    const seekActive = useCallback((deltaSeconds) => {
+      if (stageRef.current !== "song") return false;
+      const el = songEl();
+      if (!el) return false;
+      const duration = Number(el.duration || 0);
+      const target = Math.max(0, Number(el.currentTime || 0) + Number(deltaSeconds || 0));
+      el.currentTime = duration > 0 ? Math.min(duration, target) : target;
+      return true;
+    }, [songEl]);
+
+    const restartActive = useCallback(() => {
+      if (stageRef.current !== "song") return false;
+      const el = songEl();
+      if (!el) return false;
+      el.currentTime = 0;
+      return true;
+    }, [songEl]);
+
+    const toggleMute = useCallback(() => {
+      if (stageRef.current !== "song") return false;
+      const el = songEl();
+      if (!el) return false;
+      el.muted = !el.muted;
+      el.volume = el.muted ? 0 : 1;
+      return el.muted;
+    }, [songEl]);
+
+    const getPlaybackState = useCallback(() => {
+      const el = stageRef.current === "song" ? songEl() : null;
+      return {
+        available: Boolean(el),
+        paused: el ? el.paused : true,
+        muted: el ? el.muted : true,
+        currentTime: el ? Number(el.currentTime || 0) : 0,
+        duration: el ? Number(el.duration || 0) : 0,
+      };
+    }, [songEl]);
 
     const interruptForSkip = useCallback(async () => {
       playSeqRef.current += 1;
@@ -850,6 +922,12 @@ const VideoPlayer = forwardRef(
       beginHandoffLoad,
       handoffToSong,
       retryActive,
+      pauseActive,
+      resumeActive,
+      seekActive,
+      restartActive,
+      toggleMute,
+      getPlaybackState,
       interruptForSkip,
       getActiveVideo: () => (stageRef.current === "song" ? songEl() : null),
       getDebug: () => {
@@ -960,7 +1038,7 @@ const VideoPlayer = forwardRef(
 
         if (endedFiredRef.current) return;
 
-        if (el.paused && el.readyState >= 2) {
+        if (el.paused && el.readyState >= 2 && !manualPausedRef.current) {
           const handoffAge = Date.now() - songHandoffAtRef.current;
           // Avoid a second play() right after transition handoff — causes a visible restart.
           if (handoffAge >= 0 && handoffAge < 3000 && t > 0) return;
@@ -995,7 +1073,7 @@ const VideoPlayer = forwardRef(
         if (document.visibilityState !== "visible") return;
         if (stageRef.current !== "song" || playbackBusyRef.current) return;
         const el = songEl();
-        if (el && el.paused && el.readyState >= 2) {
+        if (el && el.paused && el.readyState >= 2 && !manualPausedRef.current) {
           const id = slotId(el);
           videoLog("PLAY_ATTEMPT", { id, label: "visibility-resume", rs: el.readyState });
           Promise.resolve(el.play())
@@ -1007,6 +1085,36 @@ const VideoPlayer = forwardRef(
       return () => document.removeEventListener("visibilitychange", onVisibility);
     }, [songEl, slotId]);
 
+    // Audio can continue even when an interrupted handoff/HMR update leaves the
+    // React front-layer state pointing at a hidden transition or old song slot.
+    // Keep the painted layer synchronized with the authoritative active role.
+    useEffect(() => {
+      const timer = window.setInterval(() => {
+        if (stageRef.current !== "song") return;
+        const activeId = roleRef.current.song;
+        const activeEl = elById(activeId);
+        if (!activeEl || activeEl.paused || activeEl.readyState < 2) return;
+
+        let visuallyHidden = false;
+        try {
+          const style = window.getComputedStyle(activeEl);
+          visuallyHidden = Number(style.opacity || 0) < 0.5 || style.visibility === "hidden";
+        } catch {
+          /* computed-style checks are best effort on older TV WebViews */
+        }
+
+        if (frontRef.current !== activeId || visuallyHidden) {
+          videoLog("VISIBLE_LAYER_RECOVERY", {
+            expected: activeId,
+            actual: frontRef.current,
+            visuallyHidden,
+          });
+          setVisible(activeId);
+        }
+      }, 400);
+      return () => window.clearInterval(timer);
+    }, [elById, setVisible]);
+
     // ---- Render ---------------------------------------------------------
 
     const cls = (id) =>
@@ -1014,16 +1122,22 @@ const VideoPlayer = forwardRef(
         front === id && front !== "black" ? "video-slot--front" : "video-slot--back"
       }`;
 
-    const videoProps = {
+    const layerStyle = (id) => ({
+      opacity: front === id ? 1 : 0,
+      zIndex: front === id ? 2 : 1,
+      visibility: "visible",
+    });
+
+    const sharedVideoProps = {
       poster: BLACK_POSTER,
       muted: true,
       preload: "auto",
       playsInline: true,
       disablePictureInPicture: true,
       disableRemotePlayback: true,
-      controls: false,
-      controlsList: "nodownload noplaybackrate nofullscreen noremoteplayback",
     };
+
+    const songVideoProps = { ...sharedVideoProps, controls: false };
 
     return (
       <div className="video-dual-stack">
@@ -1033,7 +1147,8 @@ const VideoPlayer = forwardRef(
           ref={songARef}
           id="videoA"
           className={cls("a")}
-          {...videoProps}
+          style={layerStyle("a")}
+          {...songVideoProps}
           onEnded={onEndedFor("a")}
           onError={onErrorFor("a")}
         />
@@ -1041,7 +1156,8 @@ const VideoPlayer = forwardRef(
           ref={songBRef}
           id="videoB"
           className={cls("b")}
-          {...videoProps}
+          style={layerStyle("b")}
+          {...songVideoProps}
           onEnded={onEndedFor("b")}
           onError={onErrorFor("b")}
         />
@@ -1049,7 +1165,9 @@ const VideoPlayer = forwardRef(
           ref={transRef}
           id="videoT"
           className={cls("t")}
-          {...videoProps}
+          style={layerStyle("t")}
+          {...sharedVideoProps}
+          controls={false}
           onEnded={onEndedFor("t")}
           onError={onErrorFor("t")}
         />

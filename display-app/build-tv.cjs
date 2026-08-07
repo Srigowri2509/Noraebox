@@ -3,7 +3,8 @@ const { transformFileSync } = require("@babel/core");
 const { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const { join } = require("node:path");
 
-const outDir = "dist-tv";
+const rootDir = __dirname;
+const outDir = join(rootDir, "dist-tv");
 const intermediateFile = join(outDir, "bundle.modern.js");
 const intermediateCssFile = join(outDir, "bundle.modern.css");
 const outFile = join(outDir, "bundle.js");
@@ -12,7 +13,8 @@ const htmlFile = join(outDir, "index.html");
 mkdirSync(outDir, { recursive: true });
 
 build({
-  entryPoints: ["src/main.jsx"],
+  absWorkingDir: rootDir,
+  entryPoints: ["./src/main.jsx"],
   bundle: true,
   outfile: intermediateFile,
   format: "iife",
@@ -44,11 +46,12 @@ build({
   writeFileSync(outFile, transformed && transformed.code ? transformed.code : "", "utf8");
 
   // Preserve assets from public/ (logo, media, etc.) used by absolute paths.
-  if (existsSync("public")) {
-    cpSync("public", outDir, { recursive: true });
+  const publicDir = join(rootDir, "public");
+  if (existsSync(publicDir)) {
+    cpSync(publicDir, outDir, { recursive: true });
   }
 
-  const srcCssFile = join("src", "index.css");
+  const srcCssFile = join(rootDir, "src", "index.css");
   let inlineCss = "";
   if (existsSync(srcCssFile)) {
     inlineCss = readFileSync(srcCssFile, "utf8");

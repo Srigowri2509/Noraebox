@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import Navbar from "../components/Navbar";
 import VideoPlayer from "../components/VideoPlayer";
-import { api } from "../api";
+import PlaybackControls from "../components/PlaybackControls";
+import SessionHistoryModal from "../components/SessionHistoryModal";
+import ExtensionPrompt from "../components/ExtensionPrompt";
+import { api, API_BASE } from "../api";
 import { safeSet, safeSessionGet, safeSessionSet } from "../utils/safeStorage";
 import { unlockAudio } from "../utils/audioUnlock";
 import { isLowPowerDevice, isTelevisionDisplay, isCacheEnabled } from "../utils/device";
@@ -22,6 +25,7 @@ const TRANSCITIONS_FOLDER = "transcitions";
 // TVs poll less aggressively — 8 rooms × 1 req/s starves the WebView network
 // stack during video playback; backend itself handles load fine at ~3s intervals.
 const POLL_INTERVAL_MS = isTelevisionDisplay() ? 3000 : 1000;
+const EXTENSION_PROMPT_WINDOW_MS = 5 * 60 * 1000;
 
 // Acer/Android TV APKs: transitions stay on, but we avoid preloading extra
 // decoders during a song. VITE_LOW_POWER=true disables transitions entirely.
@@ -137,7 +141,7 @@ async function resolveNextAfterEnded(endedRes, armedFallback) {
 /*
  * Display controller — explicit state machine.
  *
- * States: LOGO | SONG | TRANSITION | ENDING
+ * States: LOGO | SONG | TRANSITION | EXTENSION_PROMPT | ENDING
  *   - NEXT_SONG is not a visible state; it is the "armed" next song that is
  *     fully preloaded into a hidden element while the current SONG plays.
  *
@@ -158,6 +162,9 @@ export default function Display({ roomId }) {
   // UI state (Navbar only).
   const [timeLeft, setTimeLeft] = useState(null);
   const [nextSongBanner, setNextSongBanner] = useState(null);
+  const [playedSongs, setPlayedSongs] = useState([]);
+  const [finalSummaryVisible, setFinalSummaryVisible] = useState(false);
+  const [extensionPrompt, setExtensionPrompt] = useState(null);
 
   // Interaction gate: the browser blocks all autoplay until the user performs
   // a gesture. We show a fullscreen overlay on mount; a single click/tap/key
@@ -167,7 +174,7 @@ export default function Display({ roomId }) {
   const interactedRef = useRef(false);
 
   // ---- State machine refs --------------------------------------------------
-  const stageRef = useRef("LOGO"); // LOGO | SONG | TRANSITION | ENDING
+  const stageRef = useRef("LOGO"); // LOGO | SONG | TRANSITION | EXTENSION_PROMPT | ENDING
   const currentSongIdRef = useRef(null); // id the controller believes is current
   const hasPlayedRef = useRef(false);
 
@@ -179,6 +186,16 @@ export default function Display({ roomId }) {
 
   // Session / timer coordination.
   const lastSessionIdRef = useRef(null);
+  const activeSessionIdRef = useRef(null);
+  const recordedPlaybackKeyRef = useRef(null);
+  const playedSongSequenceRef = useRef(0);
+  const playedHistoryStorageKeyRef = useRef(null);
+  const summaryHideTimerRef = useRef(null);
+  const extensionNotificationRegistrationRef = useRef(null);
+  const scheduledExtensionRef = useRef(null);
+  const extensionResumeTargetRef = useRef(null);
+  const extensionResumeBusyRef = useRef(false);
+  const resumeAfterExtensionPromptRef = useRef(null);
   const sessionEndMsRef = useRef(null); // absolute deadline synced from backend each poll
   const finalizedRef = useRef(false); // hard-cut lock until backend confirms session ended
   const queueAdvancingRef = useRef(false);
@@ -216,6 +233,146 @@ export default function Display({ roomId }) {
     lastEvent: "—",
     lastError: "—",
   });
+
+  const recordPlayedSong = useCallback((songId, playbackKey) => {
+    if (!songId || !playbackKey || recordedPlaybackKeyRef.current === playbackKey) return;
+    recordedPlaybackKeyRef.current = playbackKey;
+    const sequence = ++playedSongSequenceRef.current;
+    const localKey = `${playbackKey}:${sequence}`;
+
+    setPlayedSongs((current) => {
+      const next = [
+        ...current,
+        { event_id: localKey, playback_key: playbackKey, song_id: songId, title: `Song ${songId}`, artists: [] },
+      ];
+      if (playedHistoryStorageKeyRef.current) {
+        safeSessionSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
+      }
+      return next;
+    });
+
+    void fetchSongWithUrl(songId).then((song) => {
+      if (!song) return;
+      setPlayedSongs((current) => {
+        const next = current.map((entry) =>
+          entry.event_id === localKey
+            ? {
+                ...entry,
+                title: song.title || entry.title,
+                album: song.album || null,
+                artists: Array.isArray(song.artists) ? song.artists : [],
+              }
+            : entry
+        );
+        if (playedHistoryStorageKeyRef.current) {
+          safeSessionSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
+        }
+        return next;
+      });
+    });
+  }, []);
+
+  // Register a notification worker so the extension offer can appear above
+  // YouTube/other browser tabs when this display page is in the background.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+    let cancelled = false;
+    const workerUrl = new URL("session-extension-sw.js", window.location.href).href;
+    navigator.serviceWorker.register(workerUrl).then((registration) => {
+      if (!cancelled) extensionNotificationRegistrationRef.current = registration;
+    }).catch((error) => console.warn("Extension notification worker unavailable", error));
+
+    const onWorkerMessage = (event) => {
+      if (event.data?.type === "session_extended") {
+        const minutes = Number(event.data.minutes || 0);
+        if (minutes > 0 && sessionEndMsRef.current != null) {
+          sessionEndMsRef.current += minutes * 60 * 1000;
+          setTimeLeft(Math.max(0, sessionEndMsRef.current - Date.now()));
+        }
+        void resumeAfterExtensionPromptRef.current?.();
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onWorkerMessage);
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker.removeEventListener("message", onWorkerMessage);
+    };
+  }, []);
+
+  const showExtensionNotification = useCallback((options) => {
+    if (document.visibilityState === "visible") return;
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const show = (registration) => registration?.showNotification?.("Seems like you are having fun!", {
+      body: "Would you like to extend your Noraebox session?",
+      tag: `noraebox-extension-${roomId}`,
+      renotify: true,
+      requireInteraction: true,
+      actions: [
+        { action: "extend-30", title: "30 minutes" },
+        { action: "extend-60", title: "1 hour" },
+      ].filter((action) => options.includes(action.action === "extend-60" ? 60 : 30)),
+      data: {
+        roomId,
+        apiBase: API_BASE.replace(/\/$/, ""),
+        displayUrl: window.location.href,
+      },
+    });
+    const registration = extensionNotificationRegistrationRef.current;
+    if (registration) void show(registration);
+    else void navigator.serviceWorker?.ready.then(show).catch(() => {});
+  }, [roomId]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    try {
+      const saved = JSON.parse(safeSessionGet(`extension_prompt_pending:${roomId}`) || "null");
+      scheduledExtensionRef.current = saved?.sessionId ? saved : null;
+    } catch {
+      scheduledExtensionRef.current = null;
+    }
+  }, [roomId]);
+
+  // Room-targeted admin messages. This keeps extension prompts private to the
+  // display assigned to the selected room and reconnects after network drops.
+  useEffect(() => {
+    if (!roomId) return undefined;
+    let socket;
+    let reconnectTimer;
+    let stopped = false;
+
+    const connect = () => {
+      const wsBase = API_BASE.replace(/^http/i, "ws").replace(/\/$/, "");
+      socket = new WebSocket(`${wsBase}/ws/display/${encodeURIComponent(roomId)}`);
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "extension_prompt") {
+            const options = Array.isArray(message.options) ? message.options : [30, 60];
+            const scheduled = {
+              sessionId: message.sessionId,
+              options,
+            };
+            scheduledExtensionRef.current = scheduled;
+            safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
+            dbg.current.lastEvent = "extension prompt scheduled";
+          }
+        } catch (error) {
+          console.warn("Invalid display message", error);
+        }
+      };
+      socket.onclose = () => {
+        if (!stopped) reconnectTimer = window.setTimeout(connect, 2500);
+      };
+      socket.onerror = () => socket.close();
+    };
+
+    connect();
+    return () => {
+      stopped = true;
+      window.clearTimeout(reconnectTimer);
+      socket?.close();
+    };
+  }, [roomId]);
 
   // Run a playback operation in the background, never awaited by the poll loop.
   // A single in-flight op at a time; a stalled video call can therefore never
@@ -319,6 +476,10 @@ export default function Display({ roomId }) {
     armedNextRef.current = null;
     armedTransitionRef.current = "";
     transitionTargetRef.current = null;
+    extensionResumeTargetRef.current = null;
+    extensionResumeBusyRef.current = false;
+    scheduledExtensionRef.current = null;
+    safeSessionSet(`extension_prompt_pending:${roomId}`, "");
     transitionStartedAtRef.current = 0;
     busyRef.current = false;
     songEndLockRef.current = false;
@@ -326,11 +487,19 @@ export default function Display({ roomId }) {
     sessionEndMsRef.current = null;
     setTimeLeft(null);
     setNextSongBanner(null);
+    setExtensionPrompt(null);
     void clearNextSongCache("hardCutToLogo");
     void videoRef.current?.prepareForNextSong?.();
     videoRef.current?.cutToLogo();
     stageRef.current = "LOGO";
-  }, []);
+    // Keep the opaque summary above the player until the logo has painted.
+    // This prevents a one-frame flash of the just-ended song.
+    if (summaryHideTimerRef.current) window.clearTimeout(summaryHideTimerRef.current);
+    summaryHideTimerRef.current = window.setTimeout(() => {
+      setFinalSummaryVisible(false);
+      summaryHideTimerRef.current = null;
+    }, 500);
+  }, [roomId]);
 
   // Begin playing a song NOW (cold start from logo, or instant skip target).
   const enterSong = useCallback(async (songId, url, { urgent = false, coldStart = false, afterTransition = false, seq } = {}) => {
@@ -363,6 +532,43 @@ export default function Display({ roomId }) {
       busyRef.current = false;
     }
   }, []);
+
+  const resumeAfterExtensionPrompt = useCallback(async () => {
+    if (extensionResumeBusyRef.current) return;
+    extensionResumeBusyRef.current = true;
+    const target = extensionResumeTargetRef.current;
+    extensionResumeTargetRef.current = null;
+    setExtensionPrompt(null);
+
+    try {
+      if (finalizedRef.current) {
+        goToLogo("extension_prompt_session_ended");
+        return;
+      }
+
+      stageRef.current = "ENDING";
+      await videoRef.current?.prepareForNextSong?.();
+      songEndLockRef.current = false;
+      transitionStartedAtRef.current = 0;
+
+      if (target?.type === "song" && target.url) {
+        let ok = await enterSong(target.id, target.url, { coldStart: true, urgent: true });
+        if (!ok) {
+          const loaded = await fetchSongWithUrl(target.id);
+          if (loaded?.videoUrl) {
+            ok = await enterSong(target.id, loaded.videoUrl, { coldStart: true, urgent: true });
+          }
+        }
+        if (!ok) goToLogo("extension_prompt_next_failed");
+      } else {
+        goToLogo("extension_prompt_no_next_song");
+      }
+    } finally {
+      extensionResumeBusyRef.current = false;
+    }
+  }, [enterSong, goToLogo]);
+
+  resumeAfterExtensionPromptRef.current = resumeAfterExtensionPrompt;
 
   const tryStartFromLogo = useCallback(
     (songId, { coldStart = true } = {}) => {
@@ -533,6 +739,39 @@ export default function Display({ roomId }) {
       transitionTargetRef.current = { type: "logo" };
     }
 
+    const scheduledExtension = scheduledExtensionRef.current;
+    const remainingMs = sessionEndMsRef.current == null
+      ? null
+      : Math.max(0, sessionEndMsRef.current - Date.now());
+    const scheduledForCurrentSession =
+      !scheduledExtension?.sessionId ||
+      !activeSessionIdRef.current ||
+      sid(scheduledExtension.sessionId) === sid(activeSessionIdRef.current);
+
+    // The admin can schedule this at any time. It is consumed only at a song
+    // boundary in the final five minutes, replacing the normal transition.
+    if (
+      scheduledExtension &&
+      scheduledForCurrentSession &&
+      remainingMs != null &&
+      remainingMs > 0 &&
+      remainingMs <= EXTENSION_PROMPT_WINDOW_MS
+    ) {
+      const options = Array.isArray(scheduledExtension.options)
+        ? scheduledExtension.options
+        : [30, 60];
+      scheduledExtensionRef.current = null;
+      safeSessionSet(`extension_prompt_pending:${roomId}`, "");
+      extensionResumeTargetRef.current = transitionTargetRef.current;
+      transitionTargetRef.current = null;
+      transitionStartedAtRef.current = 0;
+      stageRef.current = "EXTENSION_PROMPT";
+      dbg.current.lastEvent = "extension prompt shown between songs";
+      setExtensionPrompt({ sessionId: scheduledExtension.sessionId, options });
+      showExtensionNotification(options);
+      return;
+    }
+
     // Fallback: backend may have set current_song_id even if response parsing failed.
     if (!next?.url && endedRes?.status === "next_started" && endedRes.song_id) {
       dbg.current.lastEvent = "ended: fetch next FAIL, will recover from poll";
@@ -581,7 +820,7 @@ export default function Display({ roomId }) {
     if (!transOk) {
       console.warn("[STATE] transition play failed — handoff will still run");
     }
-  }, [postEnded, transitionUrls, enterSong, goToLogo]);
+  }, [postEnded, transitionUrls, enterSong, goToLogo, roomId, showExtensionNotification]);
 
   const commitHandoffSong = useCallback((songId, url) => {
     stageRef.current = "SONG";
@@ -685,6 +924,9 @@ export default function Display({ roomId }) {
     setNeedsInteraction(false);
     // Unmute/resume anything already playing muted.
     videoRef.current?.retryActive();
+    if ("Notification" in window && Notification.permission === "default") {
+      void Notification.requestPermission().catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -716,6 +958,7 @@ export default function Display({ roomId }) {
   useEffect(
     () => () => {
       if (driveWatchdogRef.current) clearTimeout(driveWatchdogRef.current);
+      if (summaryHideTimerRef.current) clearTimeout(summaryHideTimerRef.current);
     },
     []
   );
@@ -746,21 +989,52 @@ export default function Display({ roomId }) {
           if (stageRef.current !== "LOGO") goToLogo();
           finalizedRef.current = false;
           hasPlayedRef.current = false;
+          activeSessionIdRef.current = null;
           sessionEndMsRef.current = null;
           setTimeLeft(null);
           return;
         }
 
+        activeSessionIdRef.current = session.id || null;
+        if (
+          scheduledExtensionRef.current?.sessionId &&
+          session.id &&
+          sid(scheduledExtensionRef.current.sessionId) !== sid(session.id)
+        ) {
+          scheduledExtensionRef.current = null;
+          safeSessionSet(`extension_prompt_pending:${roomId}`, "");
+        }
+
         // New session id -> clear end locks so the next session runs normally.
-        if (session.id && session.id !== lastSessionIdRef.current) {
-          lastSessionIdRef.current = session.id;
+        const sessionKey = session.id
+          ? `${session.id}:${session.session_start_time || session.session_created_at || "pending"}`
+          : null;
+        if (sessionKey && sessionKey !== lastSessionIdRef.current) {
+          lastSessionIdRef.current = sessionKey;
           finalizedRef.current = false;
+          const storageKey = `display_played_songs:${roomId}:${sessionKey}`;
+          playedHistoryStorageKeyRef.current = storageKey;
+          let savedHistory = [];
+          try {
+            savedHistory = JSON.parse(safeSessionGet(storageKey) || "[]");
+            if (!Array.isArray(savedHistory)) savedHistory = [];
+          } catch {
+            savedHistory = [];
+          }
+          setPlayedSongs(savedHistory);
+          playedSongSequenceRef.current = savedHistory.length;
+          recordedPlaybackKeyRef.current = savedHistory.length
+            ? savedHistory[savedHistory.length - 1]?.playback_key || null
+            : null;
           if (stageRef.current === "LOGO") {
             currentSongIdRef.current = null;
           }
         }
 
-        const isEnded = session.status === "ended" || session.status === "finished";
+        const isEnded =
+          session.status === "completed" ||
+          session.status === "ended" ||
+          session.status === "finished";
         const active =
           !isEnded &&
           (session.status === "playing" ||
@@ -823,6 +1097,10 @@ export default function Display({ roomId }) {
         }
 
         const backendSongId = sid(session.current_song_id);
+        if (active && backendSongId) {
+          const playbackKey = `${backendSongId}:${session.current_song_start_time || "current"}`;
+          recordPlayedSong(backendSongId, playbackKey);
+        }
         backendSongIdRef.current = backendSongId;
         sessionActiveRef.current = active;
         queueLenRef.current = queue.length;
@@ -928,7 +1206,7 @@ export default function Display({ roomId }) {
       mounted = false;
       clearInterval(interval);
     };
-  }, [roomId, goToLogo, hardCutToLogo, armAssets, nudgeAdvance, drive, forceUnlockDrive, tryStartFromLogo, performSkipTo]);
+  }, [roomId, goToLogo, hardCutToLogo, armAssets, nudgeAdvance, drive, forceUnlockDrive, tryStartFromLogo, performSkipTo, recordPlayedSong]);
 
   // LOGO idle recovery: after a long pause, driveLock / stale URLs can leave the
   // display on the logo even though the queue or current_song_id is ready.
@@ -1056,6 +1334,15 @@ export default function Display({ roomId }) {
   };
 
   const timeUrgent = timeLeft != null && timeLeft > 0 && timeLeft < 5 * 60 * 1000;
+  // The summary is a visual overlay only. The song keeps playing behind it
+  // until the session reaches exactly zero and hardCutToLogo stops playback.
+  useEffect(() => {
+    if (timeLeft != null && timeLeft > 0 && timeLeft <= 5000) {
+      setFinalSummaryVisible(true);
+    } else if (timeLeft != null && timeLeft > 5000) {
+      setFinalSummaryVisible(false);
+    }
+  }, [timeLeft]);
 
   return (
     <div
@@ -1063,7 +1350,12 @@ export default function Display({ roomId }) {
       style={{ height: "100vh", display: "flex", flexDirection: "column" }}
       onClick={markInteracted}
     >
-      <Navbar timeText={fmt(timeLeft)} roomId={roomId} nextSong={nextSongBanner} timeUrgent={timeUrgent} />
+      <Navbar
+        timeText={fmt(timeLeft)}
+        roomId={roomId}
+        nextSong={nextSongBanner}
+        timeUrgent={timeUrgent}
+      />
 
       <div className="display-content" style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div
@@ -1078,7 +1370,23 @@ export default function Display({ roomId }) {
             onSongError={handleSongError}
           />
         </div>
+        <PlaybackControls playerRef={videoRef} />
       </div>
+
+      {finalSummaryVisible && !extensionPrompt ? <SessionHistoryModal roomId={roomId} finalScreen playedSongs={playedSongs} /> : null}
+      {extensionPrompt ? (
+        <ExtensionPrompt
+          roomId={roomId}
+          options={extensionPrompt.options}
+          onClose={() => void resumeAfterExtensionPrompt()}
+          onExtended={(minutes) => {
+            if (sessionEndMsRef.current != null) {
+              sessionEndMsRef.current += minutes * 60 * 1000;
+              setTimeLeft(Math.max(0, sessionEndMsRef.current - Date.now()));
+            }
+          }}
+        />
+      ) : null}
 
       {needsInteraction ? (
         <div

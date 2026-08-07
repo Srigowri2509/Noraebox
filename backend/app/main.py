@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates
 from app.services.admin_ws import admin_ws_manager
+from app.services.display_ws import display_ws_manager
 from app.services.search_setup import ensure_search_support
 from app.services.session_expiry import watch_session_expiry
 from pathlib import Path
@@ -55,6 +56,18 @@ async def admin_websocket(websocket: WebSocket):
         admin_ws_manager.disconnect(websocket)
     except Exception:
         admin_ws_manager.disconnect(websocket)
+
+
+@app.websocket("/ws/display/{room_id}")
+async def display_websocket(websocket: WebSocket, room_id: str):
+    await display_ws_manager.connect(room_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        display_ws_manager.disconnect(room_id, websocket)
+    except Exception:
+        display_ws_manager.disconnect(room_id, websocket)
 
 # Serve web assets for remote updates
 web_assets_path = Path(__file__).parent.parent.parent / "web-assets"

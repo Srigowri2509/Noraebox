@@ -94,10 +94,10 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
           <div className="mb-10" />
         )}
 
-        {!loadingSession && !isFree && remainingMinutes > 0 && remainingMinutes <= 10 && onRequestExtension ? (
+        {!loadingSession && !isFree && onRequestExtension ? (
           <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
             <p className="mb-3 text-sm font-medium text-amber-800">
-              This room is in its final 10 minutes.
+              Schedule this anytime. It will appear between songs during the final 5 minutes.
             </p>
             <button
               type="button"
@@ -113,7 +113,11 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
               }}
               className="w-full rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {sendingPrompt ? "Sending..." : promptSent ? "Extension prompt sent" : "Ask guest to extend session"}
+              {sendingPrompt
+                ? "Scheduling..."
+                : promptSent
+                  ? "Extension prompt scheduled"
+                  : "Schedule extension prompt"}
             </button>
           </div>
         ) : null}
