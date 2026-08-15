@@ -21,13 +21,14 @@ export default function PlaybackControls({ playerRef }) {
       const targetTag = String(event.target?.tagName || "").toLowerCase();
       const isInteractiveTarget = targetTag === "button" || targetTag === "input" || targetTag === "select";
 
+      // OK/Enter is the primary navigation/selection key on a TV remote. It
+      // must never pause kiosk playback; otherwise selecting a prompt can
+      // leave the display looking permanently stuck. Only dedicated media
+      // play/pause keys control playback.
       const playPause =
         event.key === "MediaPlayPause" ||
         event.key === "PlayPause" ||
-        event.key === " " ||
-        (!isInteractiveTarget && event.key === "Enter") ||
-        [85, 179].includes(code) ||
-        (!isInteractiveTarget && [13, 23, 29443].includes(code));
+        [85, 179].includes(code);
       const rewind =
         event.key === "MediaRewind" ||
         [89, 227].includes(code) ||

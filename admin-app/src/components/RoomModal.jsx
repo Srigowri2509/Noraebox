@@ -52,6 +52,13 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
     fetchSession();
   }, [room]);
 
+  // Prompt delivery is scoped to the selected room. Do not carry the
+  // confirmation/disabled state over when the operator opens another TV.
+  useEffect(() => {
+    setSendingPrompt(false);
+    setPromptSent(false);
+  }, [room?.id]);
+
   if (!room) return null;
 
   // Room is "free" if there's no active session

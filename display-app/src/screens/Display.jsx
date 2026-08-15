@@ -1440,7 +1440,7 @@ export default function Display({ roomId }) {
         />
       ) : null}
 
-      {needsInteraction ? (
+      {needsInteraction && !extensionPrompt ? (
         <div
           className="interaction-gate"
           role="button"
