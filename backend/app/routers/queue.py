@@ -42,6 +42,7 @@ def add_to_queue(room_id: str = Query(...), song_id: int = Query(...), db: Sessi
             added_by='tablet'
         )
         db.add(new_item)
+        db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="queued"))
         db.commit()
         
         print(f"POST /queue/add: Added song {song_id} to room {room_id} at position {max_position + 1}")

@@ -14,7 +14,9 @@ mkdirSync(outDir, { recursive: true });
 
 build({
   absWorkingDir: rootDir,
-  entryPoints: ["./src/main.jsx"],
+  // Use an absolute entry path so npm workspace invocations on Windows do not
+  // let esbuild reinterpret the relative path as a package name.
+  entryPoints: [join(rootDir, "src", "main.jsx")],
   bundle: true,
   outfile: intermediateFile,
   format: "iife",

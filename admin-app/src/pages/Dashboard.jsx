@@ -55,6 +55,8 @@ export default function Dashboard() {
   const [devices, setDevices] = useState([]);
   const [connectionError, setConnectionError] = useState(null);
   const [finishedSessionsByRoom, setFinishedSessionsByRoom] = useState({});
+  const [extensionsByRoom, setExtensionsByRoom] = useState({});
+  const [latestGuestExtension, setLatestGuestExtension] = useState(null);
 
   const gridRooms = useMemo(() => sortRooms(rooms), [rooms]);
 
@@ -100,6 +102,18 @@ export default function Dashboard() {
       (event) => {
         if (event.type === "session_finished") {
           handleSessionFinished(event);
+          setExtensionsByRoom((current) => {
+            const next = { ...current };
+            delete next[event.roomId];
+            return next;
+          });
+          loadRooms();
+        } else if (event.type === "session_extended" && event.source === "guest_prompt") {
+          setExtensionsByRoom((current) => ({
+            ...current,
+            [event.roomId]: event,
+          }));
+          setLatestGuestExtension(event);
           loadRooms();
         }
       },
@@ -168,6 +182,11 @@ export default function Dashboard() {
       console.log("Session started successfully");
       setSelectedRoom(null);
       clearFinishedSession(selectedRoom.id);
+      setExtensionsByRoom((current) => {
+        const next = { ...current };
+        delete next[selectedRoom.id];
+        return next;
+      });
       loadRooms();
     } catch (err) {
       console.error("Error starting room:", err);
@@ -338,6 +357,22 @@ export default function Dashboard() {
         </div>
       )}
 
+      {latestGuestExtension ? (
+        <div className="fixed right-6 top-6 z-[300] w-[380px] rounded-2xl border border-emerald-300 bg-emerald-600 p-5 text-white shadow-2xl">
+          <div className="text-sm font-bold uppercase tracking-wider text-emerald-100">Session extended</div>
+          <div className="mt-1 text-xl font-bold">
+            {latestGuestExtension.roomName} extended for {latestGuestExtension.addedMinutes} minutes
+          </div>
+          <button
+            type="button"
+            onClick={() => setLatestGuestExtension(null)}
+            className="mt-4 rounded-lg bg-white/20 px-3 py-2 text-sm font-semibold hover:bg-white/30"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       <div className="w-full flex justify-center" style={{ marginTop: "6rem" }}>
         {connectionError ? (
           <div className="text-center text-red-600 text-xl">
@@ -351,6 +386,7 @@ export default function Dashboard() {
                 room={room}
                 onClick={() => openRoom(room)}
                 finishedSession={finishedSessionsByRoom[room.id]}
+                extensionNotice={extensionsByRoom[room.id]}
                 onAcknowledge={() => acknowledgeFinishedSession(room.id)}
               />
             ))}

@@ -781,12 +781,40 @@ video[controls][paused]::-webkit-media-controls-play-button {
   min-height: 82px;
   background: linear-gradient(135deg, #a855f7, #6d28d9);
   font-size: 1.2rem;
+  transition: transform 120ms ease, box-shadow 120ms ease, outline-color 120ms ease;
+}
+
+.extension-prompt button:focus,
+.extension-prompt button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 6px solid #facc15;
+  outline-offset: 5px;
+  box-shadow: 0 0 0 10px rgba(250, 204, 21, 0.2), 0 12px 32px rgba(0, 0, 0, 0.55);
+  transform: scale(1.07);
+}
+
+.extension-prompt button:focus::after {
+  content: "SELECTED";
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fef08a;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
 }
 
 .display-modal .extension-prompt__decline {
   border: 0;
   background: transparent;
   color: #cbd5e1;
+}
+
+.display-modal .extension-prompt__decline:focus {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
 }
 
 .nav-right {

@@ -9,6 +9,7 @@ from app.db import get_db
 from app.models import Room, RoomSession, QueueItem, Song, SongArtist, Artist, Device, PlaybackEvent
 from app.schemas import RoomResponse
 from app.services.display_ws import display_ws_manager
+from app.services.admin_ws import admin_ws_manager
 
 router = APIRouter()
 
@@ -50,26 +51,45 @@ def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
 
 @router.get("/{room_id}/session/history")
 def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
-    """Return songs that started during the room's current session."""
+    """Return every song added to the current session's queue, in add order."""
     session = db.query(RoomSession).filter(
         RoomSession.room_id == room_id,
-        RoomSession.status.in_(["active", "completed", "ended", "finished"]),
+        RoomSession.status == "active",
     ).order_by(RoomSession.session_created_at.desc()).first()
+
+    if not session:
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status.in_(["completed", "ended", "finished"]),
+        ).order_by(RoomSession.session_created_at.desc()).first()
 
     if not session:
         return {"session_id": None, "songs": []}
 
-    session_start = session.session_start_time or session.session_created_at
+    # Queue selections belong to the session from the moment the admin creates
+    # it, which can be earlier than the first song starts and starts the timer.
     query = db.query(PlaybackEvent, Song).join(
         Song, Song.id == PlaybackEvent.song_id
     ).filter(
         PlaybackEvent.room_id == room_id,
-        PlaybackEvent.event_type == "started",
+        PlaybackEvent.event_type == "queued",
     )
-    if session_start:
-        query = query.filter(PlaybackEvent.timestamp >= session_start)
+    if session.session_created_at:
+        query = query.filter(PlaybackEvent.timestamp >= session.session_created_at)
 
     rows = query.order_by(PlaybackEvent.timestamp.asc()).all()
+    # Compatibility for sessions created before queued events were introduced.
+    if not rows:
+        fallback_start = session.session_start_time or session.session_created_at
+        fallback = db.query(PlaybackEvent, Song).join(
+            Song, Song.id == PlaybackEvent.song_id
+        ).filter(
+            PlaybackEvent.room_id == room_id,
+            PlaybackEvent.event_type == "started",
+        )
+        if fallback_start:
+            fallback = fallback.filter(PlaybackEvent.timestamp >= fallback_start)
+        rows = fallback.order_by(PlaybackEvent.timestamp.asc()).all()
     song_ids = {song.id for _, song in rows}
     artists_by_song = defaultdict(list)
     if song_ids:
@@ -184,10 +204,10 @@ def list_rooms_with_availability(device_uuid: str = None, db: Session = Depends(
 def get_room_session(room_id: str, db: Session = Depends(get_db)):
     """Get room session data - backward compatibility endpoint"""
     try:
-        # Get the most recent open session first, then fall back to most recent session
+        # An active row is authoritative even if a newer completed row exists.
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status.in_(['active', 'completed'])
+            RoomSession.status == 'active'
         ).order_by(RoomSession.session_created_at.desc()).first()
         
         # If no active session, get the most recent session of any status
@@ -425,6 +445,7 @@ def add_to_queue(room_id: str, payload: dict = Body(...), db: Session = Depends(
             added_by=added_by
         )
         db.add(new_item)
+        db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="queued"))
         db.commit()
         db.refresh(new_item)
         
@@ -803,8 +824,14 @@ def start_room_session_short(room_id: str, payload: dict = Body(...), db: Sessio
         # Check if there's already an active session (due to unique constraint)
         existing_session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status.in_(['active', 'completed'])
-        ).first()
+            RoomSession.status == 'active'
+        ).order_by(RoomSession.session_created_at.desc()).first()
+
+        if not existing_session:
+            existing_session = db.query(RoomSession).filter(
+                RoomSession.room_id == room_id,
+                RoomSession.status == 'completed'
+            ).order_by(RoomSession.session_created_at.desc()).first()
         
         if existing_session:
             # Update existing session instead of creating new one
@@ -891,8 +918,14 @@ def start_room_session(room_id: str, payload: dict = Body(...), db: Session = De
         # Check if there's already an active session (due to unique constraint)
         existing_session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status.in_(['active', 'completed'])
-        ).first()
+            RoomSession.status == 'active'
+        ).order_by(RoomSession.session_created_at.desc()).first()
+
+        if not existing_session:
+            existing_session = db.query(RoomSession).filter(
+                RoomSession.room_id == room_id,
+                RoomSession.status == 'completed'
+            ).order_by(RoomSession.session_created_at.desc()).first()
         
         if existing_session:
             # Update existing session instead of creating new one
@@ -958,10 +991,19 @@ def update_room_status(room_id: str, payload: dict = Body(...), db: Session = De
             raise HTTPException(status_code=404, detail="Room not found")
         
         # Get active session
+        # Always extend the current active row first. The old combined query
+        # could return an older completed row and then violate the database's
+        # one-active-session-per-room constraint when reactivating it.
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status.in_(['active', 'completed'])
-        ).first()
+            RoomSession.status == 'active'
+        ).order_by(RoomSession.session_created_at.desc()).first()
+
+        if not session:
+            session = db.query(RoomSession).filter(
+                RoomSession.room_id == room_id,
+                RoomSession.status == 'completed'
+            ).order_by(RoomSession.session_created_at.desc()).first()
         
         # Update total_minutes if provided
         if "total_minutes" in payload:
@@ -1059,7 +1101,7 @@ def end_room_session(room_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{room_id}/extend")
-def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+async def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
     """Add minutes to the current session (extends remaining time, never shortens)."""
     try:
         add_minutes = payload.get("add_minutes") or payload.get("minutes") or payload.get("total_minutes")
@@ -1067,15 +1109,25 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
             raise HTTPException(status_code=400, detail="add_minutes must be a positive integer")
 
         add_minutes = int(add_minutes)
+        source = payload.get("source") or "admin"
 
         room = db.query(Room).filter(Room.id == room_id).first()
         if not room:
             raise HTTPException(status_code=404, detail="Room not found")
 
+        # Prefer the current active session. Without an explicit preference,
+        # PostgreSQL may return an older completed row first and reactivating it
+        # violates the one-active-session-per-room unique constraint.
         session = db.query(RoomSession).filter(
             RoomSession.room_id == room_id,
-            RoomSession.status.in_(['active', 'completed'])
-        ).first()
+            RoomSession.status == 'active'
+        ).order_by(RoomSession.session_created_at.desc()).first()
+
+        if not session:
+            session = db.query(RoomSession).filter(
+                RoomSession.room_id == room_id,
+                RoomSession.status == 'completed'
+            ).order_by(RoomSession.session_created_at.desc()).first()
 
         if not session:
             raise HTTPException(status_code=404, detail="No active session found for this room")
@@ -1107,6 +1159,17 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
         db.commit()
         db.refresh(session)
 
+        await admin_ws_manager.broadcast({
+            "type": "session_extended",
+            "sessionId": str(session.id),
+            "roomId": str(room.id),
+            "roomName": room.name or "Room",
+            "addedMinutes": add_minutes,
+            "totalMinutes": session.total_minutes,
+            "sessionEndTime": session.session_end_time.isoformat() if session.session_end_time else None,
+            "source": source,
+        })
+
         print(f"✅ POST /rooms/{room_id}/extend: +{add_minutes} min (was {old_total}, now {session.total_minutes})")
         return {
             "status": "extended",
@@ -1119,4 +1182,7 @@ def extend_room_session(room_id: str, payload: dict = Body(...), db: Session = D
     except Exception as e:
         db.rollback()
         print(f"Error extending session: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=409,
+            detail="The session changed while adding time. Please try again.",
+        )

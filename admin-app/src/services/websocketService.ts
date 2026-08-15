@@ -8,7 +8,18 @@ export type SessionFinishedEvent = {
   finishedAt: string;
 };
 
-export type AdminWebSocketEvent = SessionFinishedEvent;
+export type SessionExtendedEvent = {
+  type: "session_extended";
+  sessionId: string;
+  roomId: string;
+  roomName: string;
+  addedMinutes: number;
+  totalMinutes: number;
+  sessionEndTime: string | null;
+  source: "guest_prompt" | "admin" | string;
+};
+
+export type AdminWebSocketEvent = SessionFinishedEvent | SessionExtendedEvent;
 export type AdminWebSocketListener = (event: AdminWebSocketEvent) => void;
 
 const RECONNECT_BASE_DELAY_MS = 1000;

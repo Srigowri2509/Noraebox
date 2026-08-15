@@ -56,10 +56,13 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
 
   // Room is "free" if there's no active session
   const isFree = !hasActiveSession;
+  const minutesToSubmit = Number(selectedMinutes);
+  const hasValidMinutes = Number.isInteger(minutesToSubmit) && minutesToSubmit > 0;
 
   const handleConfirm = () => {
-    if (isFree) onStart(selectedMinutes);
-    else onExtend(selectedMinutes);
+    if (!hasValidMinutes) return;
+    if (isFree) onStart(minutesToSubmit);
+    else onExtend(minutesToSubmit);
   };
 
   const handleCancel = () => {
@@ -97,7 +100,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
         {!loadingSession && !isFree && onRequestExtension ? (
           <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
             <p className="mb-3 text-sm font-medium text-amber-800">
-              Schedule this anytime. It will appear between songs during the final 5 minutes.
+              Schedule this anytime. It will appear during the final 5 minutes.
             </p>
             <button
               type="button"
@@ -126,6 +129,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
         <div className="flex justify-center mb-6">
           <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
             <button
+              type="button"
               onClick={() => {
                 setUseCustom(false);
                 setSelectedMinutes(60);
@@ -139,9 +143,10 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
               Quick Select
             </button>
             <button
+              type="button"
               onClick={() => {
                 setUseCustom(true);
-                setSelectedMinutes(15);
+                setSelectedMinutes("");
               }}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
                 useCustom
@@ -181,14 +186,54 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
               </button>
             ))}
           </div>
+
+          {useCustom ? (
+            <div className="mt-5 w-full">
+              <label
+                htmlFor="custom-session-minutes"
+                className="mb-2 block text-sm font-semibold text-gray-700"
+              >
+                Enter any number of minutes
+              </label>
+              <div className="relative">
+                <input
+                  id="custom-session-minutes"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoFocus
+                  value={selectedMinutes}
+                  onChange={(event) => {
+                    const digitsOnly = event.target.value.replace(/\D/g, "");
+                    setSelectedMinutes(digitsOnly === "" ? "" : Number(digitsOnly));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && hasValidMinutes) handleConfirm();
+                  }}
+                  placeholder="For example: 51"
+                  className="w-full rounded-xl border-2 border-purple-200 bg-white px-4 py-4 pr-24 text-xl font-semibold text-gray-900 outline-none transition focus:border-purple-600 focus:ring-4 focus:ring-purple-100"
+                  aria-describedby="custom-session-minutes-help"
+                />
+                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-semibold text-gray-500">
+                  minutes
+                </span>
+              </div>
+              <p id="custom-session-minutes-help" className="mt-2 text-sm text-gray-500">
+                Enter any positive whole number, such as 2, 45, 51, or 67.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* BUTTON: Confirm */}
         <button
+          type="button"
           onClick={handleConfirm}
+          disabled={!hasValidMinutes}
           className="w-full py-4 rounded-xl text-white text-xl font-semibold 
                      bg-purple-600 hover:bg-purple-700 
-                     transition-all shadow-md active:scale-95 cursor-pointer"
+                     transition-all shadow-md active:scale-95 cursor-pointer
+                     disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none"
         >
           {isFree ? "Start Session" : "Add Time"}
         </button>

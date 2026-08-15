@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
-export default function SessionHistoryModal({ roomId, onClose, finalScreen = false, playedSongs }) {
+export default function SessionHistoryModal({ roomId, onClose, finalScreen = false, fallbackSongs = [] }) {
   const [songs, setSongs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const hasLocalHistory = Array.isArray(playedSongs);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -20,17 +19,14 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
   }, [roomId]);
 
   useEffect(() => {
-    if (hasLocalHistory) {
-      setLoading(false);
-      setError("");
-      return undefined;
-    }
     loadHistory();
     const timer = window.setInterval(loadHistory, 5000);
     return () => window.clearInterval(timer);
-  }, [hasLocalHistory, loadHistory]);
+  }, [loadHistory]);
 
-  const displaySongs = hasLocalHistory ? playedSongs : songs;
+  // Backend queue history is authoritative. The local started-song cache keeps
+  // older sessions useful if the server has not recorded queue events yet.
+  const displaySongs = songs.length > 0 ? songs : fallbackSongs;
 
   return (
     <div
@@ -45,19 +41,19 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
         className={finalScreen ? "display-modal session-history session-history--final" : "display-modal session-history"}
         role="dialog"
         aria-modal="true"
-        aria-label="Songs played this session"
+        aria-label="Songs selected this session"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="display-modal__header">
           <div>
             <p className="display-modal__eyebrow">{finalScreen ? "Thank you for singing with us" : "Current session"}</p>
-            <h2>{finalScreen ? "Your session playlist" : "Songs played this session"}</h2>
+            <h2>{finalScreen ? "Your session playlist" : "Songs selected this session"}</h2>
           </div>
           {!finalScreen ? <button type="button" onClick={onClose}>Close</button> : null}
         </div>
         {loading ? <p className="display-modal__message">Loading history...</p> : null}
         {error ? <p className="display-modal__message display-modal__message--error">{error}</p> : null}
-        {!loading && !error && displaySongs.length === 0 ? <p className="display-modal__message">No songs have played in this session yet.</p> : null}
+        {!loading && !error && displaySongs.length === 0 ? <p className="display-modal__message">No songs were added to this session.</p> : null}
         <ol className="session-history__list">
           {displaySongs.map((song, index) => (
             <li key={song.event_id || `${song.song_id}-${index}`}>

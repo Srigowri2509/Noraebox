@@ -351,10 +351,27 @@ export default function Display({ roomId }) {
             const scheduled = {
               sessionId: message.sessionId,
               options,
+              remainingSeconds: Number(message.remainingSeconds),
             };
-            scheduledExtensionRef.current = scheduled;
-            safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
-            dbg.current.lastEvent = "extension prompt scheduled";
+            if (
+              Number.isFinite(scheduled.remainingSeconds) &&
+              scheduled.remainingSeconds > 0 &&
+              scheduled.remainingSeconds <= EXTENSION_PROMPT_WINDOW_MS / 1000
+            ) {
+              scheduledExtensionRef.current = null;
+              safeSessionSet(`extension_prompt_pending:${roomId}`, "");
+              dbg.current.lastEvent = "extension prompt shown immediately";
+              setExtensionPrompt({
+                sessionId: scheduled.sessionId,
+                options,
+                resumePlayback: false,
+              });
+              showExtensionNotification(options);
+            } else {
+              scheduledExtensionRef.current = scheduled;
+              safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
+              dbg.current.lastEvent = "extension prompt scheduled";
+            }
           }
         } catch (error) {
           console.warn("Invalid display message", error);
@@ -372,7 +389,41 @@ export default function Display({ roomId }) {
       window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [roomId]);
+  }, [roomId, showExtensionNotification]);
+
+  // A scheduled offer must not depend on another song boundary. A final song
+  // can be longer than the time left, which previously let the session expire
+  // before the guest ever saw the prompt. Show it over the playing song as soon
+  // as the display enters the final five-minute window.
+  useEffect(() => {
+    const scheduled = scheduledExtensionRef.current;
+    if (
+      !scheduled ||
+      extensionPrompt ||
+      finalizedRef.current ||
+      timeLeft == null ||
+      timeLeft <= 0 ||
+      timeLeft > EXTENSION_PROMPT_WINDOW_MS
+    ) {
+      return;
+    }
+
+    const belongsToCurrentSession =
+      !scheduled.sessionId ||
+      !activeSessionIdRef.current ||
+      sid(scheduled.sessionId) === sid(activeSessionIdRef.current);
+    if (!belongsToCurrentSession) return;
+
+    scheduledExtensionRef.current = null;
+    safeSessionSet(`extension_prompt_pending:${roomId}`, "");
+    dbg.current.lastEvent = "extension prompt shown in final five minutes";
+    setExtensionPrompt({
+      sessionId: scheduled.sessionId,
+      options: scheduled.options,
+      resumePlayback: false,
+    });
+    showExtensionNotification(scheduled.options);
+  }, [extensionPrompt, roomId, showExtensionNotification, timeLeft]);
 
   // Run a playback operation in the background, never awaited by the poll loop.
   // A single in-flight op at a time; a stalled video call can therefore never
@@ -488,17 +539,16 @@ export default function Display({ roomId }) {
     setTimeLeft(null);
     setNextSongBanner(null);
     setExtensionPrompt(null);
-    void clearNextSongCache("hardCutToLogo");
-    void videoRef.current?.prepareForNextSong?.();
-    videoRef.current?.cutToLogo();
-    stageRef.current = "LOGO";
-    // Keep the opaque summary above the player until the logo has painted.
-    // This prevents a one-frame flash of the just-ended song.
+    setFinalSummaryVisible(true);
     if (summaryHideTimerRef.current) window.clearTimeout(summaryHideTimerRef.current);
     summaryHideTimerRef.current = window.setTimeout(() => {
       setFinalSummaryVisible(false);
       summaryHideTimerRef.current = null;
-    }, 500);
+    }, 5000);
+    void clearNextSongCache("hardCutToLogo");
+    void videoRef.current?.prepareForNextSong?.();
+    videoRef.current?.cutToLogo();
+    stageRef.current = "LOGO";
   }, [roomId]);
 
   // Begin playing a song NOW (cold start from logo, or instant skip target).
@@ -958,7 +1008,7 @@ export default function Display({ roomId }) {
   useEffect(
     () => () => {
       if (driveWatchdogRef.current) clearTimeout(driveWatchdogRef.current);
-      if (summaryHideTimerRef.current) clearTimeout(summaryHideTimerRef.current);
+      if (summaryHideTimerRef.current) window.clearTimeout(summaryHideTimerRef.current);
     },
     []
   );
@@ -1012,6 +1062,11 @@ export default function Display({ roomId }) {
         if (sessionKey && sessionKey !== lastSessionIdRef.current) {
           lastSessionIdRef.current = sessionKey;
           finalizedRef.current = false;
+          if (summaryHideTimerRef.current) {
+            window.clearTimeout(summaryHideTimerRef.current);
+            summaryHideTimerRef.current = null;
+          }
+          setFinalSummaryVisible(false);
           const storageKey = `display_played_songs:${roomId}:${sessionKey}`;
           playedHistoryStorageKeyRef.current = storageKey;
           let savedHistory = [];
@@ -1334,15 +1389,6 @@ export default function Display({ roomId }) {
   };
 
   const timeUrgent = timeLeft != null && timeLeft > 0 && timeLeft < 5 * 60 * 1000;
-  // The summary is a visual overlay only. The song keeps playing behind it
-  // until the session reaches exactly zero and hardCutToLogo stops playback.
-  useEffect(() => {
-    if (timeLeft != null && timeLeft > 0 && timeLeft <= 5000) {
-      setFinalSummaryVisible(true);
-    } else if (timeLeft != null && timeLeft > 5000) {
-      setFinalSummaryVisible(false);
-    }
-  }, [timeLeft]);
 
   return (
     <div
@@ -1373,12 +1419,18 @@ export default function Display({ roomId }) {
         <PlaybackControls playerRef={videoRef} />
       </div>
 
-      {finalSummaryVisible && !extensionPrompt ? <SessionHistoryModal roomId={roomId} finalScreen playedSongs={playedSongs} /> : null}
+      {finalSummaryVisible && !extensionPrompt ? <SessionHistoryModal roomId={roomId} finalScreen fallbackSongs={playedSongs} /> : null}
       {extensionPrompt ? (
         <ExtensionPrompt
           roomId={roomId}
           options={extensionPrompt.options}
-          onClose={() => void resumeAfterExtensionPrompt()}
+          onClose={() => {
+            if (extensionPrompt.resumePlayback === false) {
+              setExtensionPrompt(null);
+              return;
+            }
+            void resumeAfterExtensionPrompt();
+          }}
           onExtended={(minutes) => {
             if (sessionEndMsRef.current != null) {
               sessionEndMsRef.current += minutes * 60 * 1000;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
-export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge }) {
+export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge, extensionNotice }) {
   const [remaining, setRemaining] = useState(null);
   const [session, setSession] = useState(null);
 
@@ -123,6 +123,12 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       <div className="mt-3 text-lg font-medium">
         {timerDisplay}
       </div>
+
+      {extensionNotice && !hasCompletedSession ? (
+        <div className="mt-4 rounded-full bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md">
+          Guest added +{extensionNotice.addedMinutes} min
+        </div>
+      ) : null}
 
       {hasCompletedSession && (
         <div className="mt-4 flex flex-col items-center gap-3">
