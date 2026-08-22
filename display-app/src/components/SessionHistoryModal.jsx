@@ -3,6 +3,7 @@ import { api } from "../api";
 
 export default function SessionHistoryModal({ roomId, onClose, finalScreen = false, fallbackSongs = [] }) {
   const [songs, setSongs] = useState([]);
+  const [historyType, setHistoryType] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -10,6 +11,7 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
     try {
       const data = await api(`/rooms/${roomId}/session/history`);
       setSongs(Array.isArray(data?.songs) ? data.songs : []);
+      setHistoryType(data?.history_type || "");
       setError("");
     } catch (err) {
       setError(err?.message || "Could not load played songs");
@@ -24,9 +26,23 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
     return () => window.clearInterval(timer);
   }, [loadHistory]);
 
-  // Backend queue history is authoritative. The local started-song cache keeps
-  // older sessions useful if the server has not recorded queue events yet.
-  const displaySongs = songs.length > 0 ? songs : fallbackSongs;
+  // Backend started-song history is authoritative. The local started-song
+  // cache keeps the final screen useful if the history request is delayed.
+  // Older backends returned queued songs from this endpoint. On the final TV
+  // screen, accept server data only when it explicitly identifies itself as
+  // started-song history; otherwise use the display's local started-song log.
+  const displaySongs = finalScreen
+    ? (historyType === "started" && songs.length > 0 ? songs : fallbackSongs)
+    : (songs.length > 0 ? songs : fallbackSongs);
+  const finalColumns = Math.min(6, Math.max(1, Math.ceil(displaySongs.length / 12)));
+  const finalRows = Math.max(1, Math.ceil(displaySongs.length / finalColumns));
+  const finalItemHeight = Math.min(42, Math.max(28, Math.floor(430 / finalRows)));
+  const finalListStyle = finalScreen ? {
+    "--history-columns": finalColumns,
+    "--history-rows": finalRows,
+    "--history-row-height": `${finalItemHeight}px`,
+    "--history-title-size": `${Math.min(17, Math.max(9, Math.round(finalItemHeight * 0.3)))}px`,
+  } : undefined;
 
   return (
     <div
@@ -53,14 +69,16 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
         </div>
         {loading ? <p className="display-modal__message">Loading history...</p> : null}
         {error ? <p className="display-modal__message display-modal__message--error">{error}</p> : null}
-        {!loading && !error && displaySongs.length === 0 ? <p className="display-modal__message">No songs were added to this session.</p> : null}
-        <ol className="session-history__list">
+        {!loading && !error && displaySongs.length === 0 ? <p className="display-modal__message">No songs were played in this session.</p> : null}
+        <ol className="session-history__list" style={finalListStyle}>
           {displaySongs.map((song, index) => (
             <li key={song.event_id || `${song.song_id}-${index}`}>
               <span className="session-history__number">{index + 1}</span>
-              <div>
+              <div className="session-history__song">
                 <strong>{song.title || "Unknown song"}</strong>
-                <span>{song.artists?.map((artist) => typeof artist === "string" ? artist : artist?.name).filter(Boolean).join(", ") || song.album || "Artist unavailable"}</span>
+                {!finalScreen ? (
+                  <span>{song.artists?.map((artist) => typeof artist === "string" ? artist : artist?.name).filter(Boolean).join(", ") || song.album || "Artist unavailable"}</span>
+                ) : null}
               </div>
               {!finalScreen ? (
                 <time>{song.played_at ? new Date(song.played_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</time>

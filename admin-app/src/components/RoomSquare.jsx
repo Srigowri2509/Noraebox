@@ -108,7 +108,7 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       className={`
         ${bg}
         ${hasCompletedSession ? "room-session-finished" : ""}
-        w-[250px] h-[250px] rounded-2xl
+        room-square rounded-2xl
         flex flex-col items-center justify-center
         text-xl font-semibold
         shadow-lg ${glow}
@@ -118,20 +118,20 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
         cursor-pointer
       `}
     >
-      <div className="text-2xl font-bold">{room.name}</div>
+      <div className="room-square__name text-2xl font-bold">{room.name}</div>
 
-      <div className="mt-3 text-lg font-medium">
+      <div className="room-square__timer mt-3 text-lg font-medium">
         {timerDisplay}
       </div>
 
       {extensionNotice && !hasCompletedSession ? (
-        <div className="mt-4 rounded-full bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md">
+        <div className="room-square__notice mt-4 rounded-full bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-md">
           Guest added +{extensionNotice.addedMinutes} min
         </div>
       ) : null}
 
       {hasCompletedSession && (
-        <div className="mt-4 flex flex-col items-center gap-3">
+        <div className="room-square__finished mt-4 flex flex-col items-center gap-3">
           <span className="rounded-full bg-red-600 px-3 py-1 text-sm font-bold text-white shadow-sm">
             Session Finished
           </span>

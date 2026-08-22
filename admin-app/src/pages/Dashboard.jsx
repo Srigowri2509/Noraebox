@@ -23,12 +23,15 @@ const ROOM_DISPLAY_ORDER = [
   "pop",
   "rock",
   "jazz",
-  "indie",
   "country",
   "classical",
   "party hall",
   "acoustic",
 ];
+
+function isVisibleRoom(room) {
+  return String(room?.name ?? "").trim().toLocaleLowerCase() !== "indie";
+}
 
 function sortRooms(rooms) {
   return [...rooms].sort((a, b) => {
@@ -58,7 +61,8 @@ export default function Dashboard() {
   const [extensionsByRoom, setExtensionsByRoom] = useState({});
   const [latestGuestExtension, setLatestGuestExtension] = useState(null);
 
-  const gridRooms = useMemo(() => sortRooms(rooms), [rooms]);
+  const visibleRooms = useMemo(() => rooms.filter(isVisibleRoom), [rooms]);
+  const gridRooms = useMemo(() => sortRooms(visibleRooms), [visibleRooms]);
 
   const loadRooms = useCallback(async () => {
     console.log("Fetching rooms...");
@@ -344,7 +348,7 @@ export default function Dashboard() {
   return (
     <>
       {connectionError && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg max-w-2xl">
+        <div className="connection-error fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg max-w-2xl">
           <div className="font-bold text-lg mb-2">Backend Connection Failed</div>
           <div className="text-sm mb-2">{connectionError}</div>
           <div className="text-xs bg-red-600/50 p-2 rounded mt-2">
@@ -358,7 +362,7 @@ export default function Dashboard() {
       )}
 
       {latestGuestExtension ? (
-        <div className="fixed right-6 top-6 z-[300] w-[380px] rounded-2xl border border-emerald-300 bg-emerald-600 p-5 text-white shadow-2xl">
+        <div className="extension-toast fixed right-6 top-6 z-[300] w-[380px] rounded-2xl border border-emerald-300 bg-emerald-600 p-5 text-white shadow-2xl">
           <div className="text-sm font-bold uppercase tracking-wider text-emerald-100">Session extended</div>
           <div className="mt-1 text-xl font-bold">
             {latestGuestExtension.roomName} extended for {latestGuestExtension.addedMinutes} minutes
@@ -373,7 +377,8 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <div className="w-full flex justify-center" style={{ marginTop: "6rem" }}>
+      <main className="dashboard-main">
+      <div className="rooms-section w-full flex justify-center">
         {connectionError ? (
           <div className="text-center text-red-600 text-xl">
             Cannot connect to backend server at http://localhost:8000
@@ -399,11 +404,11 @@ export default function Dashboard() {
       </div>
 
       {/* Devices - one compact card per room */}
-      <div className="w-full flex justify-center mt-10 mb-16 px-4">
+      <div className="devices-section w-full flex justify-center mt-10 mb-16 px-4">
         <div className="device-panel-wrap">
           {devices.length > 0 ? (
             <DeviceRoomPanel
-              rooms={rooms}
+              rooms={visibleRooms}
               devices={devices}
               onAssign={assignDeviceToRoom}
               onDelete={deleteDevice}
@@ -414,6 +419,7 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+      </main>
 
       {/* Modal */}
       <RoomModal

@@ -5,7 +5,7 @@ import PlaybackControls from "../components/PlaybackControls";
 import SessionHistoryModal from "../components/SessionHistoryModal";
 import ExtensionPrompt from "../components/ExtensionPrompt";
 import { api, API_BASE } from "../api";
-import { safeSet, safeSessionGet, safeSessionSet } from "../utils/safeStorage";
+import { safeGet, safeSet, safeSessionGet, safeSessionSet } from "../utils/safeStorage";
 import { unlockAudio } from "../utils/audioUnlock";
 import { isLowPowerDevice, isTelevisionDisplay, isCacheEnabled } from "../utils/device";
 import { fetchSongWithUrl } from "../utils/fetchSongWithUrl";
@@ -26,6 +26,7 @@ const TRANSCITIONS_FOLDER = "transcitions";
 // stack during video playback; backend itself handles load fine at ~3s intervals.
 const POLL_INTERVAL_MS = isTelevisionDisplay() ? 3000 : 1000;
 const EXTENSION_PROMPT_WINDOW_MS = 5 * 60 * 1000;
+const FINAL_SUMMARY_DURATION_MS = 10 * 1000;
 
 // Acer/Android TV APKs: transitions stay on, but we avoid preloading extra
 // decoders during a song. VITE_LOW_POWER=true disables transitions entirely.
@@ -124,6 +125,15 @@ async function tryUpgradeArmedToLocal(songId, armed) {
 async function resolveNextAfterEnded(endedRes, armedFallback) {
   if (endedRes?.status === "next_started" && endedRes.song_id) {
     const id = sid(endedRes.song_id);
+    // The queue head is resolved and cached while the current song is still
+    // playing. Reuse it when the backend confirms the same song instead of
+    // doing another cache/network lookup after the final frame has frozen.
+    if (
+      sid(armedFallback?.id) === id &&
+      armedFallback?.url
+    ) {
+      return armedFallback;
+    }
     const loaded = await resolvePlayableUrl(id);
     if (loaded?.videoUrl) {
       return { id, url: loaded.videoUrl, source: loaded.source || "remote" };
@@ -246,7 +256,7 @@ export default function Display({ roomId }) {
         { event_id: localKey, playback_key: playbackKey, song_id: songId, title: `Song ${songId}`, artists: [] },
       ];
       if (playedHistoryStorageKeyRef.current) {
-        safeSessionSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
+        safeSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
       }
       return next;
     });
@@ -265,7 +275,7 @@ export default function Display({ roomId }) {
             : entry
         );
         if (playedHistoryStorageKeyRef.current) {
-          safeSessionSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
+          safeSet(playedHistoryStorageKeyRef.current, JSON.stringify(next));
         }
         return next;
       });
@@ -544,7 +554,7 @@ export default function Display({ roomId }) {
     summaryHideTimerRef.current = window.setTimeout(() => {
       setFinalSummaryVisible(false);
       summaryHideTimerRef.current = null;
-    }, 5000);
+    }, FINAL_SUMMARY_DURATION_MS);
     void clearNextSongCache("hardCutToLogo");
     void videoRef.current?.prepareForNextSong?.();
     videoRef.current?.cutToLogo();
@@ -703,12 +713,19 @@ export default function Display({ roomId }) {
       if (armingRef.current) return; // a previous arm is still running
       armingRef.current = true;
       try {
-        // On TV, arm the transition only at song end (local clip, one decoder).
-        if (!NATIVE_TV && !armedTransitionRef.current) {
+        // The transition is bundled locally. Arm it while the song is playing
+        // so a natural song end becomes a visibility/play toggle instead of a
+        // 10-15 second decoder/load wait. TV does not preload the next song
+        // element, so this still stays within the two-decoder budget.
+        if (!armedTransitionRef.current) {
           const url = pickRandom(transitionUrls);
           if (url) {
             armedTransitionRef.current = url;
-            videoRef.current?.armTransition(url);
+            if (NATIVE_TV) {
+              void videoRef.current?.armTransition(url);
+            } else {
+              await videoRef.current?.armTransition(url);
+            }
           }
         }
 
@@ -1071,7 +1088,7 @@ export default function Display({ roomId }) {
           playedHistoryStorageKeyRef.current = storageKey;
           let savedHistory = [];
           try {
-            savedHistory = JSON.parse(safeSessionGet(storageKey) || "[]");
+            savedHistory = JSON.parse(safeGet(storageKey) || "[]");
             if (!Array.isArray(savedHistory)) savedHistory = [];
           } catch {
             savedHistory = [];

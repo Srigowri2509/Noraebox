@@ -51,7 +51,7 @@ def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
 
 @router.get("/{room_id}/session/history")
 def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
-    """Return every song added to the current session's queue, in add order."""
+    """Return songs that actually started in this session, including skipped songs."""
     session = db.query(RoomSession).filter(
         RoomSession.room_id == room_id,
         RoomSession.status == "active",
@@ -64,32 +64,22 @@ def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
         ).order_by(RoomSession.session_created_at.desc()).first()
 
     if not session:
-        return {"session_id": None, "songs": []}
+        return {"session_id": None, "history_type": "started", "songs": []}
 
-    # Queue selections belong to the session from the moment the admin creates
-    # it, which can be earlier than the first song starts and starts the timer.
+    # A "started" event is written as soon as a song becomes current. This
+    # includes a song that was subsequently skipped, but excludes songs that
+    # remained waiting in the queue when the session ended.
     query = db.query(PlaybackEvent, Song).join(
         Song, Song.id == PlaybackEvent.song_id
     ).filter(
         PlaybackEvent.room_id == room_id,
-        PlaybackEvent.event_type == "queued",
+        PlaybackEvent.event_type == "started",
     )
-    if session.session_created_at:
-        query = query.filter(PlaybackEvent.timestamp >= session.session_created_at)
+    history_start = session.session_start_time or session.session_created_at
+    if history_start:
+        query = query.filter(PlaybackEvent.timestamp >= history_start)
 
     rows = query.order_by(PlaybackEvent.timestamp.asc()).all()
-    # Compatibility for sessions created before queued events were introduced.
-    if not rows:
-        fallback_start = session.session_start_time or session.session_created_at
-        fallback = db.query(PlaybackEvent, Song).join(
-            Song, Song.id == PlaybackEvent.song_id
-        ).filter(
-            PlaybackEvent.room_id == room_id,
-            PlaybackEvent.event_type == "started",
-        )
-        if fallback_start:
-            fallback = fallback.filter(PlaybackEvent.timestamp >= fallback_start)
-        rows = fallback.order_by(PlaybackEvent.timestamp.asc()).all()
     song_ids = {song.id for _, song in rows}
     artists_by_song = defaultdict(list)
     if song_ids:
@@ -101,6 +91,7 @@ def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
 
     return {
         "session_id": str(session.id),
+        "history_type": "started",
         "songs": [
             {
                 "event_id": str(event.id),

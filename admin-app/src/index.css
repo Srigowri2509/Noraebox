@@ -4,6 +4,39 @@
 body {
   margin: 0;
   background: #f4efff;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+.admin-header {
+  min-height: 4.5rem;
+  padding: 0.9rem clamp(1rem, 4vw, 2.5rem);
+}
+
+.admin-header__title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.875rem);
+}
+
+.admin-header__subtitle {
+  font-size: 0.72em;
+  font-weight: 500;
+  color: #7e22ce;
+}
+
+.dashboard-main {
+  width: 100%;
+  padding: 4rem clamp(1rem, 4vw, 2rem) 1px;
 }
 
 /* FADE ANIMATION */
@@ -37,6 +70,15 @@ body {
   max-width: 1180px;
   justify-items: center;
   align-items: center;
+}
+
+.room-square {
+  width: 100%;
+  max-width: 250px;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 1rem;
+  text-align: center;
 }
 
 .room-session-finished {
@@ -280,4 +322,177 @@ body {
   color: #94a3b8;
   font-size: 1rem;
   padding: 2rem 1rem;
+}
+
+@media (max-width: 900px) {
+  .dashboard-main {
+    padding-top: 2.5rem;
+  }
+
+  .rooms-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+    gap: 1rem;
+    max-width: 600px;
+  }
+
+  .room-square {
+    max-width: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-header {
+    min-height: 3.75rem;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-right: max(1rem, env(safe-area-inset-right));
+    padding-bottom: 0.75rem;
+    padding-left: max(1rem, env(safe-area-inset-left));
+  }
+
+  .admin-header__title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.05rem;
+    font-size: 1.25rem;
+    line-height: 1.2;
+  }
+
+  .admin-header__subtitle {
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .dashboard-main {
+    padding: 1.25rem max(0.75rem, env(safe-area-inset-right)) 1px max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .rooms-grid {
+    gap: 0.75rem;
+  }
+
+  .room-square {
+    border-radius: 1rem;
+    padding: 0.65rem;
+    font-size: 0.9rem;
+  }
+
+  .room-square__name {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: clamp(1rem, 5vw, 1.25rem);
+    line-height: 1.15;
+    text-overflow: ellipsis;
+  }
+
+  .room-square__timer {
+    margin-top: 0.5rem;
+    font-size: 1rem;
+  }
+
+  .room-square__notice {
+    margin-top: 0.6rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.68rem;
+    line-height: 1.15;
+  }
+
+  .room-square__finished {
+    margin-top: 0.55rem;
+    gap: 0.45rem;
+  }
+
+  .room-square__finished span,
+  .room-square__finished button {
+    padding: 0.3rem 0.5rem;
+    font-size: 0.68rem;
+    line-height: 1.1;
+  }
+
+  .devices-section {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .device-room-panel__header {
+    margin-bottom: 0.85rem;
+  }
+
+  .device-room-panel__title {
+    font-size: 1.25rem;
+  }
+
+  .device-room-panel__hint {
+    font-size: 0.78rem;
+  }
+
+  .device-room-card {
+    padding: 0.8rem;
+  }
+
+  .device-slot__select,
+  .device-slot__delete {
+    min-height: 2.75rem;
+  }
+
+  .connection-error,
+  .extension-toast {
+    top: max(0.75rem, env(safe-area-inset-top));
+    right: max(0.75rem, env(safe-area-inset-right));
+    left: max(0.75rem, env(safe-area-inset-left));
+    width: auto;
+    max-width: none;
+    transform: none;
+    padding: 1rem;
+  }
+
+  .room-modal-backdrop {
+    align-items: flex-end;
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+
+  .room-modal {
+    width: 100%;
+    max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 1.5rem 1.5rem 0 0;
+    padding: 1.25rem 1rem max(1.25rem, env(safe-area-inset-bottom));
+  }
+
+  .room-modal h2 {
+    font-size: 1.5rem;
+  }
+
+  .room-modal h2 + p {
+    margin-top: 0.25rem;
+    font-size: 1rem;
+  }
+
+  .room-modal button,
+  .room-modal input {
+    min-height: 3rem;
+  }
+}
+
+@media (max-width: 350px) {
+  .rooms-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .room-square {
+    max-width: 230px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn,
+  .scale-anim,
+  .room-session-finished,
+  .room-session-finished::after {
+    animation: none;
+  }
 }

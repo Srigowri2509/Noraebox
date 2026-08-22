@@ -259,6 +259,7 @@ const VideoPlayer = forwardRef(
       async (el) => {
         if (!el) return;
         const id = slotId(el);
+        const hadSource = Boolean(el.currentSrc || el.getAttribute("src"));
         videoLog("SILENCE", id);
         try {
           el.pause();
@@ -271,7 +272,10 @@ const VideoPlayer = forwardRef(
         } catch {
           /* ignore */
         }
-        if (needsNativeDecoderCare()) {
+        // Decoder drain is only needed when an element actually owned media.
+        // Waiting 400ms for an already-empty hidden slot made every transition
+        // visibly hesitate even when all assets were ready.
+        if (needsNativeDecoderCare() && hadSource) {
           await waitDecoderRelease();
         }
       },

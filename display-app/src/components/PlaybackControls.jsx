@@ -19,16 +19,26 @@ export default function PlaybackControls({ playerRef }) {
 
       const code = Number(event.keyCode || event.which || 0);
       const targetTag = String(event.target?.tagName || "").toLowerCase();
-      const isInteractiveTarget = targetTag === "button" || targetTag === "input" || targetTag === "select";
+      const activeTag = String(document.activeElement?.tagName || "").toLowerCase();
+      const interactiveTags = ["button", "input", "select"];
+      const isInteractiveTarget = interactiveTags.includes(targetTag) || interactiveTags.includes(activeTag);
+      const selectionUiOpen = Boolean(
+        document.querySelector(".interaction-gate, .display-modal-backdrop")
+      );
 
-      // OK/Enter is the primary navigation/selection key on a TV remote. It
-      // must never pause kiosk playback; otherwise selecting a prompt can
-      // leave the display looking permanently stuck. Only dedicated media
-      // play/pause keys control playback.
+      // Center OK toggles playback on the normal song screen. When a prompt or
+      // startup gate is visible, OK remains a UI-selection key and must not
+      // leak through to playback.
+      const centerOk =
+        !event.repeat &&
+        !selectionUiOpen &&
+        !isInteractiveTarget &&
+        (event.key === "Enter" || [13, 23, 29443].includes(code));
       const playPause =
         event.key === "MediaPlayPause" ||
         event.key === "PlayPause" ||
-        [85, 179].includes(code);
+        [85, 179].includes(code) ||
+        centerOk;
       const rewind =
         event.key === "MediaRewind" ||
         [89, 227].includes(code) ||

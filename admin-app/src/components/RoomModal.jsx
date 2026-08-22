@@ -80,12 +80,12 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
 
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-200"
+      className="room-modal-backdrop fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-200"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-3xl shadow-xl w-[520px] px-10 py-10 border border-gray-100 animate-fadeIn scale-anim"
+        className="room-modal bg-white rounded-3xl shadow-xl w-[520px] px-10 py-10 border border-gray-100 animate-fadeIn scale-anim"
       >
         {/* Title */}
         <h2 className="text-3xl font-semibold text-center text-gray-800">
