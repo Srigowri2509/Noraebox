@@ -1,5 +1,32 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { playTwoMinuteAlarm } from "../services/audioService";
+
+const TWO_MINUTE_ALARM_KEY = "noraebox.twoMinuteAlarms";
+
+function getPlayedAlarmKeys() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(TWO_MINUTE_ALARM_KEY) || "[]");
+    return new Set(Array.isArray(saved) ? saved : []);
+  } catch {
+    return new Set();
+  }
+}
+
+const playedAlarmKeys = getPlayedAlarmKeys();
+const pendingAlarmKeys = new Set();
+
+function savePlayedAlarmKey(alarmKey) {
+  playedAlarmKeys.add(alarmKey);
+  try {
+    window.localStorage.setItem(
+      TWO_MINUTE_ALARM_KEY,
+      JSON.stringify(Array.from(playedAlarmKeys).slice(-500))
+    );
+  } catch {
+    // The alarm can still play when storage is unavailable.
+  }
+}
 
 export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge, extensionNotice }) {
   const [remaining, setRemaining] = useState(null);
@@ -37,10 +64,14 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       return;
     }
 
-    const start = new Date(session.session_start_time);
-    const now = new Date();
-    const elapsed = (now - start) / 60000;
-    const newRemaining = Math.max(0, session.total_minutes - elapsed);
+    const now = Date.now();
+    const newRemaining = session.session_end_time
+      ? Math.max(0, (new Date(session.session_end_time).getTime() - now) / 60000)
+      : Math.max(
+          0,
+          session.total_minutes -
+            (now - new Date(session.session_start_time).getTime()) / 60000
+        );
 
     setRemaining(newRemaining);
 
@@ -54,6 +85,27 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       clearInterval(interval);
     };
   }, [updateRemaining]);
+
+  useEffect(() => {
+    const isActive = session && (session.status === "active" || session.status === "playing");
+    if (!isActive || remaining === null || remaining <= 0 || remaining > 2) return;
+
+    const sessionIdentity = session.id || `${room.id}:${session.session_start_time}`;
+    const durationIdentity = session.session_end_time || session.total_minutes;
+    const alarmKey = `${sessionIdentity}:${durationIdentity}`;
+    if (playedAlarmKeys.has(alarmKey) || pendingAlarmKeys.has(alarmKey)) return;
+
+    // Keep the key pending so the 1-second timer and 2-second session refresh
+    // cannot schedule the same alarm concurrently. Persist only after audio
+    // succeeds, allowing a blocked browser to retry after user interaction.
+    pendingAlarmKeys.add(alarmKey);
+    playTwoMinuteAlarm()
+      .then(() => savePlayedAlarmKey(alarmKey))
+      .catch((error) => {
+        console.warn(`Two-minute alarm failed for ${room.name}.`, error);
+      })
+      .finally(() => pendingAlarmKeys.delete(alarmKey));
+  }, [remaining, room.id, room.name, session]);
 
   const mins = remaining !== null ? Math.floor(remaining) : 0;
   const secs = remaining !== null ? Math.floor((remaining - mins) * 60).toString().padStart(2, "0") : "00";

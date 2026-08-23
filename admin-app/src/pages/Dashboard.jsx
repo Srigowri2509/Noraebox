@@ -6,6 +6,7 @@ import DeviceRoomPanel from "../components/DeviceRoomPanel";
 import { useNotifications } from "../hooks/useNotifications";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { requestPermission } from "../services/notificationService";
+import { unlockAdminAudio } from "../services/audioService";
 
 /**
  * Sort rooms for display. Rooms named with a number ("Room 3") sort
@@ -155,6 +156,23 @@ export default function Dashboard() {
       clearInterval(interval);
     };
   }, [loadDevices, loadRooms]);
+
+  useEffect(() => {
+    const unlock = () => {
+      unlockAdminAudio().catch((error) => {
+        console.warn("Could not unlock admin alarm audio.", error);
+      });
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
+    return () => {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+    };
+  }, []);
 
   // Open modal
   const openRoom = (room) => {
