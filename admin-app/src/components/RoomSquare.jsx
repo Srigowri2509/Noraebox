@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
-import { playTwoMinuteAlarm } from "../services/audioService";
+import { playTenMinuteAlarm } from "../services/audioService";
 
-const TWO_MINUTE_ALARM_KEY = "noraebox.twoMinuteAlarms";
+const TEN_MINUTE_ALARM_KEY = "noraebox.tenMinuteAlarms";
+const TEN_MINUTE_ALARM_THRESHOLD = 10;
 
 function getPlayedAlarmKeys() {
   try {
-    const saved = JSON.parse(window.localStorage.getItem(TWO_MINUTE_ALARM_KEY) || "[]");
+    const saved = JSON.parse(window.localStorage.getItem(TEN_MINUTE_ALARM_KEY) || "[]");
     return new Set(Array.isArray(saved) ? saved : []);
   } catch {
     return new Set();
@@ -20,7 +21,7 @@ function savePlayedAlarmKey(alarmKey) {
   playedAlarmKeys.add(alarmKey);
   try {
     window.localStorage.setItem(
-      TWO_MINUTE_ALARM_KEY,
+      TEN_MINUTE_ALARM_KEY,
       JSON.stringify(Array.from(playedAlarmKeys).slice(-500))
     );
   } catch {
@@ -88,7 +89,12 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
 
   useEffect(() => {
     const isActive = session && (session.status === "active" || session.status === "playing");
-    if (!isActive || remaining === null || remaining <= 0 || remaining > 2) return;
+    if (
+      !isActive ||
+      remaining === null ||
+      remaining <= 0 ||
+      remaining > TEN_MINUTE_ALARM_THRESHOLD
+    ) return;
 
     const sessionIdentity = session.id || `${room.id}:${session.session_start_time}`;
     const durationIdentity = session.session_end_time || session.total_minutes;
@@ -99,10 +105,10 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
     // cannot schedule the same alarm concurrently. Persist only after audio
     // succeeds, allowing a blocked browser to retry after user interaction.
     pendingAlarmKeys.add(alarmKey);
-    playTwoMinuteAlarm()
+    playTenMinuteAlarm()
       .then(() => savePlayedAlarmKey(alarmKey))
       .catch((error) => {
-        console.warn(`Two-minute alarm failed for ${room.name}.`, error);
+        console.warn(`Ten-minute alarm failed for ${room.name}.`, error);
       })
       .finally(() => pendingAlarmKeys.delete(alarmKey));
   }, [remaining, room.id, room.name, session]);

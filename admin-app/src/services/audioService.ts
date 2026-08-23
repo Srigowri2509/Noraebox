@@ -56,7 +56,7 @@ function playFallbackTone(): void {
   oscillator.stop(context.currentTime + 0.4);
 }
 
-export async function playTwoMinuteAlarm(): Promise<void> {
+export async function playTenMinuteAlarm(): Promise<void> {
   const context = getAudioContext();
   if (!context) return;
 
