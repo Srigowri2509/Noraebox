@@ -42,10 +42,12 @@ def _session_remaining_seconds(session: RoomSession):
 
 def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
     """Record that a song actually started playing."""
-    db.query(Song).filter(Song.id == song_id).update(
+    updated = db.query(Song).filter(Song.id == song_id).update(
         {Song.play_count: func.coalesce(Song.play_count, 0) + 1},
         synchronize_session=False,
     )
+    if updated != 1:
+        raise HTTPException(status_code=404, detail="Song not found")
     db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="started"))
 
 
@@ -623,6 +625,50 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
     except Exception as e:
         db.rollback()
         print(f"Error setting current song: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{room_id}/playback/started")
+def playback_started(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Increment play_count after the display confirms that playback started."""
+    try:
+        try:
+            song_id = int(payload.get("song_id"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="song_id is required")
+
+        session = db.query(RoomSession).filter(
+            RoomSession.room_id == room_id,
+            RoomSession.status == "active",
+        ).order_by(RoomSession.session_created_at.desc()).with_for_update().first()
+        if not session:
+            raise HTTPException(status_code=400, detail="No active session for this room")
+        if session.current_song_id != song_id:
+            raise HTTPException(status_code=409, detail="Song is not the session's current song")
+        if not session.current_song_start_time:
+            raise HTTPException(status_code=409, detail="Current song has no playback start time")
+
+        # The display may retry this notification. Count at most once for the
+        # current occurrence, whose boundary is current_song_start_time.
+        existing_started = db.query(PlaybackEvent.id).filter(
+            PlaybackEvent.room_id == room_id,
+            PlaybackEvent.song_id == song_id,
+            PlaybackEvent.event_type == "started",
+        )
+        existing_started = existing_started.filter(
+            PlaybackEvent.timestamp >= session.current_song_start_time
+        )
+        if existing_started.first():
+            return {"status": "already_recorded", "song_id": song_id}
+
+        _record_song_started(db, room_id, song_id)
+        db.commit()
+        return {"status": "recorded", "song_id": song_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error recording playback start: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -492,6 +492,18 @@ export default function Display({ roomId }) {
     }
   }, [roomId]);
 
+  const reportSongStarted = useCallback(async (songId) => {
+    try {
+      await api(`/rooms/${roomId}/playback/started`, {
+        method: "POST",
+        body: JSON.stringify({ song_id: Number(songId) }),
+      });
+    } catch (err) {
+      // Playback must continue even if analytics reporting temporarily fails.
+      console.warn("[PLAYBACK] failed to record song start:", err);
+    }
+  }, [roomId]);
+
   const nudgeAdvance = useCallback(async () => {
     if (queueAdvancingRef.current) return;
     queueAdvancingRef.current = true;
@@ -586,12 +598,13 @@ export default function Display({ roomId }) {
       transitionTargetRef.current = null;
       safeSet("lastVideo", url);
       dbg.current.lastEvent = `enterSong ${songId}`;
+      void reportSongStarted(songId);
       void onSongStarted(songId);
       return true;
     } finally {
       busyRef.current = false;
     }
-  }, []);
+  }, [reportSongStarted]);
 
   const resumeAfterExtensionPrompt = useCallback(async () => {
     if (extensionResumeBusyRef.current) return;
@@ -899,8 +912,9 @@ export default function Display({ roomId }) {
     transitionTargetRef.current = null;
     safeSet("lastVideo", url);
     dbg.current.lastEvent = `handoff OK ${songId}`;
+    void reportSongStarted(songId);
     void onSongStarted(songId);
-  }, []);
+  }, [reportSongStarted]);
 
   const tryHandoffToSong = useCallback(async (songId, url, source = "remote") => {
     if (!url) return false;

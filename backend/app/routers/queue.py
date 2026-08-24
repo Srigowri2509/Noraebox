@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -8,10 +10,12 @@ router = APIRouter()
 
 
 def _record_song_started(db: Session, room_id: str, song_id: int) -> None:
-    db.query(Song).filter(Song.id == song_id).update(
+    updated = db.query(Song).filter(Song.id == song_id).update(
         {Song.play_count: func.coalesce(Song.play_count, 0) + 1},
         synchronize_session=False,
     )
+    if updated != 1:
+        raise HTTPException(status_code=404, detail="Song not found")
     db.add(PlaybackEvent(room_id=room_id, song_id=song_id, event_type="started"))
 
 
@@ -75,6 +79,7 @@ def play_next(room_id: str = Query(...), db: Session = Depends(get_db)):
         
         if session:
             session.current_song_id = next_item.song_id
+            session.current_song_start_time = datetime.now(timezone.utc)
         _record_song_started(db, room_id, next_item.song_id)
         
         # Remove from queue
