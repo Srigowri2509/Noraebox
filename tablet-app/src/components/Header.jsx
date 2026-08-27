@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useRoom } from "../context/RoomContext";
 import { api } from "../api";
 
-export default function Header() {
+export default function Header({ onBookingCode }) {
   const { roomId, room } = useRoom();
   const [roomName, setRoomName] = useState(null);
   
@@ -49,14 +49,15 @@ export default function Header() {
             </div>
           </div>
 
-          <div
-            className="flex min-w-0 max-w-[52%] shrink-0 items-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 py-2 pl-3 pr-4 text-sky-300 md:gap-2.5 md:py-2.5 md:pl-4 md:pr-5"
-            style={{
-              fontSize: "clamp(0.8rem, 1.2vw, 1.05rem)",
-            }}
-          >
-            <span className="shrink-0 opacity-80">Room:</span>
-            <span className="truncate font-semibold text-white">{displayText}</span>
+          <div className="flex min-w-0 max-w-[62%] shrink-0 items-center gap-2">
+            <button type="button" onClick={onBookingCode} className="shrink-0 rounded-full border border-purple-400/45 bg-purple-500/15 px-4 py-2 text-sm font-bold text-purple-100 transition hover:bg-purple-500/30 md:px-5 md:py-2.5 md:text-base">Booking songs</button>
+            <div
+              className="flex min-w-0 items-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 py-2 pl-3 pr-4 text-sky-300 md:gap-2.5 md:py-2.5 md:pl-4 md:pr-5"
+              style={{ fontSize: "clamp(0.8rem, 1.2vw, 1.05rem)" }}
+            >
+              <span className="shrink-0 opacity-80">Room:</span>
+              <span className="truncate font-semibold text-white">{displayText}</span>
+            </div>
           </div>
         </div>
       </div>

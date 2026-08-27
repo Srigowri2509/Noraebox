@@ -4,6 +4,7 @@ import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
 import QueueList from "../components/QueueList.jsx";
 import Playlists from "../components/Playlists.jsx";
+import BookingSongCodeModal from "../components/BookingSongCodeModal.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch, { filterSongs } from "../hooks/usePrefixSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
@@ -21,6 +22,7 @@ export default function Home() {
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [playlistSongs, setPlaylistSongs] = useState([]);
+  const [bookingCodeOpen, setBookingCodeOpen] = useState(false);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading } = useSongSearch();
@@ -733,7 +735,18 @@ const filteredSongs = useMemo(() => {
       {/* Semi-transparent overlay for readability (stronger so UI stays legible on busy art) */}
       <div className="fixed inset-0 bg-[#0B0F17]/78 -z-10" aria-hidden />
 
-      <Header />
+      <Header onBookingCode={() => setBookingCodeOpen(true)} />
+      <BookingSongCodeModal
+        open={bookingCodeOpen}
+        roomId={room?.id || roomId}
+        onClose={() => setBookingCodeOpen(false)}
+        onImported={async () => {
+          const currentRoomId = room?.id || roomId;
+          if (!currentRoomId) return;
+          const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+          setQueue(queueRes || []);
+        }}
+      />
 
       <div
         className="mb-3 shrink-0 md:mb-4"

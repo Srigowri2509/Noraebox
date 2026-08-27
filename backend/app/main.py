@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates
+from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates, song_access
 from app.services.admin_ws import admin_ws_manager
 from app.services.display_ws import display_ws_manager
 from app.services.search_setup import ensure_search_support
@@ -36,6 +36,7 @@ app.include_router(devices.router, prefix="/devices")
 app.include_router(stats.router, prefix="/stats")
 app.include_router(playlists.router, prefix="/playlists")
 app.include_router(updates.router, prefix="/updates")
+app.include_router(song_access.router, prefix="/song-access")
 
 # Create all tables once at startup (can be removed after first successful run)
 @app.on_event("startup")
