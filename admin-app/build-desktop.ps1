@@ -56,7 +56,7 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "Installer location:" -ForegroundColor Yellow
-    Write-Host "  dist-electron/Norebox Admin Setup.exe" -ForegroundColor White
+    Write-Host "  dist-electron/Noraebox Admin Setup.exe" -ForegroundColor White
     Write-Host ""
     Write-Host "Run the installer to install the desktop app!" -ForegroundColor Yellow
 } else {

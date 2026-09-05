@@ -122,6 +122,171 @@ input {
   max-width: 1180px;
 }
 
+.song-suggestions-panel {
+  width: 100%;
+  max-width: 1180px;
+  overflow: hidden;
+  border: 1px solid #d8b4fe;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 14px 32px rgba(88, 28, 135, 0.1);
+}
+
+.song-suggestions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.25rem;
+  border-bottom: 1px solid #eadcf8;
+}
+
+.song-suggestions-header h2 {
+  margin: 0;
+  color: #581c87;
+  font-size: 1.25rem;
+  font-weight: 750;
+}
+
+.song-suggestions-header p {
+  margin: 0.2rem 0 0;
+  color: #7c6f86;
+  font-size: 0.82rem;
+}
+
+.song-suggestions-controls {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.5rem;
+}
+
+.song-suggestions-controls select,
+.song-suggestions-controls button {
+  border: 1px solid #d8b4fe;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  color: #6b21a8;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.song-suggestions-controls button:not(:disabled) {
+  cursor: pointer;
+}
+
+.song-suggestions-list {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+}
+
+.song-suggestion-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #ede9fe;
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+.song-suggestion-card-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.song-suggestion-card h3 {
+  margin: 0;
+  overflow: hidden;
+  color: #2e1065;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.song-suggestion-card p,
+.song-suggestion-card time {
+  display: block;
+  margin: 0.15rem 0 0;
+  color: #7c6f86;
+  font-size: 0.72rem;
+}
+
+.song-suggestion-card time {
+  color: #a092aa;
+}
+
+.song-suggestion-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.song-suggestion-status.is-pending { color: #92400e; background: #fef3c7; }
+.song-suggestion-status.is-approved { color: #065f46; background: #d1fae5; }
+.song-suggestion-status.is-rejected { color: #991b1b; background: #fee2e2; }
+
+.song-suggestion-card-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+}
+
+.song-suggestion-card-actions button {
+  border-radius: 0.55rem;
+  padding: 0.42rem 0.65rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.song-suggestion-card-actions .is-approve {
+  border: 1px solid #6ee7b7;
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.song-suggestion-card-actions .is-reject {
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  background: #fff1f2;
+}
+
+.song-suggestion-card-actions button:not(:disabled) { cursor: pointer; }
+.song-suggestion-card-actions button:disabled { cursor: wait; opacity: 0.55; }
+
+.song-suggestions-empty,
+.song-suggestions-error {
+  margin: 0;
+  padding: 1.4rem;
+  text-align: center;
+  color: #7c6f86;
+  font-size: 0.85rem;
+}
+
+.song-suggestions-error { color: #b91c1c; }
+
+@media (max-width: 700px) {
+  .song-suggestions-header,
+  .song-suggestion-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .song-suggestions-controls {
+    width: 100%;
+  }
+
+  .song-suggestions-controls select {
+    flex: 1 1 auto;
+  }
+}
+
 .device-room-panel__header {
   margin-bottom: 1.25rem;
 }

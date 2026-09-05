@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import SongCard from "./SongCard";
+import { api } from "../api";
 
 const PAGE_SIZE = 20;
 
@@ -11,10 +12,22 @@ export default function SearchResults({
   loading,
   languageLabel = null,
   hideHeader = false,
+  suggestionTitle = "",
+  suggestionLanguage = null,
+  suggestionRoomId = null,
 }) {
   const songList = songs || results;
   const [currentPage, setCurrentPage] = useState(1);
   const scrollRef = useRef(null);
+  const [suggestionFeedback, setSuggestionFeedback] = useState({ key: "", status: "idle", error: "" });
+  const [artistDraft, setArtistDraft] = useState({ key: "", value: "" });
+  const suggestionKey = `${suggestionTitle.trim()}\u0000${suggestionLanguage || ""}`;
+  const suggestionArtist = artistDraft.key === suggestionKey ? artistDraft.value : "";
+  const currentSuggestionFeedback = suggestionFeedback.key === suggestionKey
+    ? suggestionFeedback
+    : { status: "idle", error: "" };
+  const suggestionState = currentSuggestionFeedback.status;
+  const suggestionError = currentSuggestionFeedback.error;
 
   const handleQueue = onAddToQueue || onQueue;
 
@@ -42,6 +55,30 @@ export default function SearchResults({
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page);
+    }
+  };
+
+  const submitSuggestion = async () => {
+    const title = suggestionTitle.trim();
+    if (!title || suggestionState === "submitting" || suggestionState === "submitted") return;
+    setSuggestionFeedback({ key: suggestionKey, status: "submitting", error: "" });
+    try {
+      await api("/songs/suggestions", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          artist: suggestionArtist.trim() || null,
+          language: suggestionLanguage || null,
+          room_id: suggestionRoomId || null,
+        }),
+      });
+      setSuggestionFeedback({ key: suggestionKey, status: "submitted", error: "" });
+    } catch (error) {
+      setSuggestionFeedback({
+        key: suggestionKey,
+        status: "idle",
+        error: error.message || "Could not submit this song. Please try again.",
+      });
     }
   };
 
@@ -103,6 +140,7 @@ export default function SearchResults({
   }
 
   if (!songList || songList.length === 0) {
+    const canSuggest = Boolean(suggestionTitle.trim());
     return (
       <div className="search-results-root">
         {languageLabel && (
@@ -112,18 +150,50 @@ export default function SearchResults({
             </p>
           </div>
         )}
-        <div className="most-played-scroll flex flex-col items-center justify-center px-6 py-8 text-center md:px-10">
-          <p className="max-w-sm text-base leading-relaxed text-slate-400 md:max-w-md md:text-lg">
-            Suggest this song on our website:{" "}
-            <a
-              href="https://www.noraebox.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-slate-200 underline decoration-violet-400/35 decoration-1 underline-offset-[4px] transition-colors hover:text-white hover:decoration-violet-300/55"
-            >
-              www.noraebox.com
-            </a>
-          </p>
+        <div className="search-results-scroll flex flex-col items-center justify-center px-6 py-8 text-center md:px-10">
+          {canSuggest ? (
+            <div className="song-suggestion-empty">
+              <div className="song-suggestion-empty-icon" aria-hidden>♫</div>
+              <p className="song-suggestion-empty-title">No songs found</p>
+              <p className="song-suggestion-empty-copy">
+                Request <span>“{suggestionTitle.trim()}”</span> for the song bank.
+              </p>
+              <form
+                className="song-suggestion-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  submitSuggestion();
+                }}
+              >
+                <label htmlFor="song-suggestion-artist">Artist name</label>
+                <input
+                  id="song-suggestion-artist"
+                  type="text"
+                  value={suggestionArtist}
+                  onChange={(event) => setArtistDraft({ key: suggestionKey, value: event.target.value })}
+                  disabled={suggestionState !== "idle"}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Enter singer or artist (optional)"
+                />
+                <button
+                  type="submit"
+                  disabled={suggestionState !== "idle"}
+                  className="song-suggestion-submit"
+                >
+                  {suggestionState === "submitting"
+                    ? "Sending…"
+                    : suggestionState === "submitted"
+                      ? "Suggestion sent ✓"
+                      : "Suggest this song"}
+                </button>
+              </form>
+              {suggestionError ? <p className="song-suggestion-error" role="alert">{suggestionError}</p> : null}
+              {suggestionState === "submitted" ? (
+                <p className="song-suggestion-success" role="status">Sent to the Noraebox admin team.</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     );

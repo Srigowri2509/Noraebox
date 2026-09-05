@@ -8,7 +8,6 @@ from app.models import PlaybackEvent, QueueItem, Room, Song
 from app.services.song_access import match_suggestions, resolve_website_code
 
 router = APIRouter()
-MAX_QUEUE_SIZE = 20
 
 
 class SongCodeRequest(BaseModel):
@@ -21,7 +20,7 @@ class SongCodeRequest(BaseModel):
 
 class SongCodeImportRequest(SongCodeRequest):
     room_id: str
-    song_ids: list[int] = Field(default_factory=list, max_length=10)
+    song_ids: list[int] = Field(default_factory=list)
 
 
 @router.post("/preview")
@@ -67,9 +66,6 @@ def import_song_code(payload: SongCodeImportRequest, db: Session = Depends(get_d
     for song_id in requested_ids:
         if song_id in existing_ids:
             skipped.append({"song_id": song_id, "reason": "already_in_queue"})
-            continue
-        if current_count >= MAX_QUEUE_SIZE:
-            skipped.append({"song_id": song_id, "reason": "queue_full"})
             continue
         song = db.query(Song).filter(Song.id == song_id).first()
         if not song:

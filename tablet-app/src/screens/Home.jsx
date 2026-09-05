@@ -4,7 +4,7 @@ import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
 import QueueList from "../components/QueueList.jsx";
 import Playlists from "../components/Playlists.jsx";
-import BookingSongCodeModal from "../components/BookingSongCodeModal.jsx";
+import BookingSongCodePanel from "../components/BookingSongCodePanel.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch, { filterSongs } from "../hooks/usePrefixSearch.jsx";
 import { useRoomContext } from "../context/RoomContext.jsx";
@@ -22,7 +22,6 @@ export default function Home() {
   const [playlists, setPlaylists] = useState([]);
   const [selectedPlaylistId, setSelectedPlaylistId] = useState(null);
   const [playlistSongs, setPlaylistSongs] = useState([]);
-  const [bookingCodeOpen, setBookingCodeOpen] = useState(false);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
   const { all: allSongs = [], loading: songsLoading } = useSongSearch();
@@ -215,8 +214,6 @@ const filteredSongs = useMemo(() => {
 }, [allSongs, filters, selectedPlaylistId, playlistSongs,
     hasTextSearch, searchResults]);
 
-  const MAX_QUEUE_SIZE = 20;
-
   const [isAddingToQueue, setIsAddingToQueue] = useState(false);
   const [addingSongId, setAddingSongId] = useState(null); // Track which song is being added
   
@@ -267,11 +264,6 @@ const filteredSongs = useMemo(() => {
       return;
     }
 
-    if ((queue?.length || 0) >= MAX_QUEUE_SIZE) {
-      alert(`Queue is full (max ${MAX_QUEUE_SIZE} songs). Remove a song to add another.`);
-      return;
-    }
-    
     // Set flags synchronously before async operations to prevent race conditions
     setIsAddingToQueue(true);
     setAddingSongId(songId);
@@ -735,18 +727,7 @@ const filteredSongs = useMemo(() => {
       {/* Semi-transparent overlay for readability (stronger so UI stays legible on busy art) */}
       <div className="fixed inset-0 bg-[#0B0F17]/78 -z-10" aria-hidden />
 
-      <Header onBookingCode={() => setBookingCodeOpen(true)} />
-      <BookingSongCodeModal
-        open={bookingCodeOpen}
-        roomId={room?.id || roomId}
-        onClose={() => setBookingCodeOpen(false)}
-        onImported={async () => {
-          const currentRoomId = room?.id || roomId;
-          if (!currentRoomId) return;
-          const queueRes = await api(`/rooms/${currentRoomId}/queue`);
-          setQueue(queueRes || []);
-        }}
-      />
+      <Header />
 
       <div
         className="mb-3 shrink-0 md:mb-4"
@@ -900,6 +881,9 @@ const filteredSongs = useMemo(() => {
                       onAddToQueue={handleAddToQueue}
                       loading={songsLoading || isSearching}
                       hideHeader={Boolean(selectedPlaylistId)}
+                      suggestionTitle={!selectedPlaylistId && hasTextSearch ? searchQuery : ""}
+                      suggestionLanguage={filters.language !== "all" ? filters.language : null}
+                      suggestionRoomId={room?.id || roomId || null}
                       languageLabel={
                         !selectedPlaylistId && !hasTextSearch && filters.language !== "all"
                           ? filters.language
@@ -909,13 +893,16 @@ const filteredSongs = useMemo(() => {
                   </div>
                 </div>
               ) : (
-                <div className="card-surface panel-fill p-3 sm:p-4 md:p-6 lg:p-7 flex items-center justify-center">
-                  <div className="text-center text-slate-400">
-                    <div className="text-base sm:text-lg font-semibold text-slate-300">
-                      Search for a song or choose a playlist
-                    </div>
-                    <div className="mt-2 text-sm">Songs will appear here.</div>
-                  </div>
+                <div className="card-surface panel-fill flex items-center justify-center p-4 sm:p-5 md:p-7">
+                  <BookingSongCodePanel
+                    roomId={room?.id || roomId}
+                    onImported={async () => {
+                      const currentRoomId = room?.id || roomId;
+                      if (!currentRoomId) return;
+                      const queueRes = await api(`/rooms/${currentRoomId}/queue`);
+                      setQueue(queueRes || []);
+                    }}
+                  />
                 </div>
               )}
             </div>

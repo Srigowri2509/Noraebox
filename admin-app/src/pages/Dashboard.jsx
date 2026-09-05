@@ -3,6 +3,7 @@ import { api } from "../api";
 import RoomSquare from "../components/RoomSquare";
 import RoomModal from "../components/RoomModal";
 import DeviceRoomPanel from "../components/DeviceRoomPanel";
+import SongSuggestionsPanel from "../components/SongSuggestionsPanel";
 import { useNotifications } from "../hooks/useNotifications";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { requestPermission } from "../services/notificationService";
@@ -419,6 +420,10 @@ export default function Dashboard() {
             Loading rooms...
           </div>
         )}
+      </div>
+
+      <div className="song-suggestions-section w-full flex justify-center mt-10 px-4">
+        <SongSuggestionsPanel />
       </div>
 
       {/* Devices - one compact card per room */}
