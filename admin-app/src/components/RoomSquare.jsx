@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { playSessionFinishedSound } from "../services/audioService";
 
 export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge, extensionNotice }) {
   const [remaining, setRemaining] = useState(null);
   const [session, setSession] = useState(null);
-  const previousRemainingSecondsRef = useRef(null);
 
   // Fetch session data from room_sessions
   // Always fetch to check for active sessions (even if room.is_active is false)
@@ -53,13 +52,48 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
   }, [session]);
 
   useEffect(() => {
-    const timeout = setTimeout(updateRemaining, 0);
+    const initialUpdate = setTimeout(updateRemaining, 0);
     const interval = setInterval(updateRemaining, 1000);
     return () => {
-      clearTimeout(timeout);
+      clearTimeout(initialUpdate);
       clearInterval(interval);
     };
   }, [updateRemaining]);
+
+  useEffect(() => {
+    const isActive = session?.status === "active" || session?.status === "playing";
+    const sessionId = session?.id;
+    if (!isActive || !sessionId || !session.session_start_time || !session.total_minutes) {
+      return undefined;
+    }
+
+    const endAt = session.session_end_time
+      ? new Date(session.session_end_time).getTime()
+      : new Date(session.session_start_time).getTime() + session.total_minutes * 60_000;
+    const delay = endAt - Date.now();
+
+    // Never replay an alarm for a deadline that passed before this timer was
+    // scheduled. Live sessions are scheduled once against their exact end.
+    if (!Number.isFinite(delay) || delay <= 0) return undefined;
+
+    const deadlineTimer = window.setTimeout(() => {
+      // Set the countdown to zero in the same deadline callback that starts
+      // the sound, so there is no separate one-second polling delay.
+      setRemaining(0);
+      playSessionFinishedSound(String(sessionId)).catch((error) => {
+        console.warn(`Session-finished sound failed for ${room.name}.`, error);
+      });
+    }, delay);
+
+    return () => window.clearTimeout(deadlineTimer);
+  }, [
+    room.name,
+    session?.id,
+    session?.session_end_time,
+    session?.session_start_time,
+    session?.status,
+    session?.total_minutes,
+  ]);
 
   const remainingSeconds = remaining !== null
     ? Math.max(0, Math.ceil(remaining * 60))
@@ -74,25 +108,6 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
   const hasCompletedSession = Boolean(finishedSession);
   const isFree = !hasActiveSession && !room.is_active;
 
-  useEffect(() => {
-    const previousSeconds = previousRemainingSecondsRef.current;
-    const justReachedZero =
-      previousSeconds !== null && previousSeconds > 0 && remainingSeconds === 0;
-
-    previousRemainingSecondsRef.current = remainingSeconds;
-
-    // Sound only on the local countdown's transition to 00:00. Session events
-    // must never trigger audio while the displayed timer is still above zero.
-    if (!justReachedZero) return;
-
-    const sessionId = session?.id;
-    if (!sessionId) return;
-
-    playSessionFinishedSound(String(sessionId)).catch((error) => {
-      console.warn(`Session-finished sound failed for ${room.name}.`, error);
-    });
-  }, [remainingSeconds, room.name, session?.id]);
-  
   // Show timer only if session_start_time exists, otherwise show "USING" or "READY"
   const timerDisplay = hasCompletedSession
     ? "00:00"
