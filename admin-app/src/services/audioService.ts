@@ -58,44 +58,6 @@ function playFallbackTone(): void {
   oscillator.stop(context.currentTime + 0.4);
 }
 
-export async function playTenMinuteAlarm(): Promise<void> {
-  const context = getAudioContext();
-  if (!context) return;
-
-  if (context.state === "suspended") {
-    await context.resume();
-  }
-
-  if (context.state !== "running") {
-    throw new Error("Browser audio is not unlocked yet.");
-  }
-
-  const startAt = context.currentTime + 0.05;
-  const beepLength = 0.32;
-  const gap = 0.18;
-
-  // Four alternating beeps are distinct from the short session-finished
-  // notification and work even when the MP3 asset is unavailable.
-  [880, 660, 880, 660].forEach((frequency, index) => {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const beepStart = startAt + index * (beepLength + gap);
-    const beepEnd = beepStart + beepLength;
-
-    oscillator.type = "square";
-    oscillator.frequency.setValueAtTime(frequency, beepStart);
-    gain.gain.setValueAtTime(0.001, beepStart);
-    gain.gain.exponentialRampToValueAtTime(0.22, beepStart + 0.025);
-    gain.gain.setValueAtTime(0.22, beepEnd - 0.04);
-    gain.gain.exponentialRampToValueAtTime(0.001, beepEnd);
-
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(beepStart);
-    oscillator.stop(beepEnd + 0.01);
-  });
-}
-
 export async function playNotificationSound(): Promise<void> {
   try {
     // Resolve beside index.html so the sound works both in the browser and in

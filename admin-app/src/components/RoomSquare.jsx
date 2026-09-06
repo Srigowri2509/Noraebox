@@ -1,33 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { playSessionFinishedSound, playTenMinuteAlarm } from "../services/audioService";
-
-const TEN_MINUTE_ALARM_KEY = "noraebox.tenMinuteAlarms";
-const TEN_MINUTE_ALARM_THRESHOLD = 10;
-
-function getPlayedAlarmKeys() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(TEN_MINUTE_ALARM_KEY) || "[]");
-    return new Set(Array.isArray(saved) ? saved : []);
-  } catch {
-    return new Set();
-  }
-}
-
-const playedAlarmKeys = getPlayedAlarmKeys();
-const pendingAlarmKeys = new Set();
-
-function savePlayedAlarmKey(alarmKey) {
-  playedAlarmKeys.add(alarmKey);
-  try {
-    window.localStorage.setItem(
-      TEN_MINUTE_ALARM_KEY,
-      JSON.stringify(Array.from(playedAlarmKeys).slice(-500))
-    );
-  } catch {
-    // The alarm can still play when storage is unavailable.
-  }
-}
+import { playSessionFinishedSound } from "../services/audioService";
 
 export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge, extensionNotice }) {
   const [remaining, setRemaining] = useState(null);
@@ -87,32 +60,6 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       clearInterval(interval);
     };
   }, [updateRemaining]);
-
-  useEffect(() => {
-    const isActive = session && (session.status === "active" || session.status === "playing");
-    if (
-      !isActive ||
-      remaining === null ||
-      remaining <= 0 ||
-      remaining > TEN_MINUTE_ALARM_THRESHOLD
-    ) return;
-
-    const sessionIdentity = session.id || `${room.id}:${session.session_start_time}`;
-    const durationIdentity = session.session_end_time || session.total_minutes;
-    const alarmKey = `${sessionIdentity}:${durationIdentity}`;
-    if (playedAlarmKeys.has(alarmKey) || pendingAlarmKeys.has(alarmKey)) return;
-
-    // Keep the key pending so the 1-second timer and 2-second session refresh
-    // cannot schedule the same alarm concurrently. Persist only after audio
-    // succeeds, allowing a blocked browser to retry after user interaction.
-    pendingAlarmKeys.add(alarmKey);
-    playTenMinuteAlarm()
-      .then(() => savePlayedAlarmKey(alarmKey))
-      .catch((error) => {
-        console.warn(`Ten-minute alarm failed for ${room.name}.`, error);
-      })
-      .finally(() => pendingAlarmKeys.delete(alarmKey));
-  }, [remaining, room.id, room.name, session]);
 
   const remainingSeconds = remaining !== null
     ? Math.max(0, Math.ceil(remaining * 60))
