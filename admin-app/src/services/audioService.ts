@@ -1,10 +1,12 @@
-const NOTIFICATION_SOUND_URL = "/notification.mp3";
+const NOTIFICATION_SOUND_FILE = "notification.mp3";
 
 type WindowWithWebAudio = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
 
 let sharedAudioContext: AudioContext | null = null;
+const playedSessionEndSounds = new Set<string>();
+const pendingSessionEndSounds = new Set<string>();
 
 function getAudioContext(): AudioContext | null {
   const AudioContextClass =
@@ -96,7 +98,10 @@ export async function playTenMinuteAlarm(): Promise<void> {
 
 export async function playNotificationSound(): Promise<void> {
   try {
-    const audio = new Audio(NOTIFICATION_SOUND_URL);
+    // Resolve beside index.html so the sound works both in the browser and in
+    // the packaged Electron app loaded from a file:// URL.
+    const soundUrl = new URL(NOTIFICATION_SOUND_FILE, window.location.href).toString();
+    const audio = new Audio(soundUrl);
     audio.preload = "auto";
     audio.volume = 0.9;
     await audio.play();
@@ -107,5 +112,18 @@ export async function playNotificationSound(): Promise<void> {
     } catch (fallbackError) {
       console.warn("Notification fallback tone could not play.", fallbackError);
     }
+  }
+}
+
+export async function playSessionFinishedSound(sessionId: string): Promise<void> {
+  const key = String(sessionId || "unknown-session");
+  if (playedSessionEndSounds.has(key) || pendingSessionEndSounds.has(key)) return;
+
+  pendingSessionEndSounds.add(key);
+  try {
+    await playNotificationSound();
+    playedSessionEndSounds.add(key);
+  } finally {
+    pendingSessionEndSounds.delete(key);
   }
 }

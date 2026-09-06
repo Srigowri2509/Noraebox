@@ -1,4 +1,4 @@
-import { playNotificationSound as playSound } from "./audioService";
+import { playSessionFinishedSound } from "./audioService";
 
 export type SessionFinishedRoom = {
   sessionId: string;
@@ -19,12 +19,8 @@ export function requestPermission(): Promise<NotificationPermission> {
   return Notification.requestPermission();
 }
 
-export async function playNotificationSound(): Promise<void> {
-  await playSound();
-}
-
 export async function notifySessionFinished(room: SessionFinishedRoom): Promise<void> {
-  await playNotificationSound();
+  await playSessionFinishedSound(room.sessionId);
 
   if (!("Notification" in window) || Notification.permission !== "granted") {
     return;

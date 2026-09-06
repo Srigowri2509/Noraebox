@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
-import { playTenMinuteAlarm } from "../services/audioService";
+import { playSessionFinishedSound, playTenMinuteAlarm } from "../services/audioService";
 
 const TEN_MINUTE_ALARM_KEY = "noraebox.tenMinuteAlarms";
 const TEN_MINUTE_ALARM_THRESHOLD = 10;
@@ -32,6 +32,7 @@ function savePlayedAlarmKey(alarmKey) {
 export default function RoomSquare({ room, onClick, finishedSession, onAcknowledge, extensionNotice }) {
   const [remaining, setRemaining] = useState(null);
   const [session, setSession] = useState(null);
+  const previousRemainingSecondsRef = useRef(null);
 
   // Fetch session data from room_sessions
   // Always fetch to check for active sessions (even if room.is_active is false)
@@ -113,13 +114,37 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
       .finally(() => pendingAlarmKeys.delete(alarmKey));
   }, [remaining, room.id, room.name, session]);
 
-  const mins = remaining !== null ? Math.floor(remaining) : 0;
-  const secs = remaining !== null ? Math.floor((remaining - mins) * 60).toString().padStart(2, "0") : "00";
+  const remainingSeconds = remaining !== null
+    ? Math.max(0, Math.ceil(remaining * 60))
+    : null;
+  const mins = remainingSeconds !== null ? Math.floor(remainingSeconds / 60) : 0;
+  const secs = remainingSeconds !== null
+    ? String(remainingSeconds % 60).padStart(2, "0")
+    : "00";
 
   // Check if there's an active session (even if room.is_active is false initially)
   const hasActiveSession = session && (session.status === 'active' || session.status === 'playing');
   const hasCompletedSession = Boolean(finishedSession);
   const isFree = !hasActiveSession && !room.is_active;
+
+  useEffect(() => {
+    const previousSeconds = previousRemainingSecondsRef.current;
+    const justReachedZero =
+      previousSeconds !== null && previousSeconds > 0 && remainingSeconds === 0;
+
+    previousRemainingSecondsRef.current = remainingSeconds;
+
+    // The local countdown is the primary trigger. The finished-session event
+    // is a fallback in case a session update replaces the timer at zero.
+    if (!justReachedZero && !hasCompletedSession) return;
+
+    const sessionId = finishedSession?.sessionId || session?.id;
+    if (!sessionId) return;
+
+    playSessionFinishedSound(String(sessionId)).catch((error) => {
+      console.warn(`Session-finished sound failed for ${room.name}.`, error);
+    });
+  }, [finishedSession, hasCompletedSession, remainingSeconds, room.name, session?.id]);
   
   // Show timer only if session_start_time exists, otherwise show "USING" or "READY"
   const timerDisplay = hasCompletedSession
