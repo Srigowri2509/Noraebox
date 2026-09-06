@@ -81,17 +81,17 @@ export default function RoomSquare({ room, onClick, finishedSession, onAcknowled
 
     previousRemainingSecondsRef.current = remainingSeconds;
 
-    // The local countdown is the primary trigger. The finished-session event
-    // is a fallback in case a session update replaces the timer at zero.
-    if (!justReachedZero && !hasCompletedSession) return;
+    // Sound only on the local countdown's transition to 00:00. Session events
+    // must never trigger audio while the displayed timer is still above zero.
+    if (!justReachedZero) return;
 
-    const sessionId = finishedSession?.sessionId || session?.id;
+    const sessionId = session?.id;
     if (!sessionId) return;
 
     playSessionFinishedSound(String(sessionId)).catch((error) => {
       console.warn(`Session-finished sound failed for ${room.name}.`, error);
     });
-  }, [finishedSession, hasCompletedSession, remainingSeconds, room.name, session?.id]);
+  }, [remainingSeconds, room.name, session?.id]);
   
   // Show timer only if session_start_time exists, otherwise show "USING" or "READY"
   const timerDisplay = hasCompletedSession

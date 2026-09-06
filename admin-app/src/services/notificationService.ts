@@ -1,5 +1,3 @@
-import { playSessionFinishedSound } from "./audioService";
-
 export type SessionFinishedRoom = {
   sessionId: string;
   roomId: string;
@@ -20,8 +18,6 @@ export function requestPermission(): Promise<NotificationPermission> {
 }
 
 export async function notifySessionFinished(room: SessionFinishedRoom): Promise<void> {
-  await playSessionFinishedSound(room.sessionId);
-
   if (!("Notification" in window) || Notification.permission !== "granted") {
     return;
   }
@@ -31,6 +27,7 @@ export async function notifySessionFinished(room: SessionFinishedRoom): Promise<
     icon: "/logo_norebox.jpg",
     tag: `session-finished-${room.sessionId}`,
     requireInteraction: true,
+    silent: true,
   });
 
   notification.onclick = () => {
