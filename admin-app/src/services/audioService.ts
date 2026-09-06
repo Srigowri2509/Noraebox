@@ -1,5 +1,3 @@
-const NOTIFICATION_SOUND_FILE = "notification.mp3";
-
 type WindowWithWebAudio = Window & {
   webkitAudioContext?: typeof AudioContext;
 };
@@ -39,42 +37,42 @@ export async function unlockAdminAudio(): Promise<void> {
   oscillator.stop(context.currentTime + 0.01);
 }
 
-function playFallbackTone(): void {
+async function playPreviousAlarmSound(): Promise<void> {
   const context = getAudioContext();
-  if (!context) return;
+  if (!context) throw new Error("Web Audio is not supported.");
 
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-
-  oscillator.type = "sine";
-  oscillator.frequency.value = 880;
-  gain.gain.setValueAtTime(0.001, context.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.35);
-
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.4);
-}
-
-export async function playNotificationSound(): Promise<void> {
-  try {
-    // Resolve beside index.html so the sound works both in the browser and in
-    // the packaged Electron app loaded from a file:// URL.
-    const soundUrl = new URL(NOTIFICATION_SOUND_FILE, window.location.href).toString();
-    const audio = new Audio(soundUrl);
-    audio.preload = "auto";
-    audio.volume = 0.9;
-    await audio.play();
-  } catch (error) {
-    console.warn("Notification sound file could not play, using fallback tone.", error);
-    try {
-      playFallbackTone();
-    } catch (fallbackError) {
-      console.warn("Notification fallback tone could not play.", fallbackError);
-    }
+  if (context.state === "suspended") {
+    await context.resume();
   }
+
+  if (context.state !== "running") {
+    throw new Error("Browser audio is not unlocked yet.");
+  }
+
+  const startAt = context.currentTime + 0.05;
+  const beepLength = 0.32;
+  const gap = 0.18;
+
+  // Preserve the original four alternating beeps, now used only when the
+  // session timer reaches 00:00.
+  [880, 660, 880, 660].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const beepStart = startAt + index * (beepLength + gap);
+    const beepEnd = beepStart + beepLength;
+
+    oscillator.type = "square";
+    oscillator.frequency.setValueAtTime(frequency, beepStart);
+    gain.gain.setValueAtTime(0.001, beepStart);
+    gain.gain.exponentialRampToValueAtTime(0.22, beepStart + 0.025);
+    gain.gain.setValueAtTime(0.22, beepEnd - 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, beepEnd);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(beepStart);
+    oscillator.stop(beepEnd + 0.01);
+  });
 }
 
 export async function playSessionFinishedSound(sessionId: string): Promise<void> {
@@ -83,7 +81,7 @@ export async function playSessionFinishedSound(sessionId: string): Promise<void>
 
   pendingSessionEndSounds.add(key);
   try {
-    await playNotificationSound();
+    await playPreviousAlarmSound();
     playedSessionEndSounds.add(key);
   } finally {
     pendingSessionEndSounds.delete(key);
