@@ -27,6 +27,7 @@ const TRANSCITIONS_FOLDER = "transcitions";
 const POLL_INTERVAL_MS = isTelevisionDisplay() ? 3000 : 1000;
 const EXTENSION_PROMPT_WINDOW_MS = 5 * 60 * 1000;
 const FINAL_SUMMARY_DURATION_MS = 10 * 1000;
+const COUNTED_PLAY_SECONDS = 3;
 
 // Acer/Android TV APKs: transitions stay on, but we avoid preloading extra
 // decoders during a song. VITE_LOW_POWER=true disables transitions entirely.
@@ -231,6 +232,7 @@ export default function Display({ roomId }) {
   const skipTargetRef = useRef(null); // skip in-flight target — stops poll re-preempt loop
   const transitionEndLockRef = useRef(false);
   const queueHeadRef = useRef(null); // invalidate armed next when queue head changes (reorder)
+  const playCountQualificationRef = useRef({ token: 0, timer: null });
 
   // ---- On-screen debug overlay (Android TV has no visible console) ----------
   const [showDebug, setShowDebug] = useState(false);
@@ -504,6 +506,48 @@ export default function Display({ roomId }) {
     }
   }, [roomId]);
 
+  const cancelPlayCountQualification = useCallback(() => {
+    const qualification = playCountQualificationRef.current;
+    qualification.token += 1;
+    if (qualification.timer != null) {
+      window.clearTimeout(qualification.timer);
+      qualification.timer = null;
+    }
+  }, []);
+
+  const qualifySongAfterThreeSeconds = useCallback((songId) => {
+    cancelPlayCountQualification();
+    const qualification = playCountQualificationRef.current;
+    const token = qualification.token;
+    const expectedSongId = sid(songId);
+    const initialVideo = videoRef.current?.getActiveVideo?.();
+    const initialTime = Number(initialVideo?.currentTime || 0);
+
+    const checkPlayback = () => {
+      if (
+        qualification.token !== token ||
+        stageRef.current !== "SONG" ||
+        sid(currentSongIdRef.current) !== expectedSongId
+      ) {
+        return;
+      }
+
+      const video = videoRef.current?.getActiveVideo?.();
+      const playedSeconds = Number(video?.currentTime || 0) - initialTime;
+      if (video && !video.paused && playedSeconds >= COUNTED_PLAY_SECONDS) {
+        qualification.timer = null;
+        void reportSongStarted(songId);
+        return;
+      }
+
+      qualification.timer = window.setTimeout(checkPlayback, 250);
+    };
+
+    qualification.timer = window.setTimeout(checkPlayback, 250);
+  }, [cancelPlayCountQualification, reportSongStarted]);
+
+  useEffect(() => () => cancelPlayCountQualification(), [cancelPlayCountQualification]);
+
   const nudgeAdvance = useCallback(async () => {
     if (queueAdvancingRef.current) return;
     queueAdvancingRef.current = true;
@@ -522,6 +566,7 @@ export default function Display({ roomId }) {
   // ---- State transitions ---------------------------------------------------
 
   const goToLogo = useCallback((reason = "goToLogo") => {
+    cancelPlayCountQualification();
     const wasLogo = stageRef.current === "LOGO";
     stageRef.current = "LOGO";
     currentSongIdRef.current = null;
@@ -534,13 +579,14 @@ export default function Display({ roomId }) {
       void clearNextSongCache(reason);
     }
     videoRef.current?.cutToLogo();
-  }, []);
+  }, [cancelPlayCountQualification]);
 
   // HARD cut to logo when the backend reports session ended. Cancels everything
   // and locks until a new session starts or the backend session becomes active again.
   const hardCutToLogo = useCallback(() => {
     if (finalizedRef.current) return;
     finalizedRef.current = true;
+    cancelPlayCountQualification();
     console.log("[STATE] hard cut -> LOGO");
     driveSeqRef.current += 1;
     driveLockRef.current = false;
@@ -571,7 +617,7 @@ export default function Display({ roomId }) {
     void videoRef.current?.prepareForNextSong?.();
     videoRef.current?.cutToLogo();
     stageRef.current = "LOGO";
-  }, [roomId]);
+  }, [cancelPlayCountQualification, roomId]);
 
   // Begin playing a song NOW (cold start from logo, or instant skip target).
   const enterSong = useCallback(async (songId, url, { urgent = false, coldStart = false, afterTransition = false, seq } = {}) => {
@@ -598,13 +644,13 @@ export default function Display({ roomId }) {
       transitionTargetRef.current = null;
       safeSet("lastVideo", url);
       dbg.current.lastEvent = `enterSong ${songId}`;
-      void reportSongStarted(songId);
+      qualifySongAfterThreeSeconds(songId);
       void onSongStarted(songId);
       return true;
     } finally {
       busyRef.current = false;
     }
-  }, [reportSongStarted]);
+  }, [qualifySongAfterThreeSeconds]);
 
   const resumeAfterExtensionPrompt = useCallback(async () => {
     if (extensionResumeBusyRef.current) return;
@@ -663,6 +709,7 @@ export default function Display({ roomId }) {
     async (backendSongId, seq) => {
       const stale = () => seq !== driveSeqRef.current;
       console.log("[STATE] skip detected -> instant next", backendSongId);
+      cancelPlayCountQualification();
       transitionStartedAtRef.current = 0;
       transitionTargetRef.current = null;
       songEndLockRef.current = false;
@@ -716,7 +763,7 @@ export default function Display({ roomId }) {
       }
       return false;
     },
-    [enterSong, tryStartFromLogo]
+    [cancelPlayCountQualification, enterSong, tryStartFromLogo]
   );
 
   // Arm transition + next song while the current song plays.
@@ -791,6 +838,7 @@ export default function Display({ roomId }) {
     if (finalizedRef.current) return;
     if (songEndLockRef.current) return;
     songEndLockRef.current = true;
+    cancelPlayCountQualification();
     console.log("[STATE] SONG ended", LOW_POWER ? "no-transitions" : NATIVE_TV ? "tv" : "desktop");
     // Freeze the ended song immediately — prevents stall-nudge from replaying
     // the last clip for a split second before the transition layer shows.
@@ -900,7 +948,7 @@ export default function Display({ roomId }) {
     if (!transOk) {
       console.warn("[STATE] transition play failed — handoff will still run");
     }
-  }, [postEnded, transitionUrls, enterSong, goToLogo, roomId, showExtensionNotification]);
+  }, [cancelPlayCountQualification, postEnded, transitionUrls, enterSong, goToLogo, roomId, showExtensionNotification]);
 
   const commitHandoffSong = useCallback((songId, url) => {
     stageRef.current = "SONG";
@@ -912,9 +960,9 @@ export default function Display({ roomId }) {
     transitionTargetRef.current = null;
     safeSet("lastVideo", url);
     dbg.current.lastEvent = `handoff OK ${songId}`;
-    void reportSongStarted(songId);
+    qualifySongAfterThreeSeconds(songId);
     void onSongStarted(songId);
-  }, [reportSongStarted]);
+  }, [qualifySongAfterThreeSeconds]);
 
   const tryHandoffToSong = useCallback(async (songId, url, source = "remote") => {
     if (!url) return false;

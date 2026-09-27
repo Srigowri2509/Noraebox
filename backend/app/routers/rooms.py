@@ -15,6 +15,7 @@ router = APIRouter()
 
 # Default duration (in minutes) for sessions created automatically when playback starts
 DEFAULT_SESSION_MINUTES = 15
+MIN_COUNTED_PLAY_SECONDS = 3
 
 
 def _start_session_timer_if_needed(session: RoomSession, now: datetime) -> None:
@@ -613,8 +614,6 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
         # Update existing session
         session.current_song_id = current_song_id
         session.current_song_start_time = now
-        _record_song_started(db, room_id, current_song_id)
-        
         db.commit()
         db.refresh(session)
         
@@ -630,7 +629,7 @@ def set_current_song(room_id: str, payload: dict = Body(...), db: Session = Depe
 
 @router.post("/{room_id}/playback/started")
 def playback_started(room_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
-    """Increment play_count after the display confirms that playback started."""
+    """Increment play_count after the display confirms three seconds of playback."""
     try:
         try:
             song_id = int(payload.get("song_id"))
@@ -647,6 +646,15 @@ def playback_started(room_id: str, payload: dict = Body(...), db: Session = Depe
             raise HTTPException(status_code=409, detail="Song is not the session's current song")
         if not session.current_song_start_time:
             raise HTTPException(status_code=409, detail="Current song has no playback start time")
+
+        elapsed_seconds = (
+            datetime.now(timezone.utc) - session.current_song_start_time
+        ).total_seconds()
+        if elapsed_seconds < MIN_COUNTED_PLAY_SECONDS:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Song must play for at least {MIN_COUNTED_PLAY_SECONDS} seconds",
+            )
 
         # The display may retry this notification. Count at most once for the
         # current occurrence, whose boundary is current_song_start_time.
@@ -711,7 +719,6 @@ def start_next_song(room_id: str, db: Session = Depends(get_db)):
             # DO NOT reset session_start_time if it already exists - timer should continue
             session.current_song_id = next_item.song_id
             session.current_song_start_time = now  # Only update current song start time
-            _record_song_started(db, room_id, next_item.song_id)
             print(f"POST /rooms/{room_id}/playback/start_next: Continuing session, timer NOT restarted")
         
         # Remove the song from queue
@@ -788,7 +795,6 @@ def playback_ended(room_id: str, db: Session = Depends(get_db)):
                 # DO NOT reset session_start_time if it already exists - timer should continue
                 session.current_song_id = next_item.song_id
                 session.current_song_start_time = now  # Only update current song start time
-                _record_song_started(db, room_id, next_item.song_id)
                 print(f"POST /rooms/{room_id}/playback/ended: Continuing session, timer NOT restarted")
             
             # Remove from queue
