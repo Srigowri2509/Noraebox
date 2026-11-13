@@ -55,6 +55,20 @@ def resolve_website_code(code: str) -> dict:
 
 def match_suggestions(db: Session, suggestions: list[dict]) -> list[dict]:
     """Conservative catalogue matching with an artist-backed typo fallback."""
+    aws_song_ids = {
+        int(suggestion.get("awsSongId"))
+        for suggestion in suggestions
+        if str(suggestion.get("awsSongId") or "").isdigit()
+    }
+    songs_by_id = {
+        song.id: song
+        for song in (
+            db.query(Song)
+            .options(joinedload(Song.song_artists).joinedload(SongArtist.artist))
+            .filter(Song.id.in_(aws_song_ids))
+            .all()
+        )
+    } if aws_song_ids else {}
     title_keys = {normalize_text(suggestion.get("title")) for suggestion in suggestions}
     title_keys.discard("")
     songs = (
@@ -72,10 +86,11 @@ def match_suggestions(db: Session, suggestions: list[dict]) -> list[dict]:
         title_key = normalize_text(suggestion.get("title"))
         artist_key = normalize_text(suggestion.get("artist"))
         candidates = by_title.get(title_key, [])
-        chosen = None
-        if len(candidates) == 1:
+        aws_song_id = suggestion.get("awsSongId")
+        chosen = songs_by_id.get(int(aws_song_id)) if str(aws_song_id or "").isdigit() else None
+        if chosen is None and len(candidates) == 1:
             chosen = candidates[0]
-        elif candidates and artist_key:
+        elif chosen is None and candidates and artist_key:
             for candidate in candidates:
                 artist_names = [normalize_text(link.artist.name) for link in candidate.song_artists if link.artist]
                 if any(artist_key == name or artist_key in name or name in artist_key for name in artist_names):

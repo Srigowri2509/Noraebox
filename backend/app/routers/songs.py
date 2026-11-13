@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import distinct, text
 from typing import List
+import hmac
 import json
 import re
 import unicodedata
@@ -11,8 +12,18 @@ from app.db import get_db
 from app.models import Song, SongArtist, Artist, SongSuggestion
 from app.schemas import SongResponse, SongSuggestionCreate, SongSuggestionResponse
 from app.s3_service import generate_signed_url, resolve_full_s3_key, open_s3_object, get_streaming_s3_client, S3_BUCKET_NAME
+from app.config import WEBSITE_CATALOG_API_KEY
 
 router = APIRouter()
+
+
+def require_website_catalog_service(request: Request):
+    if not WEBSITE_CATALOG_API_KEY:
+        raise HTTPException(status_code=503, detail="Website catalogue integration is not configured")
+    authorization = request.headers.get("authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token or not hmac.compare_digest(token, WEBSITE_CATALOG_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid website catalogue credentials")
 
 
 def _parse_artists(value):
@@ -182,6 +193,44 @@ def list_songs(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/website-catalog")
+def website_catalog(
+    _authorized=Depends(require_website_catalog_service),
+    db: Session = Depends(get_db),
+):
+    """Metadata-only catalogue for the Noraebox website backend."""
+    songs = list_songs(search=None, signed_urls=False, db=db)
+    return [
+        {
+            "id": song["id"],
+            "title": song["title"],
+            "album": song.get("album"),
+            "language": song.get("language"),
+            "artists": song.get("artists", []),
+            "artist": song.get("artist"),
+        }
+        for song in songs
+    ]
+
+
+@router.get("/website-catalog/{song_id}")
+def website_catalog_song(
+    song_id: str,
+    _authorized=Depends(require_website_catalog_service),
+    db: Session = Depends(get_db),
+):
+    """One metadata-only song for server-side playlist validation."""
+    song = get_song(song_id, db)
+    return {
+        "id": song["id"],
+        "title": song["title"],
+        "album": song.get("album"),
+        "language": song.get("language"),
+        "artists": song.get("artists", []),
+        "artist": song.get("artist"),
+    }
 
 
 @router.get("/search", response_model=List[SongResponse])
