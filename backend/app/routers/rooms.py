@@ -16,6 +16,10 @@ router = APIRouter()
 # Default duration (in minutes) for sessions created automatically when playback starts
 DEFAULT_SESSION_MINUTES = 15
 MIN_COUNTED_PLAY_SECONDS = 3
+# Two display clients can observe the same backend song occurrence and report
+# that it started a few seconds apart. Allow for that device/startup skew while
+# keeping a later intentional replay of the same song as a separate play.
+START_EVENT_DEDUP_SECONDS = 20
 
 
 def _start_session_timer_if_needed(session: RoomSession, now: datetime) -> None:
@@ -83,6 +87,24 @@ def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
         query = query.filter(PlaybackEvent.timestamp >= history_start)
 
     rows = query.order_by(PlaybackEvent.timestamp.asc()).all()
+    # Older app versions could submit the same occurrence from two displays.
+    # Hide only rapid, adjacent duplicates; a later replay remains in history.
+    deduped_rows = []
+    for event, song in rows:
+        if deduped_rows:
+            previous_event, previous_song = deduped_rows[-1]
+            gap_seconds = None
+            if event.timestamp and previous_event.timestamp:
+                gap_seconds = (event.timestamp - previous_event.timestamp).total_seconds()
+            if (
+                previous_song.id == song.id
+                and gap_seconds is not None
+                and 0 <= gap_seconds <= START_EVENT_DEDUP_SECONDS
+            ):
+                continue
+        deduped_rows.append((event, song))
+
+    rows = deduped_rows
     song_ids = {song.id for _, song in rows}
     artists_by_song = defaultdict(list)
     if song_ids:
@@ -90,7 +112,8 @@ def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
             Artist, Artist.id == SongArtist.artist_id
         ).filter(SongArtist.song_id.in_(song_ids)).all()
         for song_id, artist_name in artist_rows:
-            artists_by_song[song_id].append(artist_name)
+            if artist_name not in artists_by_song[song_id]:
+                artists_by_song[song_id].append(artist_name)
 
     return {
         "session_id": str(session.id),
@@ -656,15 +679,18 @@ def playback_started(room_id: str, payload: dict = Body(...), db: Session = Depe
                 detail=f"Song must play for at least {MIN_COUNTED_PLAY_SECONDS} seconds",
             )
 
-        # The display may retry this notification. Count at most once for the
-        # current occurrence, whose boundary is current_song_start_time.
+        # The display may retry this notification, and more than one assigned
+        # display can report the same occurrence. Include a small tolerance
+        # before current_song_start_time because another client can refresh that
+        # timestamp while the first client's start event is already committed.
+        dedupe_boundary = session.current_song_start_time - timedelta(
+            seconds=START_EVENT_DEDUP_SECONDS
+        )
         existing_started = db.query(PlaybackEvent.id).filter(
             PlaybackEvent.room_id == room_id,
             PlaybackEvent.song_id == song_id,
             PlaybackEvent.event_type == "started",
-        )
-        existing_started = existing_started.filter(
-            PlaybackEvent.timestamp >= session.current_song_start_time
+            PlaybackEvent.timestamp >= dedupe_boundary,
         )
         if existing_started.first():
             return {"status": "already_recorded", "song_id": song_id}

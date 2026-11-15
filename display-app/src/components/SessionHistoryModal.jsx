@@ -1,6 +1,26 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 
+const DUPLICATE_START_WINDOW_MS = 20_000;
+
+function collapseRapidDuplicateStarts(songs) {
+  return songs.reduce((result, song) => {
+    const previous = result[result.length - 1];
+    const currentAt = Date.parse(song?.played_at || "");
+    const previousAt = Date.parse(previous?.played_at || "");
+    const isRapidDuplicate =
+      previous &&
+      String(previous.song_id) === String(song?.song_id) &&
+      Number.isFinite(currentAt) &&
+      Number.isFinite(previousAt) &&
+      currentAt - previousAt >= 0 &&
+      currentAt - previousAt <= DUPLICATE_START_WINDOW_MS;
+
+    if (!isRapidDuplicate) result.push(song);
+    return result;
+  }, []);
+}
+
 export default function SessionHistoryModal({ roomId, onClose, finalScreen = false, fallbackSongs = [] }) {
   const [songs, setSongs] = useState([]);
   const [historyType, setHistoryType] = useState("");
@@ -10,7 +30,7 @@ export default function SessionHistoryModal({ roomId, onClose, finalScreen = fal
   const loadHistory = useCallback(async () => {
     try {
       const data = await api(`/rooms/${roomId}/session/history`);
-      setSongs(Array.isArray(data?.songs) ? data.songs : []);
+      setSongs(collapseRapidDuplicateStarts(Array.isArray(data?.songs) ? data.songs : []));
       setHistoryType(data?.history_type || "");
       setError("");
     } catch (err) {

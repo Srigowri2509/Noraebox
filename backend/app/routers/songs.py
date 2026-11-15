@@ -81,6 +81,10 @@ def _build_song_response(row, signed_urls: bool = False):
         "file_url": file_url_value,
         "s3_key": s3_key_for_signing,
         "play_count": play_count_value,
+        "genre": row.genre,
+        "sub_genre": row.sub_genre,
+        "mood": row.mood,
+        "bpm": int(row.bpm) if row.bpm is not None else None,
         "artists": artists_list,
         "artist": first_artist["name"] if first_artist else None,
         "artist_name": first_artist["name"] if first_artist else None,
@@ -127,6 +131,10 @@ def list_songs(
                 s.language,
                 s.file_url,
                 s.play_count,
+                s.genre,
+                s.sub_genre,
+                s.mood,
+                s.bpm,
                 COALESCE(
                     json_agg(
                         DISTINCT jsonb_build_object(
@@ -163,7 +171,11 @@ def list_songs(
                 s.album,
                 s.language,
                 s.file_url,
-                s.play_count
+                s.play_count,
+                s.genre,
+                s.sub_genre,
+                s.mood,
+                s.bpm
             ORDER BY s.title
         """
         
@@ -404,6 +416,10 @@ def search_songs(
                     s.language,
                     s.file_url,
                     s.play_count,
+                    s.genre,
+                    s.sub_genre,
+                    s.mood,
+                    s.bpm,
                     COALESCE(ar.artists, '[]'::json) AS artists,
                     public.noraebox_search_normalize(s.title) AS title_norm,
                     public.noraebox_search_normalize(s.album) AS album_norm,
@@ -470,6 +486,10 @@ def search_songs(
                 s.language,
                 s.file_url,
                 s.play_count,
+                s.genre,
+                s.sub_genre,
+                s.mood,
+                s.bpm,
                 s.artists,
                 s.match_score
             FROM scored s
@@ -798,6 +818,10 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
                 s.language,
                 s.file_url,
                 s.play_count,
+                s.genre,
+                s.sub_genre,
+                s.mood,
+                s.bpm,
                 COALESCE(
                     json_agg(
                         DISTINCT jsonb_build_object(
@@ -818,7 +842,11 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
                 s.album,
                 s.language,
                 s.file_url,
-                s.play_count
+                s.play_count,
+                s.genre,
+                s.sub_genre,
+                s.mood,
+                s.bpm
         """
         
         result = db.execute(text(query_sql), {"song_id": song_id_int})
@@ -868,6 +896,10 @@ def get_song(song_id: str, db: Session = Depends(get_db)):
             "file_url": signed_url,        # signed/public URL for playback
             "s3_key": s3_key_for_signing,  # original S3 key from DB
             "play_count": int(row.play_count or 0),
+            "genre": row.genre,
+            "sub_genre": row.sub_genre,
+            "mood": row.mood,
+            "bpm": int(row.bpm) if row.bpm is not None else None,
             "artists": artists_list,
             "artist": first_artist["name"] if first_artist else None,
             "artist_name": first_artist["name"] if first_artist else None,

@@ -69,6 +69,10 @@ class SongResponse(BaseModel):
     file_url: Optional[str]
     # play_count can be NULL in DB; default to 0 in API
     play_count: Optional[int] = 0
+    genre: Optional[str] = None
+    sub_genre: Optional[str] = None
+    mood: Optional[str] = None
+    bpm: Optional[int] = None
     artist: Optional[str]
     # Your artist IDs are integers (not UUIDs), so expose them as int
     artist_id: Optional[int] = None
@@ -131,3 +135,19 @@ class SongSuggestionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class FoodOrderLineCreate(BaseModel):
+    item_id: str
+    quantity: int = 1
+    seasoning_id: Optional[str] = None
+
+
+class FoodOrderCreate(BaseModel):
+    room_id: UUID
+    items: List[FoodOrderLineCreate]
+    notes: Optional[str] = None
+
+
+class FoodOrderStatusUpdate(BaseModel):
+    status: str

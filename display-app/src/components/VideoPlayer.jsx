@@ -7,7 +7,11 @@ import React, {
   useState,
 } from "react";
 import { safeSessionGet, safeSessionSet } from "../utils/safeStorage";
-import { isLowPowerDevice, isTelevisionDisplay } from "../utils/device";
+import {
+  isLowPowerDevice,
+  isTelevisionDisplay,
+  isSamsungTizenDisplay,
+} from "../utils/device";
 
 const BLACK_POSTER =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -20,6 +24,7 @@ const BLACK_POSTER =
 // decoders the moment they're no longer on screen. Desktop keeps the original
 // fully-preloaded, gapless path.
 const LOW_POWER = isLowPowerDevice();
+const SAMSUNG_TV = isSamsungTizenDisplay();
 
 function normalizeMediaUrl(u) {
   if (!u) return "";
@@ -177,6 +182,7 @@ const VideoPlayer = forwardRef(
     const songARef = useRef(null);
     const songBRef = useRef(null);
     const transRef = useRef(null);
+    const handoffFrameRef = useRef(null);
 
     // Which physical element currently holds the song vs the preloaded next.
     const roleRef = useRef({ song: "a", next: "b" });
@@ -198,7 +204,7 @@ const VideoPlayer = forwardRef(
     const transitionEndedFiredRef = useRef(false);
     const songHandoffAtRef = useRef(0);
     const userInteractedRef = useRef(
-      safeSessionGet("video_autoplay_enabled") === "true"
+      !SAMSUNG_TV && safeSessionGet("video_autoplay_enabled") === "true"
     );
 
     const cbRef = useRef({});
@@ -252,6 +258,34 @@ const VideoPlayer = forwardRef(
     const setVisible = useCallback((id) => {
       frontRef.current = id;
       setFront(id);
+    }, []);
+
+    // Samsung exposes one dependable video decoder. Preserve the last painted
+    // frame in a canvas while that decoder is released and reassigned, avoiding
+    // the black frame that also makes the TV engage panel dimming.
+    const holdFrame = useCallback(async (video) => {
+      if (!SAMSUNG_TV || !video || !handoffFrameRef.current) return false;
+      try {
+        const canvas = handoffFrameRef.current;
+        const width = Number(video.videoWidth || 1280);
+        const height = Number(video.videoHeight || 720);
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        context.drawImage(video, 0, 0, width, height);
+        canvas.style.opacity = "1";
+        await nextPaint();
+        return true;
+      } catch (err) {
+        videoLog("HOLD_FRAME_FAILED", formatPlayError(err));
+        return false;
+      }
+    }, []);
+
+    const clearHeldFrame = useCallback(async () => {
+      if (!handoffFrameRef.current) return;
+      await nextPaint();
+      handoffFrameRef.current.style.opacity = "0";
     }, []);
 
     /** Pause + release an element's decoder. Awaits decoder drain on TV hardware. */
@@ -330,8 +364,12 @@ const VideoPlayer = forwardRef(
           videoLog("PLAY_BLOCKED_NOT_READY", { id, rs: el.readyState });
           return false;
         }
+        // Installed Samsung TV applications can autoplay media with sound.
+        // Starting muted and unmuting after `playing` makes Tizen pause the
+        // element about one second later, so start it audible from the outset.
+        const samsungAudibleAutoplay = SAMSUNG_TV && withSound;
         el.volume = withSound ? 1 : 0;
-        el.muted = true;
+        el.muted = !samsungAudibleAutoplay;
 
         const attemptPlay = async (label) => {
           videoLog("PLAY_ATTEMPT", { id, label, rs: el.readyState, paused: el.paused });
@@ -361,7 +399,7 @@ const VideoPlayer = forwardRef(
         if (!ok) {
           videoLog("PLAY_STALL", { id, rs: el.readyState, paused: el.paused });
         }
-        if (ok && withSound && userInteractedRef.current) {
+        if (ok && withSound && (SAMSUNG_TV || userInteractedRef.current)) {
           try {
             el.muted = false;
             el.volume = 1;
@@ -383,6 +421,9 @@ const VideoPlayer = forwardRef(
           return;
         }
         armedTransUrlRef.current = url;
+        // Loading here would take the only Samsung decoder away from the song.
+        // playTransition loads it after preserving the song's final frame.
+        if (SAMSUNG_TV) return;
         await loadInto(transRef.current, url);
       },
       [loadInto]
@@ -408,13 +449,68 @@ const VideoPlayer = forwardRef(
      * it into the next slot first (skip to a non-preloaded target), then swap.
      */
     const playSong = useCallback(
-      async (url, { urgent = false, coldStart = false, afterTransition = false } = {}) => {
+      async (
+        url,
+        { urgent = false, coldStart = false, afterTransition = false, gestureStart = false } = {}
+      ) => {
         if (!url) return false;
         manualPausedRef.current = false;
         const mySeq = ++playSeqRef.current;
         const stale = () => mySeq !== playSeqRef.current;
         const loadTimeoutMs = urgent ? 8000 : coldStart ? 10000 : 15000;
         playbackBusyRef.current = true;
+
+        // Samsung only treats play() as user-authorized when it is invoked in
+        // the remote key event itself. The startup song is preloaded behind the
+        // interaction gate so this branch can call play() before any await.
+        const gestureIncoming = nextEl();
+        const gesturePrepared =
+          gestureStart &&
+          gestureIncoming &&
+          normalizeMediaUrl(gestureIncoming.src) === normalizeMediaUrl(url) &&
+          gestureIncoming.readyState >= 2;
+        if (gesturePrepared) {
+          userInteractedRef.current = true;
+          gestureIncoming.muted = false;
+          gestureIncoming.volume = 1;
+
+          let playPromise;
+          try {
+            playPromise = gestureIncoming.play();
+          } catch (err) {
+            playbackBusyRef.current = false;
+            videoLog("PLAY_FAILED", { ...formatPlayError(err), phase: "gesture-start" });
+            return false;
+          }
+
+          const previousSongId = roleRef.current.song;
+          const incomingId = roleRef.current.next;
+          roleRef.current = { song: incomingId, next: previousSongId };
+          armedNextUrlRef.current = "";
+          endedFiredRef.current = false;
+          stageRef.current = "song";
+          manualPausedRef.current = false;
+          songHandoffAtRef.current = Date.now();
+          setVisible(incomingId);
+
+          try {
+            await playPromise;
+            const playing = await waitPlaying(gestureIncoming, 6000);
+            if (!playing || stale()) {
+              playbackBusyRef.current = false;
+              return false;
+            }
+          } catch (err) {
+            playbackBusyRef.current = false;
+            videoLog("PLAY_FAILED", { ...formatPlayError(err), phase: "gesture-start" });
+            return false;
+          }
+
+          void silence(elById(previousSongId));
+          void silence(transRef.current);
+          playbackBusyRef.current = false;
+          return true;
+        }
 
         if (afterTransition) {
           // Seamless handoff: next song was prefetched during the transition clip.
@@ -551,6 +647,8 @@ const VideoPlayer = forwardRef(
       playbackBusyRef.current = true;
       freezeCurrentSong();
 
+      await holdFrame(songEl());
+
       // Drop any preloaded next song first — prevents a flash of the next clip
       // before the transition layer is shown.
       await silence(nextEl());
@@ -603,12 +701,13 @@ const VideoPlayer = forwardRef(
       // Swap to transition only after its first frame is ready; then release song.
       await nextPaint();
       setVisible("t");
+      await clearHeldFrame();
       if (needsNativeDecoderCare()) {
         void silence(elById(roleRef.current.song));
       }
       playbackBusyRef.current = false;
       return true;
-    }, [loadInto, startPlayback, setVisible, silence, elById, nextEl, freezeCurrentSong]);
+    }, [loadInto, startPlayback, setVisible, silence, elById, nextEl, songEl, freezeCurrentSong, holdFrame, clearHeldFrame]);
 
     const abortTransition = useCallback(async () => {
       playSeqRef.current += 1;
@@ -683,9 +782,19 @@ const VideoPlayer = forwardRef(
           return { ok: false, reason: "no-slot", elapsedMs: 0 };
         }
 
+        if (SAMSUNG_TV) {
+          await holdFrame(transRef.current);
+          await silence(transRef.current);
+          await waitDecoderRelease();
+        }
+
         if (normalizeMediaUrl(incoming.src) !== urlNorm) {
           handoffLog("waiting for next song", { id, rs: incoming.readyState });
-          void loadInto(incoming, url, timeoutMs + 5000);
+          if (SAMSUNG_TV) {
+            await loadInto(incoming, url, timeoutMs + 5000);
+          } else {
+            void loadInto(incoming, url, timeoutMs + 5000);
+          }
         }
 
         const deadline = t0 + timeoutMs;
@@ -712,8 +821,10 @@ const VideoPlayer = forwardRef(
 
         handoffLog("starting next song", { id, rs: incoming.readyState, waitMs: readyAt - t0 });
 
-        await silence(transRef.current);
-        if (needsNativeDecoderCare()) {
+        if (!SAMSUNG_TV) {
+          await silence(transRef.current);
+        }
+        if (needsNativeDecoderCare() && !SAMSUNG_TV) {
           await waitDecoderRelease();
         }
         if (stale()) {
@@ -765,7 +876,7 @@ const VideoPlayer = forwardRef(
         manualPausedRef.current = false;
         songHandoffAtRef.current = Date.now();
         setVisible(incomingId);
-        await nextPaint();
+        await clearHeldFrame();
 
         void silence(elById(previousSongId));
         playbackBusyRef.current = false;
@@ -777,7 +888,7 @@ const VideoPlayer = forwardRef(
           waitMs: readyAt - t0,
         };
       },
-      [nextEl, slotId, loadInto, startPlayback, setVisible, silence, elById, freezeTransitionFrame]
+      [nextEl, slotId, loadInto, startPlayback, setVisible, silence, elById, freezeTransitionFrame, holdFrame, clearHeldFrame]
     );
 
     /** Release all video decoders before loading the next song (TV path). */
@@ -798,6 +909,7 @@ const VideoPlayer = forwardRef(
       manualPausedRef.current = false;
       armedNextUrlRef.current = "";
       endedFiredRef.current = false;
+      if (handoffFrameRef.current) handoffFrameRef.current.style.opacity = "0";
       setVisible("logo");
       // Stop audio immediately; release decoders shortly after the logo paints.
       [songARef.current, songBRef.current, transRef.current].forEach((el) => {
@@ -1146,6 +1258,12 @@ const VideoPlayer = forwardRef(
     return (
       <div className="video-dual-stack">
         <div className="video-stage-base" aria-hidden="true" />
+
+        <canvas
+          ref={handoffFrameRef}
+          className="video-handoff-frame"
+          aria-hidden="true"
+        />
 
         <video
           ref={songARef}

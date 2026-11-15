@@ -213,7 +213,7 @@ export default function App() {
 
   return (
     <AppErrorBoundary>
-      <Display roomId={roomId} />
+      <Display key={roomId} roomId={roomId} />
     </AppErrorBoundary>
   );
 }

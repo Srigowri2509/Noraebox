@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useRoom } from "../context/RoomContext";
 import { api } from "../api";
 
-export default function Header() {
+export default function Header({ onOrderFood }) {
   const { roomId, room } = useRoom();
   const [roomName, setRoomName] = useState(null);
   
@@ -50,6 +50,15 @@ export default function Header() {
           </div>
 
           <div className="flex min-w-0 max-w-[62%] shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={onOrderFood}
+              className="food-order-button"
+            >
+              <span className="food-order-button-icon" aria-hidden>🍽️</span>
+              <span className="hidden sm:inline">Order Food</span>
+              <span className="sm:hidden">Food</span>
+            </button>
             <div
               className="flex min-w-0 items-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 py-2 pl-3 pr-4 text-sky-300 md:gap-2.5 md:py-2.5 md:pl-4 md:pr-5"
               style={{ fontSize: "clamp(0.8rem, 1.2vw, 1.05rem)" }}

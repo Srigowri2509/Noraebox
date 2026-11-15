@@ -19,7 +19,20 @@ export type SessionExtendedEvent = {
   source: "guest_prompt" | "admin" | string;
 };
 
-export type AdminWebSocketEvent = SessionFinishedEvent | SessionExtendedEvent;
+export type FoodOrderEvent = {
+  type: "food_order_created" | "food_order_updated";
+  order: {
+    id: string;
+    room_id: string;
+    room_name?: string | null;
+    status: string;
+    total_amount: number;
+    items: Array<Record<string, unknown>>;
+    created_at?: string | null;
+  };
+};
+
+export type AdminWebSocketEvent = SessionFinishedEvent | SessionExtendedEvent | FoodOrderEvent;
 export type AdminWebSocketListener = (event: AdminWebSocketEvent) => void;
 
 const RECONNECT_BASE_DELAY_MS = 1000;

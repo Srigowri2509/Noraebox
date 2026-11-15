@@ -4,6 +4,7 @@ import RoomSquare from "../components/RoomSquare";
 import RoomModal from "../components/RoomModal";
 import DeviceRoomPanel from "../components/DeviceRoomPanel";
 import SongSuggestionsPanel from "../components/SongSuggestionsPanel";
+import FoodOrdersPanel from "../components/FoodOrdersPanel";
 import { useNotifications } from "../hooks/useNotifications";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { requestPermission } from "../services/notificationService";
@@ -62,6 +63,8 @@ export default function Dashboard() {
   const [finishedSessionsByRoom, setFinishedSessionsByRoom] = useState({});
   const [extensionsByRoom, setExtensionsByRoom] = useState({});
   const [latestGuestExtension, setLatestGuestExtension] = useState(null);
+  const [latestFoodOrder, setLatestFoodOrder] = useState(null);
+  const [foodOrdersRefreshKey, setFoodOrdersRefreshKey] = useState(0);
 
   const visibleRooms = useMemo(() => rooms.filter(isVisibleRoom), [rooms]);
   const gridRooms = useMemo(() => sortRooms(visibleRooms), [visibleRooms]);
@@ -121,6 +124,11 @@ export default function Dashboard() {
           }));
           setLatestGuestExtension(event);
           loadRooms();
+        } else if (event.type === "food_order_created") {
+          setLatestFoodOrder(event.order);
+          setFoodOrdersRefreshKey((current) => current + 1);
+        } else if (event.type === "food_order_updated") {
+          setFoodOrdersRefreshKey((current) => current + 1);
         }
       },
       [handleSessionFinished, loadRooms]
@@ -396,6 +404,15 @@ export default function Dashboard() {
         </div>
       ) : null}
 
+      {latestFoodOrder ? (
+        <div className="fixed right-6 top-6 z-[310] w-[390px] rounded-2xl border border-amber-200 bg-gradient-to-r from-orange-600 to-amber-500 p-5 text-white shadow-2xl">
+          <div className="text-sm font-bold uppercase tracking-wider text-orange-100">New food order</div>
+          <div className="mt-1 text-xl font-extrabold">{latestFoodOrder.room_name || "Room"}</div>
+          <div className="mt-2 text-sm font-semibold">{(latestFoodOrder.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0)} items · ₹{Number(latestFoodOrder.total_amount || 0).toLocaleString("en-IN")}</div>
+          <button type="button" onClick={() => setLatestFoodOrder(null)} className="mt-4 rounded-lg bg-white/20 px-3 py-2 text-sm font-semibold hover:bg-white/30">View orders below</button>
+        </div>
+      ) : null}
+
       <main className="dashboard-main">
       <div className="rooms-section w-full flex justify-center">
         {connectionError ? (
@@ -421,6 +438,8 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      <FoodOrdersPanel refreshKey={foodOrdersRefreshKey} />
 
       <div className="song-suggestions-section w-full flex justify-center mt-10 px-4">
         <SongSuggestionsPanel />

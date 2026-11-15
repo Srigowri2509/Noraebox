@@ -4,7 +4,7 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates, song_access
+from app.routers import songs, rooms, sessions, devices, stats, queue, playlists, updates, song_access, food_orders
 from app.services.admin_ws import admin_ws_manager
 from app.services.display_ws import display_ws_manager
 from app.services.search_setup import ensure_search_support
@@ -14,7 +14,7 @@ import traceback
 import json
 
 # Temporary: auto-create database tables on startup (Option 2)
-from app.models import Device, Room, RoomSession, Song, Artist, SongArtist, QueueItem, PlaybackEvent, Playlist, PlaylistSong, SongSuggestion
+from app.models import Device, Room, RoomSession, Song, Artist, SongArtist, QueueItem, PlaybackEvent, Playlist, PlaylistSong, SongSuggestion, FoodOrder
 from app.db import Base, engine
 
 app = FastAPI()
@@ -37,6 +37,7 @@ app.include_router(stats.router, prefix="/stats")
 app.include_router(playlists.router, prefix="/playlists")
 app.include_router(updates.router, prefix="/updates")
 app.include_router(song_access.router, prefix="/song-access")
+app.include_router(food_orders.router, prefix="/food")
 
 # Create all tables once at startup (can be removed after first successful run)
 @app.on_event("startup")

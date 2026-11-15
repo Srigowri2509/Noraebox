@@ -79,16 +79,27 @@ export default function BookingSongCodePanel({ roomId, onImported }) {
     setBusy(true);
     setError("");
     try {
-      const result = await api("/song-access/import", {
-        method: "POST",
-        body: JSON.stringify({
-          code: normalizedCode,
-          room_id: roomId,
-          song_ids: availableSongs.map((song) => song.id),
-        }),
-      });
-      await onImported?.(result);
-      if (!(result.added?.length || 0) && !(result.skipped?.length || 0)) {
+      const songIds = availableSongs.map((song) => song.id);
+      const combinedResult = { status: "ok", added: [], skipped: [], queue_count: 0 };
+
+      // Import every song while remaining compatible with older room servers that
+      // validate a maximum of ten IDs per request. This is not a playlist limit.
+      for (let index = 0; index < songIds.length; index += 10) {
+        const result = await api("/song-access/import", {
+          method: "POST",
+          body: JSON.stringify({
+            code: normalizedCode,
+            room_id: roomId,
+            song_ids: songIds.slice(index, index + 10),
+          }),
+        });
+        combinedResult.added.push(...(result.added || []));
+        combinedResult.skipped.push(...(result.skipped || []));
+        combinedResult.queue_count = result.queue_count ?? combinedResult.queue_count;
+      }
+
+      await onImported?.(combinedResult);
+      if (!combinedResult.added.length && !combinedResult.skipped.length) {
         setError("The songs could not be added to the queue.");
       }
     } catch (importError) {

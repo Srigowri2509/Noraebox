@@ -31,6 +31,7 @@ class Room(Base):
     # Relationships
     devices = relationship("Device", back_populates="room")
     sessions = relationship("RoomSession", back_populates="room")
+    food_orders = relationship("FoodOrder", back_populates="room")
 
 
 class RoomSession(Base):
@@ -59,6 +60,10 @@ class Song(Base):
     language = Column(String, nullable=True)
     file_url = Column(Text, nullable=True)
     play_count = Column(Integer, default=0)
+    genre = Column(Text, nullable=True)
+    sub_genre = Column(Text, nullable=True)
+    mood = Column(Text, nullable=True)
+    bpm = Column(Integer, nullable=True)
     
     # Relationships
     song_artists = relationship("SongArtist", back_populates="song")
@@ -149,3 +154,24 @@ class SongSuggestion(Base):
     room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=True)
     status = Column(String, default="pending")  # "pending", "approved", "rejected"
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FoodOrder(Base):
+    __tablename__ = "food_orders"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_id = Column(UUID(as_uuid=True), ForeignKey("rooms.id"), nullable=False)
+    session_id = Column(UUID(as_uuid=True), ForeignKey("room_sessions.id"), nullable=True)
+    items = Column(JSON, nullable=False)
+    total_amount = Column(Integer, nullable=False, default=0)
+    notes = Column(Text, nullable=True)
+    status = Column(String, nullable=False, default="pending")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    room = relationship("Room", back_populates="food_orders")

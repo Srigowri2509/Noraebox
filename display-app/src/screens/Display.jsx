@@ -7,7 +7,12 @@ import ExtensionPrompt from "../components/ExtensionPrompt";
 import { api, API_BASE } from "../api";
 import { safeGet, safeSet, safeSessionGet, safeSessionSet } from "../utils/safeStorage";
 import { unlockAudio } from "../utils/audioUnlock";
-import { isLowPowerDevice, isTelevisionDisplay, isCacheEnabled } from "../utils/device";
+import {
+  isLowPowerDevice,
+  isTelevisionDisplay,
+  isSamsungTizenDisplay,
+  isCacheEnabled,
+} from "../utils/device";
 import { fetchSongWithUrl } from "../utils/fetchSongWithUrl";
 import { resolvePlayableUrl } from "../cache/resolvePlayableUrl";
 import {
@@ -25,13 +30,13 @@ const TRANSCITIONS_FOLDER = "transcitions";
 // TVs poll less aggressively — 8 rooms × 1 req/s starves the WebView network
 // stack during video playback; backend itself handles load fine at ~3s intervals.
 const POLL_INTERVAL_MS = isTelevisionDisplay() ? 3000 : 1000;
-const EXTENSION_PROMPT_WINDOW_MS = 5 * 60 * 1000;
 const FINAL_SUMMARY_DURATION_MS = 10 * 1000;
 const COUNTED_PLAY_SECONDS = 3;
 
 // Acer/Android TV APKs: transitions stay on, but we avoid preloading extra
 // decoders during a song. VITE_LOW_POWER=true disables transitions entirely.
 const NATIVE_TV = isTelevisionDisplay();
+const SAMSUNG_TV = isSamsungTizenDisplay();
 const LOW_POWER = isLowPowerDevice();
 
 function buildTransitionVideoUrls() {
@@ -182,7 +187,10 @@ export default function Display({ roomId }) {
   // satisfies the autoplay requirement for the whole page session. No song,
   // transition, or logo video is driven until interactedRef is true.
   const [needsInteraction, setNeedsInteraction] = useState(true);
+  const [startupSongReady, setStartupSongReady] = useState(false);
   const interactedRef = useRef(false);
+  const startupSongRef = useRef(null);
+  const startupPrimeIdRef = useRef(null);
 
   // ---- State machine refs --------------------------------------------------
   const stageRef = useRef("LOGO"); // LOGO | SONG | TRANSITION | EXTENSION_PROMPT | ENDING
@@ -365,25 +373,9 @@ export default function Display({ roomId }) {
               options,
               remainingSeconds: Number(message.remainingSeconds),
             };
-            if (
-              Number.isFinite(scheduled.remainingSeconds) &&
-              scheduled.remainingSeconds > 0 &&
-              scheduled.remainingSeconds <= EXTENSION_PROMPT_WINDOW_MS / 1000
-            ) {
-              scheduledExtensionRef.current = null;
-              safeSessionSet(`extension_prompt_pending:${roomId}`, "");
-              dbg.current.lastEvent = "extension prompt shown immediately";
-              setExtensionPrompt({
-                sessionId: scheduled.sessionId,
-                options,
-                resumePlayback: false,
-              });
-              showExtensionNotification(options);
-            } else {
-              scheduledExtensionRef.current = scheduled;
-              safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
-              dbg.current.lastEvent = "extension prompt scheduled";
-            }
+            scheduledExtensionRef.current = scheduled;
+            safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
+            dbg.current.lastEvent = "extension prompt scheduled for next song boundary";
           }
         } catch (error) {
           console.warn("Invalid display message", error);
@@ -402,40 +394,6 @@ export default function Display({ roomId }) {
       socket?.close();
     };
   }, [roomId, showExtensionNotification]);
-
-  // A scheduled offer must not depend on another song boundary. A final song
-  // can be longer than the time left, which previously let the session expire
-  // before the guest ever saw the prompt. Show it over the playing song as soon
-  // as the display enters the final five-minute window.
-  useEffect(() => {
-    const scheduled = scheduledExtensionRef.current;
-    if (
-      !scheduled ||
-      extensionPrompt ||
-      finalizedRef.current ||
-      timeLeft == null ||
-      timeLeft <= 0 ||
-      timeLeft > EXTENSION_PROMPT_WINDOW_MS
-    ) {
-      return;
-    }
-
-    const belongsToCurrentSession =
-      !scheduled.sessionId ||
-      !activeSessionIdRef.current ||
-      sid(scheduled.sessionId) === sid(activeSessionIdRef.current);
-    if (!belongsToCurrentSession) return;
-
-    scheduledExtensionRef.current = null;
-    safeSessionSet(`extension_prompt_pending:${roomId}`, "");
-    dbg.current.lastEvent = "extension prompt shown in final five minutes";
-    setExtensionPrompt({
-      sessionId: scheduled.sessionId,
-      options: scheduled.options,
-      resumePlayback: false,
-    });
-    showExtensionNotification(scheduled.options);
-  }, [extensionPrompt, roomId, showExtensionNotification, timeLeft]);
 
   // Run a playback operation in the background, never awaited by the poll loop.
   // A single in-flight op at a time; a stalled video call can therefore never
@@ -620,13 +578,22 @@ export default function Display({ roomId }) {
   }, [cancelPlayCountQualification, roomId]);
 
   // Begin playing a song NOW (cold start from logo, or instant skip target).
-  const enterSong = useCallback(async (songId, url, { urgent = false, coldStart = false, afterTransition = false, seq } = {}) => {
+  const enterSong = useCallback(async (
+    songId,
+    url,
+    { urgent = false, coldStart = false, afterTransition = false, gestureStart = false, seq } = {}
+  ) => {
     if (!url) return false;
     const stale = () => seq !== undefined && seq !== driveSeqRef.current;
     if (stale()) return false;
     busyRef.current = true;
     try {
-      const ok = await videoRef.current?.playSong(url, { urgent, coldStart, afterTransition });
+      const ok = await videoRef.current?.playSong(url, {
+        urgent,
+        coldStart,
+        afterTransition,
+        gestureStart,
+      });
       if (stale()) return false;
       if (!ok) return false;
       // Session may have been stopped while the song was loading.
@@ -773,11 +740,11 @@ export default function Display({ roomId }) {
       if (armingRef.current) return; // a previous arm is still running
       armingRef.current = true;
       try {
-        // The transition is bundled locally. Arm it while the song is playing
-        // so a natural song end becomes a visibility/play toggle instead of a
-        // 10-15 second decoder/load wait. TV does not preload the next song
-        // element, so this still stays within the two-decoder budget.
-        if (!armedTransitionRef.current) {
+        // Samsung TVs reliably expose only one active HTML5 video decoder.
+        // Loading the transition into the second element while a song is
+        // playing steals that decoder and blanks/mutes the song. Let
+        // handleSongEnded load the transition after playback has stopped.
+        if (!armedTransitionRef.current && !SAMSUNG_TV) {
           const url = pickRandom(transitionUrls);
           if (url) {
             armedTransitionRef.current = url;
@@ -876,14 +843,12 @@ export default function Display({ roomId }) {
       !activeSessionIdRef.current ||
       sid(scheduledExtension.sessionId) === sid(activeSessionIdRef.current);
 
-    // The admin can schedule this at any time. It is consumed only at a song
-    // boundary in the final five minutes, replacing the normal transition.
+    // A prompt sent by the admin is consumed only at a song boundary and
+    // replaces that boundary's normal transition video.
     if (
       scheduledExtension &&
       scheduledForCurrentSession &&
-      remainingMs != null &&
-      remainingMs > 0 &&
-      remainingMs <= EXTENSION_PROMPT_WINDOW_MS
+      (remainingMs == null || remainingMs > 0)
     ) {
       const options = Array.isArray(scheduledExtension.options)
         ? scheduledExtension.options
@@ -940,8 +905,9 @@ export default function Display({ roomId }) {
         await videoRef.current?.armTransition(turl);
       }
     }
-    // Start buffering song 2 during the transition clip (uses 2nd decoder).
-    if (next?.url) {
+    // Samsung has one reliable decoder; loading the next song here would dim
+    // or interrupt the transition. It is loaded after the transition instead.
+    if (next?.url && !SAMSUNG_TV) {
       void videoRef.current?.beginHandoffLoad?.(next.url);
     }
     const transOk = await videoRef.current?.playTransition();
@@ -1044,19 +1010,40 @@ export default function Display({ roomId }) {
 
   // ---- Interaction gate / autoplay unlock ----------------------------------
   const markInteracted = useCallback(() => {
+    const startupSong = startupSongRef.current;
+    if (SAMSUNG_TV && backendSongIdRef.current && !startupSong) {
+      return;
+    }
     interactedRef.current = true;
     safeSessionSet("video_autoplay_enabled", "true");
-    // Unlock the audio output for the whole session (Android TV WebView blocks
-    // audio more aggressively than Chrome — a silent clip inside the gesture
-    // handler keeps later play() calls audible).
-    unlockAudio();
+    // Android TV needs a silent clip to unlock its WebView audio. On Samsung,
+    // that extra Audio element competes with the video for media focus and can
+    // pause the song about a second after it starts.
+    if (!SAMSUNG_TV) unlockAudio();
     setNeedsInteraction(false);
-    // Unmute/resume anything already playing muted.
-    videoRef.current?.retryActive();
-    if ("Notification" in window && Notification.permission === "default") {
+    if (
+      startupSong &&
+      sid(startupSong.id) === sid(backendSongIdRef.current) &&
+      stageRef.current === "LOGO"
+    ) {
+      startupSongRef.current = null;
+      void enterSong(startupSong.id, startupSong.url, {
+        urgent: true,
+        coldStart: true,
+        gestureStart: true,
+      });
+    } else {
+      // Unmute/resume anything already playing muted.
+      videoRef.current?.retryActive();
+    }
+    if (
+      !SAMSUNG_TV &&
+      "Notification" in window &&
+      Notification.permission === "default"
+    ) {
       void Notification.requestPermission().catch(() => {});
     }
-  }, []);
+  }, [enterSong]);
 
   useEffect(() => {
     console.log(
@@ -1069,9 +1056,11 @@ export default function Display({ roomId }) {
     }
   }, []);
 
-  // Returning sessions: skip the tap gate if autoplay was already unlocked.
+  // Browsers and Android can reuse a previously unlocked playback session.
+  // Samsung needs one fresh remote press per application launch; after that,
+  // every song in the queue continues automatically without another press.
   useEffect(() => {
-    if (safeSessionGet("video_autoplay_enabled") === "true") {
+    if (!SAMSUNG_TV && safeSessionGet("video_autoplay_enabled") === "true") {
       interactedRef.current = true;
       setNeedsInteraction(false);
     }
@@ -1251,7 +1240,31 @@ export default function Display({ roomId }) {
 
         // Gate: do not drive any playback until the user has interacted, so we
         // never fire a play() the browser will silently reject.
-        if (!interactedRef.current) return;
+        if (!interactedRef.current) {
+          if (SAMSUNG_TV && backendSongId && startupPrimeIdRef.current !== backendSongId) {
+            startupPrimeIdRef.current = backendSongId;
+            setStartupSongReady(false);
+            void fetchSongWithUrl(backendSongId).then(async (loaded) => {
+              if (
+                !loaded?.videoUrl ||
+                interactedRef.current ||
+                sid(backendSongIdRef.current) !== backendSongId
+              ) {
+                return;
+              }
+              await videoRef.current?.armNext?.(loaded.videoUrl);
+              if (
+                interactedRef.current ||
+                sid(backendSongIdRef.current) !== backendSongId
+              ) {
+                return;
+              }
+              startupSongRef.current = { id: backendSongId, url: loaded.videoUrl };
+              setStartupSongReady(true);
+            });
+          }
+          return;
+        }
 
         // ---- Drive the state machine ---------------------------------------
         // CRITICAL: playback operations are fired in the background via drive()
@@ -1400,14 +1413,13 @@ export default function Display({ roomId }) {
     return () => clearInterval(tick);
   }, [hardCutToLogo]);
 
-  // Samsung/Tizen remotes report OK as Enter (13) or Done (29443).
+  // The first Samsung remote key unlocks playback for the whole app session.
   useEffect(() => {
     if (!needsInteraction) return;
     const onKey = (event) => {
-      if (event.key === "Enter" || event.key === " " || event.keyCode === 13 || event.keyCode === 29443) {
-        event.preventDefault();
-        markInteracted();
-      }
+      if (event.repeat) return;
+      event.preventDefault();
+      markInteracted();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1528,7 +1540,13 @@ export default function Display({ roomId }) {
           onTouchStart={markInteracted}
         >
           <img src="/logo_noraebox.png" alt="Norebox" className="interaction-gate__logo" />
-          <div className="interaction-gate__text">Tap anywhere to start</div>
+          <div className="interaction-gate__text">
+            {SAMSUNG_TV
+              ? startupSongReady || !backendSongIdRef.current
+                ? "Press any button to start"
+                : "Loading song…"
+              : "Tap anywhere to start"}
+          </div>
         </div>
       ) : null}
 

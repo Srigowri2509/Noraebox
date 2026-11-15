@@ -2,13 +2,18 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import Header from "../components/Header.jsx";
 import SearchBar from "../components/SearchBar.jsx";
 import SearchResults from "../components/SearchResults.jsx";
+import SongRow from "../components/SongRow.jsx";
 import QueueList from "../components/QueueList.jsx";
 import Playlists from "../components/Playlists.jsx";
 import BookingSongCodePanel from "../components/BookingSongCodePanel.jsx";
+import FoodOrderModal from "../components/FoodOrderModal.jsx";
 import useSongSearch from "../hooks/useSongSearch.jsx";
 import usePrefixSearch, { filterSongs } from "../hooks/usePrefixSearch.jsx";
+import useRecommendationSession from "../hooks/useRecommendationSession.js";
 import { useRoomContext } from "../context/RoomContext.jsx";
 import { api, API_BASE } from "../api";
+import recommendationEntries from "../data/songRecommendationCatalog.json";
+import { createRecommendationCatalog, recommendSongs } from "../utils/recommendSongs.js";
 
 export default function Home() {
   const [filters, setFilters] = useState({
@@ -24,16 +29,67 @@ export default function Home() {
   const [playlistSongs, setPlaylistSongs] = useState([]);
 
   const { room, roomId, queue, setQueue } = useRoomContext();
+  const { session: recommendationSession, recordSelection } = useRecommendationSession(roomId || room?.id);
   const { all: allSongs = [], loading: songsLoading } = useSongSearch();
   const [skipLocked, setSkipLocked] = useState(false);
   const [isSongPlaying, setIsSongPlaying] = useState(false);
+  const [foodOrderOpen, setFoodOrderOpen] = useState(false);
+  const [foodReminder, setFoodReminder] = useState(false);
+  const [foodSessionId, setFoodSessionId] = useState(null);
   const skipUnlockTimerRef = useRef(null);
+  const foodReminderTimerRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (skipUnlockTimerRef.current) clearTimeout(skipUnlockTimerRef.current);
+      if (foodReminderTimerRef.current) clearTimeout(foodReminderTimerRef.current);
     };
   }, []);
+
+  const currentRoomId = roomId || room?.id;
+
+  useEffect(() => {
+    if (!currentRoomId) return undefined;
+    let cancelled = false;
+
+    const checkSession = async () => {
+      try {
+        const data = await api(`/rooms/${currentRoomId}/session`);
+        const session = data?.session;
+        const active = session && (session.status === "active" || session.status === "playing");
+        if (!active || !session.id || cancelled) return;
+        setFoodSessionId(String(session.id));
+        const reminderKey = `food_order_reminder:${session.id}`;
+        if (localStorage.getItem(reminderKey) || foodReminderTimerRef.current) return;
+        foodReminderTimerRef.current = window.setTimeout(() => {
+          foodReminderTimerRef.current = null;
+          if (cancelled || localStorage.getItem(reminderKey)) return;
+          localStorage.setItem(reminderKey, "shown");
+          setFoodReminder(true);
+          setFoodOrderOpen(true);
+        }, 45_000);
+      } catch {
+        // Session polling already exists elsewhere; the food reminder is best-effort.
+      }
+    };
+
+    void checkSession();
+    const interval = window.setInterval(checkSession, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      if (foodReminderTimerRef.current) {
+        window.clearTimeout(foodReminderTimerRef.current);
+        foodReminderTimerRef.current = null;
+      }
+    };
+  }, [currentRoomId]);
+
+  const openFoodOrder = () => {
+    if (foodSessionId) localStorage.setItem(`food_order_reminder:${foodSessionId}`, "shown");
+    setFoodReminder(false);
+    setFoodOrderOpen(true);
+  };
 
   const searchQuery = filters.query || "";
   const hasTextSearch = searchQuery.trim().length >= 1;
@@ -282,6 +338,7 @@ const filteredSongs = useMemo(() => {
       
       // Only update local state if song was actually added (not already exists)
       if (response.status === "added") {
+        recordSelection(song, recommendedSongs);
         // Refresh queue from backend to get the correct structure with position, etc.
         try {
           const queueRes = await api(`/rooms/${currentRoomId}/queue`);
@@ -566,6 +623,24 @@ const filteredSongs = useMemo(() => {
   }, [roomId, room?.id]);
 
   const skipDisabled = !queue || queue.length === 0 || skipLocked;
+  const recommendationCatalog = useMemo(() => {
+    const databaseHasRecommendationMetadata = allSongs.some((song) =>
+      song.genre || song.sub_genre || song.mood || song.bpm,
+    );
+    return createRecommendationCatalog(
+      databaseHasRecommendationMetadata ? allSongs : recommendationEntries,
+    );
+  }, [allSongs]);
+  const recommendedSongs = useMemo(() => {
+    return recommendSongs({
+      songs: allSongs,
+      queue: queue || [],
+      language: filters.language,
+      catalog: recommendationCatalog,
+      session: recommendationSession,
+      limit: 4,
+    });
+  }, [allSongs, filters.language, queue, recommendationCatalog, recommendationSession]);
 
   // Poll queue to check for changes and auto-play next song
   useEffect(() => {
@@ -727,7 +802,17 @@ const filteredSongs = useMemo(() => {
       {/* Semi-transparent overlay for readability (stronger so UI stays legible on busy art) */}
       <div className="fixed inset-0 bg-[#0B0F17]/78 -z-10" aria-hidden />
 
-      <Header />
+      <Header onOrderFood={openFoodOrder} />
+
+      <FoodOrderModal
+        open={foodOrderOpen}
+        roomId={currentRoomId}
+        reminder={foodReminder}
+        onClose={() => {
+          setFoodOrderOpen(false);
+          setFoodReminder(false);
+        }}
+      />
 
       <div
         className="mb-3 shrink-0 md:mb-4"
@@ -775,7 +860,7 @@ const filteredSongs = useMemo(() => {
           <div className="row-1-wrap flex min-h-0 shrink-0 flex-col gap-2 sm:gap-2.5 md:gap-2">
             <div className="flex shrink-0 items-center gap-2 md:gap-3">
               <span className="text-xl text-sky-300 md:text-2xl">🎵</span>
-              <h3 className="text-lg font-semibold text-white md:text-xl lg:text-2xl">Playlists</h3>
+              <h3 className="app-section-title">Playlists</h3>
             </div>
             <div className="row-1-grid min-h-0">
               <div
@@ -792,34 +877,32 @@ const filteredSongs = useMemo(() => {
               </div>
 
               <div className="row-1-right flex min-h-0 min-w-0 flex-col overflow-x-visible">
-                <div className="playback-rail-height flex w-full shrink-0 flex-col items-center justify-center gap-1 overflow-x-visible overflow-y-hidden rounded-2xl border border-white/[0.08] bg-slate-900/75 px-4 py-1.5 shadow-lg md:gap-1.5 md:px-5 md:py-2 lg:px-6">
-                  <div className="flex min-w-0 max-w-full shrink-0 flex-nowrap flex-row items-center justify-center gap-1 md:gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleSkip}
-                      disabled={skipDisabled}
-                      className={`playback-action-btn flex min-h-[38px] w-auto shrink-0 flex-row items-center justify-center gap-1.5 rounded-full border-0 px-4 py-2 text-xs font-semibold tracking-wide text-white outline-none transition-transform focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/50 min-w-[7.75rem] md:min-h-[44px] md:min-w-[10rem] md:gap-2 md:px-7 md:py-2.5 md:text-sm lg:min-h-[46px] lg:min-w-[11.25rem] lg:px-9 lg:text-base
-                      ${skipDisabled
-                        ? "cursor-not-allowed opacity-45"
-                        : "cursor-pointer hover:scale-[1.03] active:scale-[0.98]"}
-                    `}
-                      style={{
-                        backgroundColor: skipDisabled ? "#475569" : "#00bcd4",
-                        borderRadius: 9999,
-                        boxShadow:
-                          skipDisabled
-                            ? "inset 0 1px 0 rgba(255,255,255,0.08)"
-                            : "0 0 0 1px rgba(255,255,255,0.28), 0 4px 12px rgba(0,0,0,0.32), 0 0 22px rgba(0,229,255,0.7), 0 0 48px rgba(0,188,212,0.42)",
-                      }}
-                    >
-                      <span className="text-lg leading-none drop-shadow-sm md:text-xl">⏭</span>
-                      <span className="leading-none drop-shadow-sm">Skip to Next</span>
-                    </button>
+                <div className="card-surface playback-rail-height flex w-full shrink-0 flex-col overflow-hidden px-2.5 py-2 md:px-3 md:py-2.5">
+                  <div className="flex shrink-0 items-center gap-2 px-1">
+                    <span className="text-base" aria-hidden>✨</span>
+                    <h4 className="app-section-title">Recommended for You</h4>
                   </div>
-                  <p className="line-clamp-2 max-w-[95%] shrink-0 px-0.5 text-center text-[10px] italic leading-snug text-slate-400 md:text-[11px] lg:text-xs">
-                    &ldquo;Where words fail, music speaks.&rdquo;{" "}
-                    <span className="whitespace-nowrap">&mdash; Hans Christian Andersen</span>
-                  </p>
+                  <div
+                    className="recommendation-grid grid min-h-0 flex-1 grid-cols-2 grid-rows-2 gap-1.5 md:gap-2"
+                    style={{ marginTop: "1rem" }}
+                  >
+                    {recommendedSongs.map((song) => {
+                      const adding = isAddingToQueue && addingSongId === song.id;
+                      return (
+                        <SongRow
+                          key={song.id}
+                          song={song}
+                          onClick={() => !adding && handleAddToQueue(song)}
+                          className={adding ? "cursor-wait opacity-60" : ""}
+                        />
+                      );
+                    })}
+                    {recommendedSongs.length === 0 && (
+                      <p className="col-span-2 row-span-2 flex items-center justify-center text-center text-xs text-slate-400">
+                        Add more songs to the library to see recommendations.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -913,6 +996,8 @@ const filteredSongs = useMemo(() => {
                 queue={queue || []} 
                 onRemove={handleRemoveFromQueue}
                 onReorder={handleReorderQueue}
+                onSkip={handleSkip}
+                skipDisabled={skipDisabled}
               />
             </div>
           </div>

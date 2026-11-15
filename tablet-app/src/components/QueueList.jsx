@@ -10,7 +10,7 @@ import { formatSongSubtitle } from "../utils/songFormatting";
   - Works on both touch (mobile/tablet) and mouse (desktop).
 */
 
-export default function QueueList({ queue = [], onRemove, onReorder }) {
+export default function QueueList({ queue = [], onRemove, onReorder, onSkip, skipDisabled = false }) {
   const scrollContainerRef = useRef(null);
 
   // Drag state
@@ -188,8 +188,18 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
         <div className="queue-panel-header-row">
           <div className="queue-panel-title-wrap">
             <span className="text-lg text-sky-300 md:text-xl">🎵</span>
-            <h4 className="text-base font-semibold text-white sm:text-lg md:text-xl">Queue</h4>
+            <h4 className="app-section-title">Queue</h4>
           </div>
+          <button
+            type="button"
+            onClick={onSkip}
+            disabled={skipDisabled}
+            className={`queue-skip-button ${skipDisabled ? "queue-skip-button--disabled" : ""}`}
+            aria-label="Skip to next song"
+          >
+            <span className="queue-skip-button-icon" aria-hidden>⏭</span>
+            <span>Skip</span>
+          </button>
         </div>
         {queue.length > 0 && (
           <p className="queue-panel-hint">Long press to reorder</p>
@@ -247,7 +257,7 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
                 key={s.queue_id || s.id || originalIndex}
                 ref={(el) => (itemRefs.current[displayIdx] = el)}
                 className={[
-                  "song-row",
+                  "song-row queue-song-row",
                   isBeingDragged ? "queue-item-dragging z-50" : "",
                   isDropTarget ? "queue-item-over" : "",
                 ]
@@ -314,4 +324,3 @@ export default function QueueList({ queue = [], onRemove, onReorder }) {
     </div>
   );
 }
-
