@@ -8,7 +8,7 @@ import FoodOrdersPanel from "../components/FoodOrdersPanel";
 import { useNotifications } from "../hooks/useNotifications";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { requestPermission } from "../services/notificationService";
-import { unlockAdminAudio } from "../services/audioService";
+import { playFoodOrderSound, unlockAdminAudio } from "../services/audioService";
 
 /**
  * Sort rooms for display. Rooms named with a number ("Room 3") sort
@@ -127,6 +127,9 @@ export default function Dashboard() {
         } else if (event.type === "food_order_created") {
           setLatestFoodOrder(event.order);
           setFoodOrdersRefreshKey((current) => current + 1);
+          playFoodOrderSound().catch((error) => {
+            console.warn("Could not play the food order sound.", error);
+          });
         } else if (event.type === "food_order_updated") {
           setFoodOrdersRefreshKey((current) => current + 1);
         }

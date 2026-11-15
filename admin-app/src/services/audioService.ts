@@ -87,3 +87,38 @@ export async function playSessionFinishedSound(sessionId: string): Promise<void>
     pendingSessionEndSounds.delete(key);
   }
 }
+
+export async function playFoodOrderSound(): Promise<void> {
+  const context = getAudioContext();
+  if (!context) throw new Error("Web Audio is not supported.");
+
+  if (context.state === "suspended") {
+    await context.resume();
+  }
+
+  if (context.state !== "running") {
+    throw new Error("Browser audio is not unlocked yet.");
+  }
+
+  const startAt = context.currentTime + 0.04;
+
+  // A short, smooth ascending doorbell chime keeps food orders clearly
+  // distinguishable from the four square-wave session-completion alarm.
+  [523.25, 659.25, 783.99].forEach((frequency, index) => {
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    const noteStart = startAt + index * 0.16;
+    const noteEnd = noteStart + 0.42;
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(frequency, noteStart);
+    gain.gain.setValueAtTime(0.001, noteStart);
+    gain.gain.exponentialRampToValueAtTime(0.2, noteStart + 0.025);
+    gain.gain.exponentialRampToValueAtTime(0.001, noteEnd);
+
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(noteStart);
+    oscillator.stop(noteEnd + 0.01);
+  });
+}

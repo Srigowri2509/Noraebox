@@ -89,6 +89,7 @@ export default function FoodOrderModal({ open, roomId, reminder = false, onClose
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [activeOrder, setActiveOrder] = useState(null);
+  const [orderingMore, setOrderingMore] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -110,7 +111,10 @@ export default function FoodOrderModal({ open, roomId, reminder = false, onClose
   }, [open]);
 
   useEffect(() => {
-    if (open) setActiveCategory("burgers");
+    if (open) {
+      setActiveCategory("burgers");
+      setOrderingMore(false);
+    }
   }, [open]);
 
   useEffect(() => {
@@ -223,6 +227,7 @@ export default function FoodOrderModal({ open, roomId, reminder = false, onClose
       });
       const order = response?.order || { total_amount: total, status: "preparing" };
       setActiveOrder(order);
+      setOrderingMore(false);
       if (roomId && order.id) {
         localStorage.setItem(`active_food_order:${roomId}`, JSON.stringify(order));
       }
@@ -253,14 +258,16 @@ export default function FoodOrderModal({ open, roomId, reminder = false, onClose
           </button>
         </header>
 
-        {activeOrder ? (
+        {activeOrder && !orderingMore ? (
           <div className="flex min-h-[360px] flex-col items-center justify-center px-6 py-10 text-center">
-            <div className="text-6xl">🍳</div>
-            <p className="mt-5 rounded-full border border-amber-300/30 bg-amber-400/10 px-5 py-2 text-sm font-extrabold uppercase tracking-[0.16em] text-amber-300">Preparing</p>
-            <h3 className="mt-4 text-3xl font-bold text-white">Your order is being prepared</h3>
-            <p className="mt-2 text-lg text-slate-300">This status will update when the admin marks it delivered.</p>
-            <p className="mt-4 rounded-full bg-white/[0.06] px-5 py-2 font-bold text-slate-200">Total: {money(activeOrder.total_amount)}</p>
-            <button type="button" onClick={onClose} className="mt-8 rounded-full bg-white/10 px-8 py-3 font-bold text-white hover:bg-white/15">Close</button>
+            <p className="text-4xl font-extrabold text-amber-300 sm:text-5xl">Preparing</p>
+            <button
+              type="button"
+              onClick={() => setOrderingMore(true)}
+              className="mt-8 rounded-full border border-emerald-300/40 bg-emerald-500/20 px-9 py-3 text-lg font-extrabold text-emerald-100 transition hover:bg-emerald-500/30"
+            >
+              Order More
+            </button>
           </div>
         ) : (
           <>
