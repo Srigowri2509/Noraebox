@@ -100,25 +100,27 @@ export async function playFoodOrderSound(): Promise<void> {
     throw new Error("Browser audio is not unlocked yet.");
   }
 
-  const startAt = context.currentTime + 0.04;
+  const startAt = context.currentTime + 0.02;
 
-  // A short, smooth ascending doorbell chime keeps food orders clearly
-  // distinguishable from the four square-wave session-completion alarm.
-  [523.25, 659.25, 783.99].forEach((frequency, index) => {
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const noteStart = startAt + index * 0.16;
-    const noteEnd = noteStart + 0.42;
+  // Two bright service-bell strikes are intentionally unlike the alternating
+  // square-wave beeps used when a session finishes.
+  [startAt, startAt + 0.42].forEach((strikeAt) => {
+    [1046.5, 2093, 3139.5].forEach((frequency, harmonicIndex) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const strikeEnd = strikeAt + 0.55;
+      const peak = [0.24, 0.1, 0.045][harmonicIndex];
 
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequency, noteStart);
-    gain.gain.setValueAtTime(0.001, noteStart);
-    gain.gain.exponentialRampToValueAtTime(0.2, noteStart + 0.025);
-    gain.gain.exponentialRampToValueAtTime(0.001, noteEnd);
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, strikeAt);
+      gain.gain.setValueAtTime(0.001, strikeAt);
+      gain.gain.exponentialRampToValueAtTime(peak, strikeAt + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.001, strikeEnd);
 
-    oscillator.connect(gain);
-    gain.connect(context.destination);
-    oscillator.start(noteStart);
-    oscillator.stop(noteEnd + 0.01);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(strikeAt);
+      oscillator.stop(strikeEnd + 0.01);
+    });
   });
 }
