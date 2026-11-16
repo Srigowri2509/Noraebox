@@ -5,6 +5,9 @@ type WindowWithWebAudio = Window & {
 let sharedAudioContext: AudioContext | null = null;
 const playedSessionEndSounds = new Set<string>();
 const pendingSessionEndSounds = new Set<string>();
+const playedFoodOrderSounds = new Set<string>();
+const pendingFoodOrderSounds = new Set<string>();
+const queuedFoodOrderSounds = new Set<string>();
 
 function getAudioContext(): AudioContext | null {
   const AudioContextClass =
@@ -35,6 +38,16 @@ export async function unlockAdminAudio(): Promise<void> {
   gain.connect(context.destination);
   oscillator.start();
   oscillator.stop(context.currentTime + 0.01);
+
+  // Browsers block audio until the operator interacts with the page. If an
+  // order arrived first, play its queued alert as soon as that first click or
+  // key press unlocks audio.
+  const queuedOrderIds = [...queuedFoodOrderSounds];
+  queuedFoodOrderSounds.clear();
+  if (queuedOrderIds.length > 0) {
+    await playFoodOrderSound(queuedOrderIds[0]);
+    queuedOrderIds.slice(1).forEach((orderId) => playedFoodOrderSounds.add(orderId));
+  }
 }
 
 async function playPreviousAlarmSound(): Promise<void> {
@@ -88,39 +101,60 @@ export async function playSessionFinishedSound(sessionId: string): Promise<void>
   }
 }
 
-export async function playFoodOrderSound(): Promise<void> {
+export async function playFoodOrderSound(orderId?: string): Promise<void> {
+  const key = String(orderId || "new-food-order");
+  if (playedFoodOrderSounds.has(key) || pendingFoodOrderSounds.has(key)) return;
+
+  pendingFoodOrderSounds.add(key);
   const context = getAudioContext();
-  if (!context) throw new Error("Web Audio is not supported.");
-
-  if (context.state === "suspended") {
-    await context.resume();
+  if (!context) {
+    pendingFoodOrderSounds.delete(key);
+    throw new Error("Web Audio is not supported.");
   }
 
-  if (context.state !== "running") {
-    throw new Error("Browser audio is not unlocked yet.");
-  }
+  try {
+    if (context.state === "suspended") {
+      await Promise.race([
+        context.resume().catch(() => undefined),
+        new Promise<void>((resolve) => window.setTimeout(resolve, 150)),
+      ]);
+    }
 
-  const startAt = context.currentTime + 0.02;
+    if (context.state !== "running") {
+      queuedFoodOrderSounds.add(key);
+      throw new Error("Browser audio is not unlocked yet.");
+    }
 
-  // Two bright service-bell strikes are intentionally unlike the alternating
-  // square-wave beeps used when a session finishes.
-  [startAt, startAt + 0.42].forEach((strikeAt) => {
-    [1046.5, 2093, 3139.5].forEach((frequency, harmonicIndex) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const strikeEnd = strikeAt + 0.55;
-      const peak = [0.24, 0.1, 0.045][harmonicIndex];
+    const startAt = context.currentTime + 0.02;
 
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(frequency, strikeAt);
-      gain.gain.setValueAtTime(0.001, strikeAt);
-      gain.gain.exponentialRampToValueAtTime(peak, strikeAt + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.001, strikeEnd);
+    // Two bright service-bell strikes are intentionally unlike the alternating
+    // square-wave beeps used when a session finishes.
+    [startAt, startAt + 0.42].forEach((strikeAt) => {
+      [1046.5, 2093, 3139.5].forEach((frequency, harmonicIndex) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const strikeEnd = strikeAt + 0.55;
+        const peak = [0.35, 0.14, 0.06][harmonicIndex];
 
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start(strikeAt);
-      oscillator.stop(strikeEnd + 0.01);
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, strikeAt);
+        gain.gain.setValueAtTime(0.001, strikeAt);
+        gain.gain.exponentialRampToValueAtTime(peak, strikeAt + 0.008);
+        gain.gain.exponentialRampToValueAtTime(0.001, strikeEnd);
+
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(strikeAt);
+        oscillator.stop(strikeEnd + 0.01);
+      });
     });
-  });
+
+    playedFoodOrderSounds.add(key);
+    queuedFoodOrderSounds.delete(key);
+  } catch (error) {
+    if (context.state !== "running") queuedFoodOrderSounds.add(key);
+    throw error;
+  } finally {
+    pendingFoodOrderSounds.delete(key);
+  }
 }

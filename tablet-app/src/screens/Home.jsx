@@ -791,9 +791,9 @@ const filteredSongs = useMemo(() => {
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center",
         paddingLeft:
-          "max(env(safe-area-inset-left, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
+          "max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
         paddingRight:
-          "max(env(safe-area-inset-right, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
+          "max(env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px), var(--home-pad-x, clamp(12px, 2.5vw, 32px)))",
         paddingTop: "var(--home-pad-y-top, max(0.5rem, env(safe-area-inset-top, 0px)))",
         paddingBottom:
           "var(--home-pad-y-bottom, max(0.75rem, env(safe-area-inset-bottom, 0px)))",

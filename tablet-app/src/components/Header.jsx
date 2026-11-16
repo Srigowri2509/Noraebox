@@ -31,8 +31,8 @@ export default function Header({ onOrderFood }) {
 
   return (
     <header className="relative z-20 shrink-0">
-      <div className="mx-auto w-full max-w-[1800px] pt-1 sm:pt-2 md:pt-3">
-        <div className="flex w-full items-center justify-between gap-3 md:gap-4">
+      <div className="w-full pt-1 sm:pt-2 md:pt-3">
+        <div className="relative grid w-full grid-cols-[minmax(0,1fr)_minmax(150px,0.28fr)] items-center gap-3 md:gap-5">
           <div className="flex min-w-0 items-center gap-3 md:gap-4">
             <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-white/10 md:h-16 md:w-16" style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.35), 0 0 15px rgba(59, 130, 246, 0.3), 0 0 30px rgba(236, 72, 153, 0.2)" }}>
               <img
@@ -49,24 +49,22 @@ export default function Header({ onOrderFood }) {
             </div>
           </div>
 
-          <div className="flex min-w-0 max-w-[62%] shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={onOrderFood}
-              className="food-order-button"
-            >
-              <span className="food-order-button-icon" aria-hidden>🍽️</span>
-              <span className="hidden sm:inline">Order Food</span>
-              <span className="sm:hidden">Food</span>
-            </button>
-            <div
-              className="flex min-w-0 items-center gap-2 rounded-full border border-sky-400/35 bg-sky-500/10 py-2 pl-3 pr-4 text-sky-300 md:gap-2.5 md:py-2.5 md:pl-4 md:pr-5"
-              style={{ fontSize: "clamp(0.8rem, 1.2vw, 1.05rem)" }}
-            >
-              <span className="shrink-0 opacity-80">Room:</span>
-              <span className="truncate font-semibold text-white">{displayText}</span>
-            </div>
+          <div
+            className="pointer-events-none absolute left-1/2 top-1/2 flex max-w-[32%] -translate-x-1/2 -translate-y-1/2 items-center gap-2.5 px-5 py-2.5 text-sky-300 md:gap-3 md:px-6 md:py-3"
+            style={{ fontSize: "clamp(1rem, 1.45vw, 1.3rem)" }}
+          >
+            <span className="shrink-0 font-semibold opacity-85">Room:</span>
+            <span className="truncate font-extrabold text-white">{displayText}</span>
           </div>
+
+          <button
+            type="button"
+            onClick={onOrderFood}
+            className="food-order-button"
+          >
+            <span className="food-order-button-icon" aria-hidden>🍽️</span>
+            <span>Order Food</span>
+          </button>
         </div>
       </div>
     </header>

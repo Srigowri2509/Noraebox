@@ -1,5 +1,7 @@
 import { api } from "../api";
 
+let registrationPromise = null;
+
 // Simple UUID v4 generator (fallback if uuid package not available)
 function generateUUID() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -9,7 +11,7 @@ function generateUUID() {
   });
 }
 
-export async function ensureDeviceRegistered() {
+async function registerDevice() {
   let deviceId = localStorage.getItem("device_uuid");
   if (!deviceId) {
     deviceId = generateUUID();
@@ -65,5 +67,18 @@ export async function ensureDeviceRegistered() {
     console.error("Error in device registration:", error);
     throw error;
   }
+}
+
+export function ensureDeviceRegistered() {
+  if (!registrationPromise) {
+    registrationPromise = registerDevice().catch((error) => {
+      // Allow a later retry after a genuine network/backend failure while
+      // ensuring React StrictMode cannot submit two registrations at once.
+      registrationPromise = null;
+      throw error;
+    });
+  }
+
+  return registrationPromise;
 }
 

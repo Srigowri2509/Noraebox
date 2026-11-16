@@ -264,9 +264,12 @@ export default function FoodOrderModal({ open, roomId, reminder = false, onClose
             <button
               type="button"
               onClick={() => setOrderingMore(true)}
-              className="mt-8 rounded-full border border-emerald-300/40 bg-emerald-500/20 px-9 py-3 text-lg font-extrabold text-emerald-100 transition hover:bg-emerald-500/30"
+              className="food-order-more-button"
             >
-              Order More
+              <span>Order More</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
             </button>
           </div>
         ) : (

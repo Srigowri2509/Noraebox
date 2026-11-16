@@ -65,6 +65,7 @@ export default function Dashboard() {
   const [latestGuestExtension, setLatestGuestExtension] = useState(null);
   const [latestFoodOrder, setLatestFoodOrder] = useState(null);
   const [foodOrdersRefreshKey, setFoodOrdersRefreshKey] = useState(0);
+  const [audioReady, setAudioReady] = useState(false);
 
   const visibleRooms = useMemo(() => rooms.filter(isVisibleRoom), [rooms]);
   const gridRooms = useMemo(() => sortRooms(visibleRooms), [visibleRooms]);
@@ -106,6 +107,13 @@ export default function Dashboard() {
   const { handleSessionFinished, acknowledgeSessionNotification } =
     useNotifications(markSessionFinished);
 
+  const alertFoodOrder = useCallback((order) => {
+    setLatestFoodOrder(order);
+    playFoodOrderSound(order?.id).catch((error) => {
+      console.warn("Could not play the food order sound.", error);
+    });
+  }, []);
+
   useWebSocket(
     useCallback(
       (event) => {
@@ -125,16 +133,13 @@ export default function Dashboard() {
           setLatestGuestExtension(event);
           loadRooms();
         } else if (event.type === "food_order_created") {
-          setLatestFoodOrder(event.order);
+          alertFoodOrder(event.order);
           setFoodOrdersRefreshKey((current) => current + 1);
-          playFoodOrderSound().catch((error) => {
-            console.warn("Could not play the food order sound.", error);
-          });
         } else if (event.type === "food_order_updated") {
           setFoodOrdersRefreshKey((current) => current + 1);
         }
       },
-      [handleSessionFinished, loadRooms]
+      [alertFoodOrder, handleSessionFinished, loadRooms]
     )
   );
 
@@ -170,20 +175,37 @@ export default function Dashboard() {
   }, [loadDevices, loadRooms]);
 
   useEffect(() => {
-    const unlock = () => {
-      unlockAdminAudio().catch((error) => {
-        console.warn("Could not unlock admin alarm audio.", error);
-      });
+    const removeUnlockListeners = () => {
       window.removeEventListener("pointerdown", unlock, true);
       window.removeEventListener("keydown", unlock, true);
+    };
+
+    const unlock = () => {
+      unlockAdminAudio()
+        .then(() => {
+          setAudioReady(true);
+          removeUnlockListeners();
+        })
+        .catch((error) => {
+          console.warn("Could not unlock admin alarm audio.", error);
+        });
     };
 
     window.addEventListener("pointerdown", unlock, true);
     window.addEventListener("keydown", unlock, true);
     return () => {
-      window.removeEventListener("pointerdown", unlock, true);
-      window.removeEventListener("keydown", unlock, true);
+      removeUnlockListeners();
     };
+  }, []);
+
+  const testOrderSound = useCallback(async () => {
+    try {
+      await unlockAdminAudio();
+      setAudioReady(true);
+      await playFoodOrderSound(`sound-check-${Date.now()}`);
+    } catch (error) {
+      console.warn("Could not enable or test admin audio.", error);
+    }
   }, []);
 
   // Open modal
@@ -377,6 +399,18 @@ export default function Dashboard() {
 
   return (
     <>
+      <button
+        type="button"
+        onClick={testOrderSound}
+        className={`fixed bottom-6 left-6 z-[330] rounded-full border px-5 py-3 text-sm font-extrabold shadow-xl transition hover:-translate-y-0.5 ${
+          audioReady
+            ? "border-emerald-300 bg-emerald-600 text-white hover:bg-emerald-500"
+            : "border-amber-300 bg-amber-500 text-slate-950 hover:bg-amber-400"
+        }`}
+      >
+        {audioReady ? "🔊 Test order sound" : "🔔 Enable order sounds"}
+      </button>
+
       {connectionError && (
         <div className="connection-error fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-6 py-4 rounded-lg shadow-lg max-w-2xl">
           <div className="font-bold text-lg mb-2">Backend Connection Failed</div>
@@ -442,7 +476,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <FoodOrdersPanel refreshKey={foodOrdersRefreshKey} />
+      <FoodOrdersPanel refreshKey={foodOrdersRefreshKey} onOrderDetected={alertFoodOrder} />
 
       <div className="song-suggestions-section w-full flex justify-center mt-10 px-4">
         <SongSuggestionsPanel />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
 function money(value) {
@@ -12,23 +12,41 @@ function orderAge(createdAt) {
   return `${minutes}m ago`;
 }
 
-export default function FoodOrdersPanel({ refreshKey = 0 }) {
+export default function FoodOrdersPanel({ refreshKey = 0, onOrderDetected }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
   const [error, setError] = useState("");
+  const knownOrderIds = useRef(new Set());
+  const hasLoadedOrders = useRef(false);
 
   const loadOrders = useCallback(async () => {
     try {
       const data = await api("/food/orders?active_only=true&limit=100");
-      setOrders(Array.isArray(data?.orders) ? data.orders : []);
+      const nextOrders = Array.isArray(data?.orders) ? data.orders : [];
+      const newlyDetected = nextOrders.filter((order) => !knownOrderIds.current.has(order.id));
+
+      if (hasLoadedOrders.current) {
+        newlyDetected.forEach((order) => onOrderDetected?.(order));
+      } else {
+        // If the first poll lands just after an order was placed, still alert it.
+        const recentOrder = newlyDetected.find((order) => {
+          const createdAt = new Date(order.created_at).getTime();
+          return Number.isFinite(createdAt) && Date.now() - createdAt <= 30000;
+        });
+        if (recentOrder) onOrderDetected?.(recentOrder);
+      }
+
+      knownOrderIds.current = new Set(nextOrders.map((order) => order.id));
+      hasLoadedOrders.current = true;
+      setOrders(nextOrders);
       setError("");
     } catch (err) {
       setError(err?.message || "Could not load food orders.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onOrderDetected]);
 
   useEffect(() => {
     void loadOrders();
