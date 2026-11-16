@@ -127,14 +127,14 @@ export async function playFoodOrderSound(orderId?: string): Promise<void> {
 
     const startAt = context.currentTime + 0.02;
 
-    // Two bright service-bell strikes are intentionally unlike the alternating
+    // Three strong service-bell strikes are intentionally unlike the alternating
     // square-wave beeps used when a session finishes.
-    [startAt, startAt + 0.42].forEach((strikeAt) => {
-      [1046.5, 2093, 3139.5].forEach((frequency, harmonicIndex) => {
+    [startAt, startAt + 0.46, startAt + 0.92].forEach((strikeAt) => {
+      [783.99, 1567.98, 2351.97].forEach((frequency, harmonicIndex) => {
         const oscillator = context.createOscillator();
         const gain = context.createGain();
-        const strikeEnd = strikeAt + 0.55;
-        const peak = [0.35, 0.14, 0.06][harmonicIndex];
+        const strikeEnd = strikeAt + 0.72;
+        const peak = [0.5, 0.2, 0.08][harmonicIndex];
 
         oscillator.type = "sine";
         oscillator.frequency.setValueAtTime(frequency, strikeAt);
