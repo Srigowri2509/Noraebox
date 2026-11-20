@@ -298,10 +298,13 @@ export default function Dashboard() {
     }
   };
 
-  const requestExtensionFromGuest = async () => {
+  const requestExtensionFromGuest = async (promptType = "normal") => {
     if (!selectedRoom) return;
     try {
-      await api(`/rooms/${selectedRoom.id}/extension-prompt`, { method: "POST" });
+      await api(`/rooms/${selectedRoom.id}/extension-prompt`, {
+        method: "POST",
+        body: JSON.stringify({ prompt_type: promptType }),
+      });
     } catch (err) {
       console.error("Error sending extension prompt:", err);
       alert(`Failed to send extension prompt: ${err.message || "Unknown error"}`);

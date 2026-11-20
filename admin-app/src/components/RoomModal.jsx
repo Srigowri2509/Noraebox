@@ -11,7 +11,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
   const [useCustom, setUseCustom] = useState(false);
   const [selectedMinutes, setSelectedMinutes] = useState(60);
   const [sendingPrompt, setSendingPrompt] = useState(false);
-  const [promptSent, setPromptSent] = useState(false);
+  const [promptSent, setPromptSent] = useState("");
 
   useEffect(() => {
     if (!room) {
@@ -56,7 +56,7 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
   // confirmation/disabled state over when the operator opens another TV.
   useEffect(() => {
     setSendingPrompt(false);
-    setPromptSent(false);
+    setPromptSent("");
   }, [room?.id]);
 
   if (!room) return null;
@@ -107,28 +107,41 @@ export default function RoomModal({ room, onClose, onStart, onExtend, onCancel, 
         {!loadingSession && !isFree && onRequestExtension ? (
           <div className="mb-8 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center">
             <p className="mb-3 text-sm font-medium text-amber-800">
-              Schedule this anytime. It will appear during the final 5 minutes.
+              Send an extension choice to the room display now.
             </p>
-            <button
-              type="button"
-              disabled={sendingPrompt || promptSent}
-              onClick={async () => {
-                setSendingPrompt(true);
-                try {
-                  await onRequestExtension();
-                  setPromptSent(true);
-                } finally {
-                  setSendingPrompt(false);
-                }
-              }}
-              className="w-full rounded-xl bg-amber-500 px-4 py-3 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {sendingPrompt
-                ? "Scheduling..."
-                : promptSent
-                  ? "Extension prompt scheduled"
-                  : "Schedule extension prompt"}
-            </button>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { type: "normal", label: "Normal", detail: "30 min / 1 hr" },
+                { type: "free_trial", label: "Free trial", detail: "1 hr / 1.5 hr" },
+              ].map((prompt) => (
+                <button
+                  type="button"
+                  key={prompt.type}
+                  disabled={sendingPrompt || Boolean(promptSent)}
+                  onClick={async () => {
+                    setSendingPrompt(prompt.type);
+                    try {
+                      await onRequestExtension(prompt.type);
+                      setPromptSent(prompt.type);
+                    } finally {
+                      setSendingPrompt(false);
+                    }
+                  }}
+                  className="rounded-xl bg-amber-500 px-3 py-3 font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span className="block">
+                    {sendingPrompt === prompt.type
+                      ? "Sending..."
+                      : promptSent === prompt.type
+                        ? "Sent"
+                        : prompt.label}
+                  </span>
+                  <span className="mt-1 block text-xs font-medium text-amber-100">
+                    {prompt.detail}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
 

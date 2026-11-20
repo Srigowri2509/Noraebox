@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { api, API_BASE } from "../api";
 import { safeGet, safeSet } from "../utils/safeStorage";
+
+const isHiddenDisplayRoom = (room) =>
+  String(room?.name || "").trim().toLowerCase() === "indie";
 
 export default function RoomSelectModal({ rooms: initialRooms = [], device, onSelect, onClose }) {
   const [selectedRoomId, setSelectedRoomId] = useState("");
   const [loading, setLoading] = useState(false);
   const [rooms, setRooms] = useState(initialRooms);
   const selectRef = useRef(null);
+  const displayRooms = useMemo(
+    () => rooms.filter((room) => !isHiddenDisplayRoom(room)),
+    [rooms]
+  );
 
   // Fetch rooms with availability info
   useEffect(() => {
@@ -35,7 +42,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
       const direction = event.key === "ArrowDown" || code === 40 ? 1 : event.key === "ArrowUp" || code === 38 ? -1 : 0;
       if (direction) {
         event.preventDefault();
-        const available = rooms.filter((room) => !(room.has_display && !room.my_room));
+        const available = displayRooms.filter((room) => !(room.has_display && !room.my_room));
         if (!available.length) return;
         const currentIndex = available.findIndex((room) => String(room.id) === String(selectedRoomId));
         const nextIndex = currentIndex < 0 ? 0 : (currentIndex + direction + available.length) % available.length;
@@ -51,7 +58,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
       window.clearTimeout(focusTimer);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [rooms, selectedRoomId]);
+  }, [displayRooms, selectedRoomId]);
 
   const handleAssign = async () => {
     if (!selectedRoomId) {
@@ -113,7 +120,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
         </p>
         {device && device.name && <p className="room-modal-device">Device: {device.name}</p>}
         
-        {rooms.length === 0 ? (
+        {displayRooms.length === 0 ? (
           <div className="room-modal-warning">
             <p className="room-modal-warning-title">Backend Connection Issue</p>
             <p className="room-modal-warning-text">
@@ -131,7 +138,7 @@ export default function RoomSelectModal({ rooms: initialRooms = [], device, onSe
                 className="room-modal-select"
               >
                 <option value="">-- Select a room --</option>
-                {rooms.map((room) => {
+                {displayRooms.map((room) => {
                   const roomName = room.name || `Room ${String(room.id).slice(0, 8)}`;
                   const takenByDisplay = room.has_display && !room.my_room;
                   return (

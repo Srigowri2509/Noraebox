@@ -133,8 +133,20 @@ def get_current_session_history(room_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{room_id}/extension-prompt")
-async def request_session_extension(room_id: str, db: Session = Depends(get_db)):
-    """Schedule a guest extension choice for the final five minutes."""
+async def request_session_extension(
+    room_id: str,
+    payload: dict = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    """Send a guest extension choice to the room display immediately."""
+    prompt_type = (payload or {}).get("prompt_type", "normal")
+    options_by_type = {
+        "normal": [30, 60],
+        "free_trial": [60, 90],
+    }
+    if prompt_type not in options_by_type:
+        raise HTTPException(status_code=400, detail="Unknown extension prompt type")
+
     session = db.query(RoomSession).filter(
         RoomSession.room_id == room_id,
         RoomSession.status == "active",
@@ -154,11 +166,17 @@ async def request_session_extension(room_id: str, db: Session = Depends(get_db))
         "roomId": str(room_id),
         "sessionId": str(session.id),
         "remainingSeconds": remaining_seconds,
-        "options": [30, 60],
+        "promptType": prompt_type,
+        "options": options_by_type[prompt_type],
     })
     if delivered == 0:
         raise HTTPException(status_code=409, detail="The room display is not connected")
-    return {"status": "scheduled", "displays_notified": delivered}
+    return {
+        "status": "sent",
+        "prompt_type": prompt_type,
+        "options": options_by_type[prompt_type],
+        "displays_notified": delivered,
+    }
 
 
 @router.get("/", response_model=List[RoomResponse])

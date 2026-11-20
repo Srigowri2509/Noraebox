@@ -15,6 +15,7 @@ import {
 } from "../utils/device";
 import { fetchSongWithUrl } from "../utils/fetchSongWithUrl";
 import { resolvePlayableUrl } from "../cache/resolvePlayableUrl";
+import { warmMediaUrl } from "../cache/mediaWarmup";
 import {
   initNextSongCache,
   ensureNext,
@@ -319,18 +320,20 @@ export default function Display({ roomId }) {
     };
   }, []);
 
-  const showExtensionNotification = useCallback((options) => {
+  const showExtensionNotification = useCallback((options, promptType = "normal") => {
     if (document.visibilityState === "visible") return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     const show = (registration) => registration?.showNotification?.("Seems like you are having fun!", {
-      body: "Would you like to extend your Noraebox session?",
+      body: promptType === "free_trial"
+        ? "Choose a 1 hour or 1.5 hour free trial extension."
+        : "Would you like to extend your Noraebox session?",
       tag: `noraebox-extension-${roomId}`,
       renotify: true,
       requireInteraction: true,
-      actions: [
-        { action: "extend-30", title: "30 minutes" },
-        { action: "extend-60", title: "1 hour" },
-      ].filter((action) => options.includes(action.action === "extend-60" ? 60 : 30)),
+      actions: options.map((minutes) => ({
+        action: `extend-${minutes}`,
+        title: minutes === 60 ? "1 hour" : minutes === 90 ? "1.5 hours" : `${minutes} minutes`,
+      })),
       data: {
         roomId,
         apiBase: API_BASE.replace(/\/$/, ""),
@@ -368,14 +371,20 @@ export default function Display({ roomId }) {
           const message = JSON.parse(event.data);
           if (message.type === "extension_prompt") {
             const options = Array.isArray(message.options) ? message.options : [30, 60];
-            const scheduled = {
+            const promptType = message.promptType || "normal";
+            // An operator explicitly clicked Normal or Free trial, so show the
+            // choice immediately. The current song keeps playing underneath;
+            // dismissing this prompt must not run the between-song resume path.
+            scheduledExtensionRef.current = null;
+            safeSessionSet(`extension_prompt_pending:${roomId}`, "");
+            setExtensionPrompt({
               sessionId: message.sessionId,
               options,
-              remainingSeconds: Number(message.remainingSeconds),
-            };
-            scheduledExtensionRef.current = scheduled;
-            safeSessionSet(`extension_prompt_pending:${roomId}`, JSON.stringify(scheduled));
-            dbg.current.lastEvent = "extension prompt scheduled for next song boundary";
+              promptType,
+              resumePlayback: false,
+            });
+            showExtensionNotification(options, promptType);
+            dbg.current.lastEvent = `extension prompt shown immediately (${promptType})`;
           }
         } catch (error) {
           console.warn("Invalid display message", error);
@@ -787,6 +796,13 @@ export default function Display({ roomId }) {
           url: loaded.videoUrl,
           source: loaded.source || "remote",
         };
+        // Samsung exposes one dependable media decoder, so a hidden second
+        // <video> is unsafe. Warm its network path and first chunk instead;
+        // this reduces the wait after a transition without disturbing the
+        // song that is currently playing.
+        if (SAMSUNG_TV) {
+          void warmMediaUrl(loaded.videoUrl);
+        }
         // On TV, only store the URL — preloading the next song steals a decoder
         // and can flash the wrong frame before the transition clip plays.
         if (!NATIVE_TV) {
@@ -860,8 +876,9 @@ export default function Display({ roomId }) {
       transitionStartedAtRef.current = 0;
       stageRef.current = "EXTENSION_PROMPT";
       dbg.current.lastEvent = "extension prompt shown between songs";
-      setExtensionPrompt({ sessionId: scheduledExtension.sessionId, options });
-      showExtensionNotification(options);
+      const promptType = scheduledExtension.promptType || "normal";
+      setExtensionPrompt({ sessionId: scheduledExtension.sessionId, options, promptType });
+      showExtensionNotification(options, promptType);
       return;
     }
 
@@ -1045,6 +1062,12 @@ export default function Display({ roomId }) {
     }
   }, [enterSong]);
 
+  const handlePlaybackBlocked = useCallback(() => {
+    interactedRef.current = false;
+    safeSessionSet("video_autoplay_enabled", "");
+    setNeedsInteraction(true);
+  }, []);
+
   useEffect(() => {
     console.log(
       "[STATE] playback mode:",
@@ -1053,16 +1076,6 @@ export default function Display({ roomId }) {
     if (isCacheEnabled()) {
       console.log("[CACHE] enabled (next-song experiment)");
       void initNextSongCache();
-    }
-  }, []);
-
-  // Browsers and Android can reuse a previously unlocked playback session.
-  // Samsung needs one fresh remote press per application launch; after that,
-  // every song in the queue continues automatically without another press.
-  useEffect(() => {
-    if (!SAMSUNG_TV && safeSessionGet("video_autoplay_enabled") === "true") {
-      interactedRef.current = true;
-      setNeedsInteraction(false);
     }
   }, []);
 
@@ -1505,6 +1518,7 @@ export default function Display({ roomId }) {
             onSongEnded={onSongEnded}
             onTransitionEnded={onTransitionEnded}
             onSongError={handleSongError}
+            onPlaybackBlocked={handlePlaybackBlocked}
           />
         </div>
         <PlaybackControls playerRef={videoRef} />
@@ -1515,6 +1529,7 @@ export default function Display({ roomId }) {
         <ExtensionPrompt
           roomId={roomId}
           options={extensionPrompt.options}
+          promptType={extensionPrompt.promptType}
           onClose={() => {
             if (extensionPrompt.resumePlayback === false) {
               setExtensionPrompt(null);

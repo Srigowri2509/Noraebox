@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../api";
 
-export default function ExtensionPrompt({ roomId, options = [30, 60], onClose, onExtended }) {
+export default function ExtensionPrompt({ roomId, options = [30, 60], promptType = "normal", onClose, onExtended }) {
   const [submitting, setSubmitting] = useState(null);
   const [error, setError] = useState("");
   const buttonRefs = useRef([]);
@@ -61,8 +61,10 @@ export default function ExtensionPrompt({ roomId, options = [30, 60], onClose, o
   return (
     <div className="display-modal-backdrop display-modal-backdrop--urgent">
       <section className="display-modal extension-prompt" role="alertdialog" aria-modal="true" aria-label="Extend session" onKeyDown={handleRemoteNavigation}>
-        <p className="display-modal__eyebrow">Your session is nearly over</p>
-        <h2>Seems like you are having fun!</h2>
+        <p className="display-modal__eyebrow">
+          {promptType === "free_trial" ? "Free trial extension" : "Your session is nearly over"}
+        </p>
+        <h2>{promptType === "free_trial" ? "Would you like more time?" : "Seems like you are having fun!"}</h2>
         <p>Would you like to extend your session?</p>
         <div className="extension-prompt__options">
           {options.map((minutes, index) => (
@@ -77,7 +79,9 @@ export default function ExtensionPrompt({ roomId, options = [30, 60], onClose, o
                 ? "Adding..."
                 : minutes === 60
                   ? "Extend by 1 hour"
-                  : `Extend by ${minutes} minutes`}
+                  : minutes === 90
+                    ? "Extend by 1.5 hours"
+                    : `Extend by ${minutes} minutes`}
             </button>
           ))}
         </div>

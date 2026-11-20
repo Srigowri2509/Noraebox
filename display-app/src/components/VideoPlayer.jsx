@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { safeSessionGet, safeSessionSet } from "../utils/safeStorage";
+import { safeSessionSet } from "../utils/safeStorage";
 import {
   isLowPowerDevice,
   isTelevisionDisplay,
@@ -176,6 +176,7 @@ const VideoPlayer = forwardRef(
       onSongEnded,
       onTransitionEnded,
       onSongError,
+      onPlaybackBlocked,
     },
     ref
   ) => {
@@ -203,14 +204,13 @@ const VideoPlayer = forwardRef(
     const endedFiredRef = useRef(false);
     const transitionEndedFiredRef = useRef(false);
     const songHandoffAtRef = useRef(0);
-    const userInteractedRef = useRef(
-      !SAMSUNG_TV && safeSessionGet("video_autoplay_enabled") === "true"
-    );
+    const userInteractedRef = useRef(false);
+    const foregroundRecoveryAtRef = useRef(0);
 
     const cbRef = useRef({});
     useEffect(() => {
-      cbRef.current = { onSongEnded, onTransitionEnded, onSongError };
-    }, [onSongEnded, onTransitionEnded, onSongError]);
+      cbRef.current = { onSongEnded, onTransitionEnded, onSongError, onPlaybackBlocked };
+    }, [onSongEnded, onTransitionEnded, onSongError, onPlaybackBlocked]);
 
     const elById = useCallback((id) => {
       if (id === "a") return songARef.current;
@@ -1183,23 +1183,61 @@ const VideoPlayer = forwardRef(
       return () => window.clearInterval(interval);
     }, [songEl, slotId]);
 
-    // Resume the visible song after the TV/webview returns from background.
+    // Browsers can keep reporting a video as "playing" after a background tab
+    // loses its composited media surface. Repaint the authoritative front layer
+    // and reassert play whenever the page becomes foregrounded. If audible
+    // playback is blocked, ask the controller to restore the interaction gate.
     useEffect(() => {
-      const onVisibility = () => {
+      const recoverForegroundPlayback = () => {
         if (document.visibilityState !== "visible") return;
-        if (stageRef.current !== "song" || playbackBusyRef.current) return;
-        const el = songEl();
-        if (el && el.paused && el.readyState >= 2 && !manualPausedRef.current) {
-          const id = slotId(el);
-          videoLog("PLAY_ATTEMPT", { id, label: "visibility-resume", rs: el.readyState });
-          Promise.resolve(el.play())
-            .then(() => videoLog("PLAY_SUCCESS", { id, label: "visibility-resume" }))
-            .catch((err) => videoLog("PLAY_FAILED", { id, ...formatPlayError(err), label: "visibility-resume" }));
-        }
+        if (playbackBusyRef.current || manualPausedRef.current) return;
+        const now = Date.now();
+        if (now - foregroundRecoveryAtRef.current < 250) return;
+        foregroundRecoveryAtRef.current = now;
+
+        const activeId =
+          stageRef.current === "song"
+            ? roleRef.current.song
+            : stageRef.current === "transition"
+              ? "t"
+              : null;
+        const el = activeId ? elById(activeId) : null;
+        if (!el || el.readyState < 2) return;
+
+        // Force a real React layer change. Re-setting the same front id is a
+        // no-op and does not repair Chrome's discarded video surface.
+        setVisible("black");
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => {
+            setVisible(activeId);
+            videoLog("PLAY_ATTEMPT", {
+              id: activeId,
+              label: "foreground-recovery",
+              rs: el.readyState,
+              paused: el.paused,
+            });
+            Promise.resolve(el.play())
+              .then(() => videoLog("PLAY_SUCCESS", { id: activeId, label: "foreground-recovery" }))
+              .catch((err) => {
+                videoLog("PLAY_FAILED", {
+                  id: activeId,
+                  ...formatPlayError(err),
+                  label: "foreground-recovery",
+                });
+                cbRef.current.onPlaybackBlocked?.();
+              });
+          });
+        });
       };
-      document.addEventListener("visibilitychange", onVisibility);
-      return () => document.removeEventListener("visibilitychange", onVisibility);
-    }, [songEl, slotId]);
+      document.addEventListener("visibilitychange", recoverForegroundPlayback);
+      window.addEventListener("focus", recoverForegroundPlayback);
+      window.addEventListener("pageshow", recoverForegroundPlayback);
+      return () => {
+        document.removeEventListener("visibilitychange", recoverForegroundPlayback);
+        window.removeEventListener("focus", recoverForegroundPlayback);
+        window.removeEventListener("pageshow", recoverForegroundPlayback);
+      };
+    }, [elById, setVisible]);
 
     // Audio can continue even when an interrupted handoff/HMR update leaves the
     // React front-layer state pointing at a hidden transition or old song slot.

@@ -3,11 +3,8 @@ self.addEventListener("notificationclick", (event) => {
   const data = notification.data || {};
   notification.close();
 
-  const minutes = event.action === "extend-30"
-    ? 30
-    : event.action === "extend-60"
-      ? 60
-      : null;
+  const actionMatch = /^extend-(30|60|90)$/.exec(event.action);
+  const minutes = actionMatch ? Number(actionMatch[1]) : null;
 
   event.waitUntil((async () => {
     if (minutes && data.apiBase && data.roomId) {
@@ -21,7 +18,11 @@ self.addEventListener("notificationclick", (event) => {
           const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
           clients.forEach((client) => client.postMessage({ type: "session_extended", minutes }));
           await self.registration.showNotification("Session extended", {
-            body: minutes === 60 ? "1 hour was added to your session." : "30 minutes were added to your session.",
+            body: minutes === 60
+              ? "1 hour was added to your session."
+              : minutes === 90
+                ? "1.5 hours were added to your session."
+                : "30 minutes were added to your session.",
             tag: "noraebox-extension-confirmed",
           });
           return;
